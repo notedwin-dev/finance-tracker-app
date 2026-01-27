@@ -1,94 +1,34 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZenFinance Tracker</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              background: '#000000', // Pure Black
-              surface: '#09090b', // Zinc-950 (Very dark gray)
-              card: '#121212', // Slightly lighter for cards
-              primary: '#6366f1', // Blurple (Indigo-500)
-              primaryDark: '#4f46e5', // Indigo-600
-              secondary: '#a855f7', // Purple-500
-              danger: '#ef4444', // Red-500
-              success: '#10b981', // Emerald-500
-            },
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            animation: {
-              'fadeIn': 'fadeIn 0.3s ease-out',
-              'slideUp': 'slideUp 0.3s ease-out',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: '0' },
-                '100%': { opacity: '1' },
-              },
-              slideUp: {
-                '0%': { transform: 'translateY(20px)', opacity: '0' },
-                '100%': { transform: 'translateY(0)', opacity: '1' },
-              }
-            }
-          }
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script type="importmap">
+      {
+        "imports": {
+          "react-dom": "https://esm.sh/react-dom@^19.2.3",
+          "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+          "react/": "https://esm.sh/react@^19.2.3/",
+          "react": "https://esm.sh/react@^19.2.3",
+          "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+          "date-fns": "https://esm.sh/date-fns@^4.1.0",
+          "@heroicons/react/": "https://esm.sh/@heroicons/react@^2.2.0/",
+          "recharts": "https://esm.sh/recharts@2.12.7?external=react,react-dom",
+          "@react-oauth/google": "https://esm.sh/@react-oauth/google@0.12.1?external=react,react-dom"
         }
       }
     </script>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-      
-      /* Custom scrollbar for dark theme */
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #000000; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #27272a; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #3f3f46; 
-      }
-      body {
-        background-color: #000000;
-        color: #ffffff;
-        font-family: 'Inter', sans-serif;
-        -webkit-tap-highlight-color: transparent;
-      }
-      .pb-safe {
-        padding-bottom: env(safe-area-inset-bottom);
-      }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom": "https://esm.sh/react-dom@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "date-fns": "https://esm.sh/date-fns@^4.1.0",
-    "@heroicons/react/": "https://esm.sh/@heroicons/react@^2.2.0/",
-    "recharts": "https://esm.sh/recharts@2.12.7?external=react,react-dom",
-    "@react-oauth/google": "https://esm.sh/@react-oauth/google@0.12.1?external=react,react-dom"
-  }
-}
-</script>
-<script src="https://apis.google.com/js/api.js"></script>
-<link rel="stylesheet" href="/index.css">
-</head>
+    <script src="https://apis.google.com/js/api.js"></script>
+  </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

@@ -80,16 +80,7 @@ const History: React.FC<Props> = ({
   };
 
   const formatDateHeader = (dateStr: string | number) => {
-    let finalDateStr = String(dateStr);
-
-    // Handle Google Sheets serial numbers (e.g. 46049)
-    if (typeof dateStr === "number" || /^\d{5}$/.test(finalDateStr)) {
-      const serial = Number(dateStr);
-      const base = Date.UTC(1899, 11, 30);
-      const d = new Date(base + serial * 86400000);
-      finalDateStr = d.toISOString().split("T")[0];
-    }
-
+    const finalDateStr = normalizeDate(dateStr);
     const date = new Date(finalDateStr);
 
     const now = new Date();

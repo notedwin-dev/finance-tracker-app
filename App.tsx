@@ -243,9 +243,13 @@ const App: React.FC = () => {
     setIsSyncing(true);
     console.log("Starting sync sequence...");
 
+    // Refetch profile from storage to ensure we have the absolute latest ID
+    const currentProfile = StorageService.getStoredProfile();
+    const userId = currentProfile.id || profile.id;
+
     // Ensure SheetService knows who the current user is
-    if (profile.id) {
-      SheetService.setSheetUser(profile.id);
+    if (userId) {
+      SheetService.setSheetUser(userId);
     }
 
     try {

@@ -70,6 +70,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // 1. Save Profile (Critical for StorageService.getKey to work for this user)
         StorageService.saveProfile(newProfile);
 
+        // Tricky: Ensure the setProfile update propagates or we use the local variable
+        // We'll use newProfile directly for the next steps
+
         // 2. Pull latest data from cloud (New Device Login support)
         try {
           // Initialize GAPI client if not already (safeguard)
@@ -78,13 +81,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             !SheetService.isClientReady()
           ) {
             await SheetService.initGapiClient();
-            SheetService.setGapiAccessToken(tokenResponse.access_token);
           }
+          // Re-set user and token to be absolutely sure
+          SheetService.setSheetUser(newProfile.id!);
+          SheetService.setGapiAccessToken(tokenResponse.access_token);
 
           const cloudData = await SheetService.loadFromGoogleSheets();
           if (cloudData) {
+            // This will now save to `${key}_${userInfo.sub}` because profile.id is set
             StorageService.saveLocalData(cloudData);
-            console.log("Synced data from cloud on login");
+            console.log(
+              "Synced data from cloud on login for user:",
+              newProfile.id,
+            );
           }
         } catch (e) {
           console.warn("Failed to sync data on login", e);
@@ -108,11 +117,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const logout = () => {
-    const emptyProfile = { name: "", email: "", isLoggedIn: false };
+    // 1. Clear GAPI session
+    SheetService.clearGapiAccessToken();
+
+    // 2. Clear profile, but DON'T clear Google session purely if we want to allow 'Switch Account'
+    const emptyProfile: UserProfile = {
+      name: "",
+      email: "",
+      isLoggedIn: false,
+      id: undefined,
+    };
     setProfile(emptyProfile);
     StorageService.saveProfile(emptyProfile);
-    // Note: We can't strictly 'revoke' the token client-side purely with this library easily without calling another endpoint,
-    // but clearing local state is sufficient for the UI.
+
+    // 3. Force reload to reset all states and clear 'guest' data from memory
     window.location.reload();
   };
 

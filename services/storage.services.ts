@@ -281,7 +281,7 @@ export const saveTransactions = async (transactions: Transaction[]) => {
 
 export const insertOneTransaction = async (transaction: Transaction) => {
   const transactions = getStoredTransactions();
-  const newTransactions = [transaction, ...transactions];
+  const newTransactions = [...transactions, transaction];
   localStorage.setItem(
     getKey(KEYS.TRANSACTIONS),
     JSON.stringify(newTransactions),
@@ -293,7 +293,7 @@ export const insertOneTransaction = async (transaction: Transaction) => {
 
 export const insertManyTransactions = async (newItems: Transaction[]) => {
   const transactions = getStoredTransactions();
-  const newTransactions = [...newItems, ...transactions];
+  const newTransactions = [...transactions, ...newItems];
   localStorage.setItem(
     getKey(KEYS.TRANSACTIONS),
     JSON.stringify(newTransactions),

@@ -611,7 +611,7 @@ const App: React.FC = () => {
 
     let finalTransactions = transactions;
     if (adjustmentTx) {
-      const newTxList = [adjustmentTx, ...transactions];
+      const newTxList = [...transactions, adjustmentTx];
       setTransactions(newTxList);
       // Optimized insert
       await StorageService.insertOneTransaction(adjustmentTx);
@@ -667,7 +667,7 @@ const App: React.FC = () => {
         categoryId: "system-deletion",
       };
 
-      const newTxList = [deleteTx, ...transactions];
+      const newTxList = [...transactions, deleteTx];
       setTransactions(newTxList);
       // Optimized insert
       await StorageService.insertOneTransaction(deleteTx);
@@ -812,7 +812,7 @@ const App: React.FC = () => {
       newTransactionsList = [...currentTransactions];
       newTransactionsList.splice(originalIdx, 0, ...newTxItems);
     } else {
-      newTransactionsList = [...newTxItems, ...currentTransactions];
+      newTransactionsList = [...currentTransactions, ...newTxItems];
     }
 
     setTransactions(newTransactionsList);
@@ -1101,7 +1101,7 @@ const App: React.FC = () => {
       await StorageService.savePots(newPots);
       showToast("Pot updated", "success");
     } else {
-      newPots = [potWithTimestamp, ...pots];
+      newPots = [...pots, potWithTimestamp];
       setPots(newPots);
       await StorageService.savePots(newPots);
       showToast("Pot created", "success");

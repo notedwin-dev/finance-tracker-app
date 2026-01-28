@@ -5,6 +5,7 @@ import {
   ChartBarIcon,
   PlusIcon,
   UserIcon,
+  ChatBubbleBottomCenterIcon,
 } from "@heroicons/react/24/outline";
 import {
   HomeIcon as HomeIconSolid,
@@ -23,6 +24,8 @@ import {
   Goal,
   Subscription,
   Pot,
+  ChatMessage,
+  ChatSession,
 } from "./types";
 import AccountCard from "./components/AccountCard";
 import AccountForm from "./components/AccountForm";
@@ -45,6 +48,7 @@ import {
 } from "./helpers/transactions.helper";
 import { AuthScreen } from "./components/AuthScreen";
 import { getUSDToMYRRate } from "./services/exchange.services";
+import AIInsights from "./components/AIInsights";
 
 type Tab = "DASHBOARD" | "HISTORY" | "GOALS" | "PROFILE";
 
@@ -58,6 +62,7 @@ const App: React.FC = () => {
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showSubscriptionManager, setShowSubscriptionManager] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<
     Transaction | undefined
   >();
@@ -73,6 +78,8 @@ const App: React.FC = () => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]); // Added Subscriptions State
   const [pots, setPots] = useState<Pot[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "alert" | "info";
@@ -119,6 +126,7 @@ const App: React.FC = () => {
     setCategories(StorageService.getStoredCategories());
     setGoals(StorageService.getStoredGoals());
     setPots(StorageService.getStoredPots());
+    setChatSessions(StorageService.getStoredChatSessions());
 
     // Load and Process Subscriptions
     const storedSubs = StorageService.getStoredSubscriptions();
@@ -503,6 +511,27 @@ const App: React.FC = () => {
       showToast("Reset failed", "alert");
     }
     setIsSyncing(false);
+  };
+
+  const handleSaveChatSession = (session: ChatSession) => {
+    const exists = chatSessions.find((s) => s.id === session.id);
+    let newSessions;
+    if (exists) {
+      newSessions = chatSessions.map((s) =>
+        s.id === session.id ? session : s,
+      );
+    } else {
+      newSessions = [...chatSessions, session];
+    }
+    setChatSessions(newSessions);
+    StorageService.saveChatSessions(newSessions);
+  };
+
+  const handleDeleteChatSession = (id: string) => {
+    const newSessions = chatSessions.filter((s) => s.id !== id);
+    setChatSessions(newSessions);
+    StorageService.saveChatSessions(newSessions);
+    if (activeChatId === id) setActiveChatId(null);
   };
 
   const handleAccountSave = async (acc: Omit<Account, "userId">) => {
@@ -1688,7 +1717,46 @@ const App: React.FC = () => {
         </nav>
       </div>
 
+      {/* Floating AI Assistant Toggle (Desktop) */}
+      {profile.showAIAssistant && (
+        <button
+          onClick={() => setShowAIChat(true)}
+          className="hidden lg:flex fixed bottom-8 right-8 w-14 h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full items-center justify-center shadow-2xl shadow-indigo-500/40 z-40 transition-all hover:scale-110 group"
+        >
+          <ChatBubbleBottomCenterIcon className="w-7 h-7" />
+          <span className="absolute right-full mr-4 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            Ask ZenAssistant
+          </span>
+        </button>
+      )}
+
+      {/* Floating AI Assistant Toggle (Mobile) - Positioned above safe areas */}
+      {profile.showAIAssistant && activeTab !== "PROFILE" && (
+        <button
+          onClick={() => setShowAIChat(true)}
+          className="lg:hidden fixed bottom-24 right-6 w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg z-40 animate-bounce cursor-pointer active:scale-90"
+        >
+          <ChatBubbleBottomCenterIcon className="w-6 h-6" />
+        </button>
+      )}
+
       {/* Modals */}
+      {showAIChat && (
+        <AIInsights
+          apiKey={profile.geminiApiKey}
+          sessions={chatSessions}
+          activeSessionId={activeChatId}
+          accounts={accounts}
+          transactions={transactions}
+          categories={categories}
+          onClose={() => setShowAIChat(false)}
+          onSaveSession={handleSaveChatSession}
+          onDeleteSession={handleDeleteChatSession}
+          onSelectSession={setActiveChatId}
+          onNewChat={() => setActiveChatId(null)}
+        />
+      )}
+
       {showAddModal && (
         <TransactionForm
           accounts={accounts}

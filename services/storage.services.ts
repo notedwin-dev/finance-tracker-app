@@ -6,6 +6,7 @@ import {
   UserProfile,
   Subscription,
   Pot,
+  ChatSession,
 } from "../types";
 import * as SheetService from "./sheets.services";
 import { getKey as getBaseKey } from "../helpers/storage.helper";
@@ -18,6 +19,7 @@ export const KEYS = {
   PROFILE: "zenfinance_profile_v2",
   SUBSCRIPTIONS: "zenfinance_subscriptions_v2",
   POTS: "zenfinance_pots_v2",
+  CHATS: "zenfinance_chats_v2",
 };
 
 const getKey = (baseKey: string) => getBaseKey(baseKey, KEYS.PROFILE);
@@ -412,6 +414,15 @@ export const savePots = async (pots: Pot[]) => {
   if (isLoggedIn()) {
     await SheetService.saveToSheet("Pots", pots);
   }
+};
+
+export const getStoredChatSessions = (): ChatSession[] => {
+  const stored = localStorage.getItem(getKey(KEYS.CHATS));
+  return stored ? JSON.parse(stored) : [];
+};
+
+export const saveChatSessions = (sessions: ChatSession[]) => {
+  localStorage.setItem(getKey(KEYS.CHATS), JSON.stringify(sessions));
 };
 
 export const getStoredProfile = (): UserProfile => {

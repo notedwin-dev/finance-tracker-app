@@ -141,6 +141,53 @@ const Profile: React.FC<Props> = ({
             >
               Export Data (JSON)
             </button>
+            {/* AI Assistant Settings */}
+            <div className="mt-8 pt-6 border-t border-gray-800 text-left">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
+                AI Assistant Settings
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-white">
+                      Show Assistant
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      Enable floating AI toggle
+                    </p>
+                  </div>
+                  <button
+                    onClick={() =>
+                      onUpdate({ showAIAssistant: !profile.showAIAssistant })
+                    }
+                    className={`w-12 h-6 rounded-full transition-colors relative ${
+                      profile.showAIAssistant ? "bg-primary" : "bg-gray-700"
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                        profile.showAIAssistant ? "left-7" : "left-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">
+                    Gemini API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={profile.geminiApiKey || ""}
+                    onChange={(e) => onUpdate({ geminiApiKey: e.target.value })}
+                    placeholder="Enter your API Key"
+                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary"
+                  />
+                  <p className="text-[9px] text-gray-600 mt-1 italic">
+                    Your key is stored locally and never shared.
+                  </p>
+                </div>
+              </div>
+            </div>
             {onMigrate && (
               <button
                 onClick={onMigrate}

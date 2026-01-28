@@ -70,6 +70,8 @@ export interface UserProfile {
   photoUrl?: string;
   isLoggedIn: boolean;
   updatedAt?: number;
+  showAIAssistant?: boolean;
+  geminiApiKey?: string;
 }
 
 export interface Goal {
@@ -113,6 +115,20 @@ export interface Subscription {
   nextPaymentDate: string; // YYYY-MM-DD
   frequency: SubscriptionFrequency;
   active: boolean;
+}
+
+export interface ChatMessage {
+  role: "user" | "model" | "system";
+  content: string;
+  timestamp: number;
+}
+
+export interface ChatSession {
+  id: string;
+  userId: string;
+  title: string;
+  messages: ChatMessage[];
+  updatedAt: number;
 }
 
 // Asset Providers Data

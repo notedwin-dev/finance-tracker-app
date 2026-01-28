@@ -154,29 +154,31 @@ const AccountForm: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fadeIn">
-      <div className="w-full max-w-lg bg-card rounded-2xl border border-gray-800 shadow-2xl flex flex-col max-h-[95vh]">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn">
+      <div className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-2xl border-t sm:border border-gray-800 shadow-2xl flex flex-col h-[90vh] sm:h-auto max-h-[95vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
         {/* Header with Asset Selector */}
-        <div className="p-5 border-b border-gray-800 space-y-3">
+        <div className="p-4 sm:p-5 border-b border-gray-800 space-y-3 shrink-0">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-white">Manage Asset</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-white">
+              Manage Asset
+            </h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white"
+              className="text-gray-400 hover:text-white p-1"
             >
               <XMarkIcon className="w-6 h-6" />
             </button>
           </div>
 
           <div className="relative">
-            <label className="block text-xs font-bold text-primary mb-1 uppercase tracking-wide">
+            <label className="block text-[10px] sm:text-xs font-bold text-primary mb-1 uppercase tracking-wide">
               Select Asset to Edit
             </label>
             <div className="relative">
               <select
                 value={editingId || "NEW"}
                 onChange={handleAssetSelectChange}
-                className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white text-sm appearance-none focus:border-primary focus:outline-none pr-10 font-medium"
+                className="w-full bg-surface border border-gray-700 rounded-xl p-2.5 sm:p-3 text-xs sm:text-sm appearance-none focus:border-primary focus:outline-none pr-10 font-medium"
               >
                 <option value="NEW">✨ Create New Asset</option>
                 {accounts.length > 0 && (
@@ -190,13 +192,13 @@ const AccountForm: React.FC<Props> = ({
                 )}
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                <ChevronUpDownIcon className="w-5 h-5" />
+                <ChevronUpDownIcon className="w-4 h-4 sm:w-5 h-5" />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-5 overflow-y-auto custom-scrollbar space-y-6">
+        <div className="p-4 sm:p-5 overflow-y-auto flex-1 custom-scrollbar space-y-5 sm:space-y-6 pb-20 sm:pb-5">
           {/* Tabs */}
           <div className="flex p-1 bg-surface rounded-lg">
             <button

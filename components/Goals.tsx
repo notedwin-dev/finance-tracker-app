@@ -270,14 +270,39 @@ const Goals: React.FC<Props> = ({
       </div>
 
       {showPotModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-gray-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 border-t sm:border border-gray-800 shadow-2xl">
-            <h3 className="text-2xl font-bold text-white mb-6">
-              {editingId ? "Edit Saving Pot" : "Create Saving Pot"}
-            </h3>
-            <form onSubmit={handlePotSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+          <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-gray-700 bg-surface shrink-0 flex justify-between items-center">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  {editingId ? "Edit Saving Pot" : "Create Saving Pot"}
+                </h3>
+                <p className="text-[10px] text-gray-500 font-medium">
+                  Reserve funds within an account
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPotModal(false);
+                  setEditingId(null);
+                  setPotName("");
+                  setPotAccountId("");
+                  setPotTarget("");
+                  setPotCurrent("");
+                }}
+                className="text-gray-400 hover:text-white p-1"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handlePotSubmit}
+              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 pb-20 sm:pb-6"
+            >
+              <div>
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                   Pot Name
                 </label>
                 <input
@@ -285,20 +310,20 @@ const Goals: React.FC<Props> = ({
                   required
                   value={potName}
                   onChange={(e) => setPotName(e.target.value)}
-                  className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary"
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                   placeholder="e.g. Dream Holiday"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                   Linked Account
                 </label>
                 <select
                   required
                   value={potAccountId}
                   onChange={(e) => setPotAccountId(e.target.value)}
-                  className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary appearance-none"
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none appearance-none font-medium"
                 >
                   <option value="">Select Account</option>
                   {accounts.map((acc) => (
@@ -311,36 +336,38 @@ const Goals: React.FC<Props> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Target Amount
                   </label>
                   <input
                     type="number"
+                    step="any"
                     required
                     value={potTarget}
                     onChange={(e) => setPotTarget(e.target.value)}
-                    className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary"
-                    placeholder={`MYR 0.00`}
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
+                    placeholder="0.00"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Current Balance
                   </label>
                   <input
                     type="number"
+                    step="any"
                     required
                     value={potCurrent}
                     onChange={(e) => setPotCurrent(e.target.value)}
-                    className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary"
-                    placeholder={`MYR 0.00`}
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
+                    placeholder="0.00"
                   />
                 </div>
               </div>
 
               {potAccountId && (
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3">
-                  <p className="text-xs text-blue-400">
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 sm:p-4">
+                  <p className="text-[10px] sm:text-xs text-primary/80 font-medium leading-relaxed">
                     This pot will reserve funds from{" "}
                     {getAccountName(potAccountId)}. Spending from this pot will
                     reduce its balance automatically.
@@ -348,26 +375,12 @@ const Goals: React.FC<Props> = ({
                 </div>
               )}
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPotModal(false);
-                    setEditingId(null);
-                    setPotName("");
-                    setPotAccountId("");
-                    setPotTarget("");
-                    setPotCurrent("");
-                  }}
-                  className="flex-1 py-3 bg-gray-800 rounded-xl text-gray-300"
-                >
-                  Cancel
-                </button>
+              <div className="flex gap-3 pt-4 shrink-0">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-primary rounded-xl text-white font-bold"
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 sm:py-4 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm"
                 >
-                  {editingId ? "Update" : "Create"}
+                  {editingId ? "Update Pot" : "Create Pot"}
                 </button>
               </div>
             </form>
@@ -376,12 +389,39 @@ const Goals: React.FC<Props> = ({
       )}
 
       {showGoalModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-gray-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 border-t sm:border border-gray-800 shadow-2xl">
-            <h3 className="text-2xl font-bold text-white mb-6">Create Goal</h3>
-            <form onSubmit={handleGoalSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+          <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-gray-700 bg-surface shrink-0 flex justify-between items-center">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  {editingId ? "Edit Savings Goal" : "Create Savings Goal"}
+                </h3>
+                <p className="text-[10px] text-gray-500 font-medium">
+                  Track progress towards a target
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowGoalModal(false);
+                  setEditingId(null);
+                  setGoalName("");
+                  setGoalTarget("");
+                  setGoalDeadline("");
+                  setGoalCategory("");
+                }}
+                className="text-gray-400 hover:text-white p-1"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleGoalSubmit}
+              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 pb-20 sm:pb-6"
+            >
+              <div>
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                   Goal Name
                 </label>
                 <input
@@ -389,27 +429,28 @@ const Goals: React.FC<Props> = ({
                   required
                   value={goalName}
                   onChange={(e) => setGoalName(e.target.value)}
-                  className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary"
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                   placeholder="e.g. New Car"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Target Amount
                   </label>
                   <input
                     type="number"
+                    step="any"
                     required
                     value={goalTarget}
                     onChange={(e) => setGoalTarget(e.target.value)}
-                    className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary"
-                    placeholder="£0.00"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
+                    placeholder="0.00"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Deadline
                   </label>
                   <input
@@ -417,39 +458,32 @@ const Goals: React.FC<Props> = ({
                     required
                     value={goalDeadline}
                     onChange={(e) => setGoalDeadline(e.target.value)}
-                    className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary [color-scheme:dark]"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm focus:border-primary outline-none [color-scheme:dark]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                   Goal Type
                 </label>
                 <select
                   required
                   value={goalCategory}
                   onChange={(e) => setGoalCategory(e.target.value)}
-                  className="w-full bg-gray-800 border-none rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-primary appearance-none"
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none appearance-none font-medium"
                 >
                   <option value="SHORT_TERM">Short Term</option>
                   <option value="LONG_TERM">Long Term</option>
                 </select>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowGoalModal(false)}
-                  className="flex-1 py-3 bg-gray-800 rounded-xl text-gray-300"
-                >
-                  Cancel
-                </button>
+              <div className="flex gap-3 pt-4 shrink-0">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-primary rounded-xl text-white font-bold"
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 sm:py-4 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm"
                 >
-                  {editingId ? "Update" : "Create"}
+                  {editingId ? "Update Goal" : "Create Goal"}
                 </button>
               </div>
             </form>

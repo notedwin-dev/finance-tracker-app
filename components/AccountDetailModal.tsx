@@ -218,25 +218,27 @@ const AccountDetailModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
-      <div className="w-full max-w-2xl bg-card rounded-3xl border border-gray-800 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn">
+      <div className="w-full max-w-2xl bg-card rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-800 shadow-2xl flex flex-col h-[92vh] sm:h-auto max-h-[92vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
         {/* Header */}
-        <div className="p-6 pb-2 flex justify-between items-start">
-          <div className="flex items-center gap-4">
+        <div className="p-4 sm:p-6 pb-2 flex justify-between items-start shrink-0 border-b border-gray-800 sm:border-none">
+          <div className="flex items-center gap-3 sm:gap-4">
             {account.iconType === "IMAGE" ? (
               <img
                 src={account.iconValue}
                 alt="icon"
-                className="w-14 h-14 object-contain bg-white rounded-full p-1"
+                className="w-10 h-10 sm:w-14 sm:h-14 object-contain bg-white rounded-full p-1"
               />
             ) : (
-              <div className="w-14 h-14 bg-surface rounded-full flex items-center justify-center text-3xl border border-gray-700">
+              <div className="w-10 h-10 sm:w-14 sm:h-14 bg-surface rounded-full flex items-center justify-center text-xl sm:text-3xl border border-gray-700">
                 {account.iconValue}
               </div>
             )}
             <div>
-              <h2 className="text-2xl font-bold text-white">{account.name}</h2>
-              <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded uppercase font-bold tracking-wider">
+              <h2 className="text-lg sm:text-2xl font-bold text-white leading-tight">
+                {account.name}
+              </h2>
+              <span className="text-[10px] sm:text-xs bg-primary/20 text-primary px-2 py-0.5 rounded uppercase font-bold tracking-wider inline-block mt-1">
                 {account.type}
               </span>
             </div>
@@ -244,41 +246,45 @@ const AccountDetailModal: React.FC<Props> = ({
           <div className="flex gap-2">
             <button
               onClick={() => onEdit(account)}
-              className="text-sm px-4 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"
+              className="text-xs sm:text-sm px-3 sm:px-4 py-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors font-bold text-white"
             >
               Edit
             </button>
             <button
               onClick={onClose}
-              className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white"
+              className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700 sm:border-none"
             >
-              <XMarkIcon className="w-5 h-5" />
+              <XMarkIcon className="w-5 h-5 sm:w-6 h-6" />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto custom-scrollbar space-y-8">
+        <div className="p-5 sm:p-8 overflow-y-auto flex-1 custom-scrollbar space-y-6 sm:space-y-8 pb-20 sm:pb-8">
           {/* Main Balance */}
-          <div className="flex justify-between items-end">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
             <div>
-              <p className="text-gray-400 text-sm mb-1 uppercase tracking-wider font-bold">
+              <p className="text-gray-400 text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold">
                 Current Balance
               </p>
-              <h3 className="text-4xl font-black text-white">
-                {account.currency === "MYR" ? "RM" : "£"}{" "}
+              <h3 className="text-3xl sm:text-4xl font-black text-white">
+                <span className="text-gray-500 text-sm sm:text-base mr-1 font-medium">
+                  {account.currency === "MYR" ? "RM" : "£"}
+                </span>
                 {account.balance.toLocaleString("en-US", {
                   minimumFractionDigits: 2,
                 })}
               </h3>
             </div>
             {totalInPots > 0 && (
-              <div className="text-right">
-                <p className="text-primary text-sm mb-1 uppercase tracking-wider font-bold flex items-center justify-end gap-1">
-                  <WalletIcon className="w-4 h-4" /> Available
+              <div className="sm:text-right bg-primary/5 sm:bg-transparent p-3 sm:p-0 rounded-2xl border border-primary/10 sm:border-none">
+                <p className="text-primary text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold flex items-center sm:justify-end gap-1">
+                  <WalletIcon className="w-3 h-3 sm:w-4 h-4" /> Available
                 </p>
-                <h3 className="text-3xl font-black text-success">
-                  {account.currency === "MYR" ? "RM" : "£"}{" "}
+                <h3 className="text-2xl sm:text-3xl font-black text-success">
+                  <span className="text-success/50 text-sm sm:text-base mr-1 font-medium">
+                    {account.currency === "MYR" ? "RM" : "£"}
+                  </span>
                   {availableBalance.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                   })}

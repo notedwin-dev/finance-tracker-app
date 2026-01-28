@@ -71,34 +71,34 @@ const SubscriptionManager: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-      <div className="w-full max-w-2xl bg-card rounded-3xl border border-gray-800 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+      <div className="w-full max-w-2xl bg-card rounded-t-3xl sm:rounded-2xl border-t sm:border border-gray-700 shadow-2xl flex flex-col h-[90vh] sm:h-auto max-h-[90vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
         {/* Header */}
-        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-surface">
+        <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-surface shrink-0">
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <CalendarDaysIcon className="w-6 h-6 text-primary" />
+            <h2 className="text-base sm:text-xl font-bold text-white flex items-center gap-2">
+              <CalendarDaysIcon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
               Subscriptions
             </h2>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 font-medium">
               Manage recurring payments that auto-deduct
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+            className="p-1 sm:p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
           >
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6 pb-20 sm:pb-6">
           {/* Add New Button */}
           {!isAdding && (
             <button
               onClick={() => setIsAdding(true)}
-              className="w-full py-3 border-2 border-dashed border-gray-700 rounded-xl text-gray-400 hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2 font-bold"
+              className="w-full py-4 border-2 border-dashed border-gray-700/50 rounded-2xl text-gray-500 hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2 font-bold text-sm"
             >
               <PlusIcon className="w-5 h-5" />
               Add New Subscription
@@ -109,11 +109,11 @@ const SubscriptionManager: React.FC<Props> = ({
           {isAdding && (
             <form
               onSubmit={handleSubmit}
-              className="bg-surface p-5 rounded-2xl border border-gray-700 space-y-4 animate-slideDown"
+              className="bg-surface/50 p-4 sm:p-5 rounded-2xl border border-gray-700 space-y-5 animate-slideDown"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 font-bold uppercase">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Name
                   </label>
                   <input
@@ -122,11 +122,11 @@ const SubscriptionManager: React.FC<Props> = ({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Netflix, Spotify..."
-                    className="w-full bg-black/30 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary outline-none mt-1"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 font-bold uppercase">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Amount
                   </label>
                   <input
@@ -136,20 +136,20 @@ const SubscriptionManager: React.FC<Props> = ({
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-black/30 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary outline-none mt-1"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 font-bold uppercase">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Deduct From
                   </label>
                   <select
                     value={accountId}
                     onChange={(e) => setAccountId(e.target.value)}
-                    className="w-full bg-black/30 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary outline-none mt-1"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none appearance-none font-medium"
                   >
                     {accounts.map((acc) => (
                       <option key={acc.id} value={acc.id}>
@@ -159,13 +159,13 @@ const SubscriptionManager: React.FC<Props> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 font-bold uppercase">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Category
                   </label>
                   <select
                     value={categoryId}
                     onChange={(e) => setCategoryId(e.target.value)}
-                    className="w-full bg-black/30 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary outline-none mt-1"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none appearance-none font-medium"
                   >
                     {categories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
@@ -177,9 +177,9 @@ const SubscriptionManager: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 font-bold uppercase">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Frequency
                   </label>
                   <select
@@ -187,7 +187,7 @@ const SubscriptionManager: React.FC<Props> = ({
                     onChange={(e) =>
                       setFrequency(e.target.value as SubscriptionFrequency)
                     }
-                    className="w-full bg-black/30 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary outline-none mt-1"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none appearance-none font-medium"
                   >
                     <option value="WEEKLY">Weekly</option>
                     <option value="MONTHLY">Monthly</option>
@@ -195,7 +195,7 @@ const SubscriptionManager: React.FC<Props> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 font-bold uppercase">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Next Payment
                   </label>
                   <input
@@ -203,7 +203,7 @@ const SubscriptionManager: React.FC<Props> = ({
                     required
                     value={nextPaymentDate}
                     onChange={(e) => setNextPaymentDate(e.target.value)}
-                    className="w-full bg-black/30 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary outline-none mt-1"
+                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none"
                   />
                 </div>
               </div>
@@ -211,14 +211,14 @@ const SubscriptionManager: React.FC<Props> = ({
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primaryDark text-white font-bold py-2 rounded-lg transition-colors"
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-[0.98] text-sm"
                 >
                   Save Subscription
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsAdding(false)}
-                  className="px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-2 rounded-lg transition-colors"
+                  className="px-6 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-3 rounded-xl transition-all text-sm"
                 >
                   Cancel
                 </button>
@@ -229,47 +229,62 @@ const SubscriptionManager: React.FC<Props> = ({
           {/* List */}
           <div className="space-y-3">
             {subscriptions.length === 0 && !isAdding && (
-              <p className="text-center text-gray-500 py-8">
-                No active subscriptions found.
-              </p>
+              <div className="text-center py-12 bg-surface/30 rounded-3xl border border-dashed border-gray-800">
+                <p className="text-sm text-gray-500 font-medium">
+                  No active subscriptions found.
+                </p>
+              </div>
             )}
-            {subscriptions.map((sub) => {
-              const accountName =
-                accounts.find((a) => a.id === sub.accountId)?.name || "Unknown";
-              const category = categories.find((c) => c.id === sub.categoryId);
+            <div className="grid grid-cols-1 gap-3">
+              {subscriptions.map((sub) => {
+                const accountName =
+                  accounts.find((a) => a.id === sub.accountId)?.name ||
+                  "Unknown";
+                const category = categories.find(
+                  (c) => c.id === sub.categoryId,
+                );
 
-              return (
-                <div
-                  key={sub.id}
-                  className="bg-surface p-4 rounded-xl border border-gray-800 hover:border-gray-600 transition-colors flex justify-between items-center group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-lg">
-                      {category?.icon || "📅"}
+                return (
+                  <div
+                    key={sub.id}
+                    className="bg-surface/50 p-4 rounded-2xl border border-gray-700/50 hover:border-gray-600 transition-all flex justify-between items-center group relative overflow-hidden"
+                  >
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div
+                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl ${category?.color || "bg-indigo-500"} bg-opacity-20 shrink-0 shadow-inner`}
+                      >
+                        {category?.icon || "📅"}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-white text-sm sm:text-base truncate">
+                          {sub.name}
+                        </h3>
+                        <p className="text-[10px] sm:text-xs text-gray-500 font-medium truncate mt-0.5">
+                          {sub.frequency} • Next: {sub.nextPaymentDate}
+                        </p>
+                        <p className="text-[10px] text-primary/80 font-bold uppercase tracking-tighter mt-1">
+                          FROM {accountName}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-white">{sub.name}</h3>
-                      <p className="text-xs text-gray-400 flex items-center gap-1">
-                        {sub.frequency} • Next: {sub.nextPaymentDate} • From{" "}
-                        {accountName}
-                      </p>
+                    <div className="flex items-center gap-2 sm:gap-4 shrink-0 pl-2">
+                      <span className="font-mono font-black text-white text-base sm:text-lg">
+                        {sub.currency === "MYR" ? "RM" : "$"}{" "}
+                        {sub.amount.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                      <button
+                        onClick={() => onDelete(sub.id)}
+                        className="p-1 sm:p-2 text-gray-500 hover:text-red-400 transition-colors"
+                      >
+                        <TrashIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-mono font-bold text-white text-lg">
-                      {sub.currency === "MYR" ? "RM" : "$"}
-                      {sub.amount.toFixed(2)}
-                    </span>
-                    <button
-                      onClick={() => onDelete(sub.id)}
-                      className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <TrashIcon className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

@@ -127,31 +127,33 @@ const CategoryManager: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-gray-700 overflow-hidden flex flex-col max-h-[80vh]">
-        <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-surface">
-          <h2 className="text-lg font-bold text-white">Manage Categories</h2>
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+      <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
+        <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-700 bg-surface shrink-0">
+          <h2 className="text-base sm:text-lg font-bold text-white">
+            Manage Categories
+          </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors p-1"
           >
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-20 sm:pb-6">
           {/* Add/Edit Form */}
           <form
             onSubmit={handleSubmit}
-            className="bg-surface p-4 rounded-xl border border-gray-700 space-y-4"
+            className="bg-surface p-4 sm:p-5 rounded-xl border border-gray-700 space-y-4"
           >
-            <h3 className="text-sm font-bold text-gray-400 uppercase flex justify-between">
-              {editingId ? "Edit Category" : "Add New"}
+            <h3 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest flex justify-between">
+              {editingId ? "Edit Category" : "Add New Category"}
               {editingId && (
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="text-xs text-primary"
+                  className="text-primary font-bold"
                 >
                   Cancel
                 </button>
@@ -162,7 +164,7 @@ const CategoryManager: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="w-12 h-11 text-center bg-background border border-gray-700 rounded-lg text-2xl flex items-center justify-center hover:bg-gray-800 transition-colors"
+                className="w-12 h-11 shrink-0 text-center bg-background border border-gray-700 rounded-lg text-2xl flex items-center justify-center hover:bg-gray-800 transition-colors"
               >
                 {icon}
               </button>
@@ -189,33 +191,33 @@ const CategoryManager: React.FC<Props> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="flex-1 bg-background border border-gray-700 rounded-lg px-4 text-white focus:border-primary focus:outline-none"
+                className="flex-1 min-w-0 bg-background border border-gray-700 rounded-lg px-4 text-white text-sm focus:border-primary focus:outline-none"
                 placeholder="Category Name"
               />
             </div>
 
             {/* Budget Settings */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="text-[10px] text-gray-500 uppercase font-bold">
+                <label className="text-[10px] text-gray-500 uppercase font-black uppercase mb-1 block">
                   Budget Limit
                 </label>
                 <input
                   type="number"
                   value={budgetLimit}
                   onChange={(e) => setBudgetLimit(e.target.value)}
-                  className="w-full bg-background border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary focus:outline-none"
+                  className="w-full bg-background border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none"
                   placeholder="0.00"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase font-bold">
+                <label className="text-[10px] text-gray-500 uppercase font-black uppercase mb-1 block">
                   Period
                 </label>
                 <select
                   value={budgetPeriod}
                   onChange={(e) => setBudgetPeriod(e.target.value as any)}
-                  className="w-full bg-background border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary focus:outline-none appearance-none"
+                  className="w-full bg-background border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-primary focus:outline-none appearance-none font-medium"
                 >
                   <option value="MONTHLY">Monthly</option>
                   <option value="WEEKLY">Weekly</option>
@@ -233,58 +235,67 @@ const CategoryManager: React.FC<Props> = ({
                 />
               ))}
             </div>
+
             <button
               type="submit"
               disabled={!name}
-              className="w-full py-2 bg-primary hover:bg-primaryDark disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
+              className="w-full bg-primary hover:bg-primary-hover text-white py-2.5 sm:py-3 rounded-lg font-bold transition-all shadow-lg active:scale-95 text-sm"
             >
               {editingId ? "Update Category" : "Add Category"}
             </button>
           </form>
 
           {/* List */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-bold text-gray-400 uppercase">
-              Existing
+          <div className="space-y-3">
+            <h3 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest px-1">
+              Existing Categories
             </h3>
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                className="flex items-center justify-between p-3 bg-surface rounded-xl border border-gray-800"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-lg ${cat.color} bg-opacity-20 text-white`}
-                  >
-                    {cat.icon}
+            <div className="grid grid-cols-1 gap-2">
+              {categories.map((cat) => (
+                <div
+                  key={cat.id}
+                  className="bg-surface/50 border border-gray-700/50 rounded-xl p-3 sm:p-4 flex items-center justify-between group hover:border-gray-600 transition-all"
+                >
+                  <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
+                    <div
+                      className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xl sm:text-2xl ${cat.color} bg-opacity-20 shrink-0 shadow-inner`}
+                    >
+                      {cat.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-white text-sm sm:text-base truncate">
+                        {cat.name}
+                      </p>
+                      {cat.budgetLimit > 0 && (
+                        <p className="text-[10px] sm:text-xs text-primary font-medium tracking-tight">
+                          {cat.budgetPeriod} BUDGET:{" "}
+                          {new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                          }).format(Number(cat.budgetLimit))}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-bold text-white text-sm block">
-                      {cat.name}
-                    </span>
-                    <span className="text-[10px] text-gray-500">
-                      {cat.budgetLimit > 0
-                        ? `Limit: ${cat.budgetLimit} / ${cat.budgetPeriod === "WEEKLY" ? "Wk" : "Mo"}`
-                        : "No budget set"}
-                    </span>
+                  <div className="flex gap-1 sm:gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <button
+                      onClick={() => handleEdit(cat)}
+                      className="p-1 sm:p-2 text-gray-400 hover:text-white transition-colors"
+                    >
+                      <PencilIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                    </button>
+                    {!cat.isDefault && (
+                      <button
+                        onClick={() => onDelete(cat.id)}
+                        className="p-1 sm:p-2 text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        <TrashIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => handleEdit(cat)}
-                    className="text-gray-500 hover:text-white transition-colors p-2"
-                  >
-                    <PencilIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(cat.id)}
-                    className="text-gray-500 hover:text-red-500 transition-colors p-2"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

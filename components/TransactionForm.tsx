@@ -144,22 +144,22 @@ const TransactionForm: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6">
-      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-gray-700 overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-surface">
-          <h2 className="text-lg font-bold text-white">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 md:p-6">
+      <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
+        <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-700 bg-surface">
+          <h2 className="text-base sm:text-lg font-bold text-white">
             {initialTransaction ? "Edit Transaction" : "New Transaction"}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors p-1"
           >
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
 
         {!initialTransaction && (
-          <div className="p-2 flex gap-2 bg-surface m-4 rounded-xl border border-gray-800">
+          <div className="p-1.5 flex gap-1 bg-surface m-3 sm:m-4 rounded-xl border border-gray-800">
             {[
               TransactionType.EXPENSE,
               TransactionType.INCOME,
@@ -168,7 +168,7 @@ const TransactionForm: React.FC<Props> = ({
               <button
                 key={t}
                 onClick={() => setType(t)}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${
                   type === t
                     ? "bg-primary text-white shadow"
                     : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -182,18 +182,18 @@ const TransactionForm: React.FC<Props> = ({
 
         <form
           onSubmit={handleSubmit}
-          className="p-5 space-y-5 overflow-y-auto flex-1 custom-scrollbar"
+          className="p-4 sm:p-5 space-y-4 sm:space-y-5 overflow-y-auto flex-1 custom-scrollbar pb-10 sm:pb-5"
         >
           {/* Amount & Currency */}
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">
+            <label className="block text-xs font-medium text-gray-400 mb-1.5">
               Amount
             </label>
             <div className="flex gap-2">
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value as Currency)}
-                className="bg-surface border border-gray-700 rounded-xl px-3 text-white font-bold focus:outline-none"
+                className="bg-surface border border-gray-700 rounded-xl px-2 sm:px-3 text-white text-sm sm:text-base font-bold focus:outline-none shrink-0"
               >
                 <option value="MYR">MYR</option>
                 <option value="USD">USD</option>
@@ -204,7 +204,7 @@ const TransactionForm: React.FC<Props> = ({
                 required
                 value={amount}
                 onChange={(e) => handleAmountChange(e.target.value)}
-                className="flex-1 bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white text-xl font-bold focus:outline-none focus:border-primary"
+                className="flex-1 min-w-0 bg-surface border border-gray-700 rounded-xl py-2.5 sm:py-3 px-3 sm:px-4 text-white text-lg sm:text-xl font-bold focus:outline-none focus:border-primary"
                 placeholder="0.00"
                 autoFocus
               />

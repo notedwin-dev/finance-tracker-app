@@ -139,7 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const loginWithGoogle = useGoogleLogin({
     onSuccess: handleGoogleSuccess,
     scope:
-      "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
+      "openid profile email https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
     flow: "auth-code",
   });
 

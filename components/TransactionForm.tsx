@@ -69,19 +69,28 @@ const TransactionForm: React.FC<Props> = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Auto-decimal amount handler (calculator style)
+  // Manual decimal amount handler
   const handleAmountChange = (val: string) => {
-    // Remove all non-digit characters
-    const digits = val.replace(/\D/g, "");
+    // Only allow numbers and a single decimal point
+    let cleanVal = val.replace(/[^0-9.]/g, "");
 
-    if (digits === "") {
-      setAmount("");
-      return;
+    // If it starts with a dot, prepend 0
+    if (cleanVal.startsWith(".")) {
+      cleanVal = "0" + cleanVal;
     }
 
-    // Convert to number and divide by 100
-    const numericValue = parseInt(digits, 10) / 100;
-    setAmount(numericValue.toFixed(2));
+    // Handle multiple decimal points - keep only the first one
+    const parts = cleanVal.split(".");
+    if (parts.length > 2) {
+      cleanVal = parts[0] + "." + parts.slice(1).join("");
+    }
+
+    // Limit to 2 decimal places
+    if (parts.length === 2 && parts[1].length > 2) {
+      cleanVal = parts[0] + "." + parts[1].slice(0, 2);
+    }
+
+    setAmount(cleanVal);
   };
 
   // Update currency based on selected account

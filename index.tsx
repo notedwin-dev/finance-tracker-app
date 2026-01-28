@@ -1,10 +1,15 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { registerSW } from "virtual:pwa-register";
 import "./index.css";
 import App from "./App";
 import { AuthProvider } from "./services/auth.services";
+
+// Register Service Worker for PWA
+registerSW({ immediate: true });
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

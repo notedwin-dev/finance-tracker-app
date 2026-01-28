@@ -23,6 +23,8 @@ import CategoryManager from "../components/CategoryManager";
 import SubscriptionManager from "../components/SubscriptionManager";
 import { Transaction, Account } from "../types";
 
+import zenLogo from "../images/ZenFinance.svg";
+
 const MainLayout: React.FC = () => {
   const { profile, logout, updateProfile, loginWithGoogle } = useAuth();
   const {
@@ -78,10 +80,12 @@ const MainLayout: React.FC = () => {
     <div className="min-h-screen bg-background text-gray-100 font-sans flex justify-center">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 h-screen bg-surface border-r border-gray-800 p-6 fixed left-0 top-0 z-40">
-        <div className="flex items-center gap-2 mb-10">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <span className="text-white font-black text-lg">Z</span>
-          </div>
+        <div className="flex items-center gap-3 mb-10">
+          <img
+            src={zenLogo}
+            alt="ZenFinance Logo"
+            className="w-8 h-8 object-contain"
+          />
           <h1 className="text-xl font-bold tracking-tight text-white">
             ZenFinance
           </h1>
@@ -118,9 +122,16 @@ const MainLayout: React.FC = () => {
       <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl">
         {/* Mobile Header */}
         <header className="lg:hidden flex justify-between items-center px-6 py-6 bg-background/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+1rem)]">
-          <h1 className="text-xl font-bold">
-            Zen<span className="text-primary">Finance</span>
-          </h1>
+          <div className="flex items-center gap-2">
+            <img
+              src={zenLogo}
+              alt="ZenFinance Logo"
+              className="w-7 h-7 object-contain"
+            />
+            <h1 className="text-xl font-bold">
+              Zen<span className="text-primary">Finance</span>
+            </h1>
+          </div>
           <Link to="/app/profile">
             {profile.photoUrl ? (
               <img

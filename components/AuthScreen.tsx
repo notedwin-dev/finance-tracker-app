@@ -5,6 +5,7 @@ import {
   LockClosedIcon,
   EnvelopeIcon,
 } from "@heroicons/react/24/solid";
+import zenLogo from "../images/ZenFinance.svg";
 
 export const AuthScreen: React.FC = () => {
   const { emailLogin, emailSignup, loginWithGoogle } = useAuth();
@@ -39,8 +40,12 @@ export const AuthScreen: React.FC = () => {
         <div className="absolute top-0 left-0 w-full h-2 bg-primary"></div>
 
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/20 text-primary">
-            <UserCircleIcon className="w-10 h-10" />
+          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/20">
+            <img
+              src={zenLogo}
+              alt="ZenFinance"
+              className="w-10 h-10 object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
             {isSignup ? "Create Account" : "Welcome Back"}

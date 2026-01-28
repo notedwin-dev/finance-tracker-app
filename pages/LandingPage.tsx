@@ -1,12 +1,11 @@
 import React, { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../services/auth.services";
-import {
-  SparklesIcon,
-  ShieldCheckIcon,
-  CloudArrowUpIcon,
-  DevicePhoneMobileIcon,
-} from "@heroicons/react/24/outline";
+import { CloudArrowUpIcon } from "@heroicons/react/24/outline";
+
+import zenLogo from "../images/ZenFinance.svg";
+import neuralVault from "../images/neural-vault.png";
+import shieldImg from "../images/shield.png";
 
 const LandingPage: React.FC = () => {
   const { profile, loginWithGoogle } = useAuth();
@@ -22,7 +21,7 @@ const LandingPage: React.FC = () => {
     if (profile.isLoggedIn) {
       navigate("/app");
     } else {
-      loginWithGoogle();
+      navigate("/login");
     }
   };
 
@@ -31,9 +30,11 @@ const LandingPage: React.FC = () => {
       {/* Navigation */}
       <nav className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between border-b border-gray-900">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <SparklesIcon className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src={zenLogo}
+            alt="ZenFinance Logo"
+            className="w-8 h-8 object-contain"
+          />
           <span className="font-black text-xl tracking-tight">ZenFinance</span>
         </div>
         <div className="flex items-center gap-8">
@@ -80,7 +81,11 @@ const LandingPage: React.FC = () => {
         <div className="relative group perspective-1000 hidden lg:block">
           <div className="w-full aspect-square bg-gradient-to-br from-primary/20 to-secondary/20 rounded-[3rem] border border-white/10 flex items-center justify-center overflow-hidden rotate-3 group-hover:rotate-0 transition-transform duration-700 shadow-2xl">
             <div className="absolute inset-0 bg-[url('https://notedwin.dev/grid.svg')] bg-center opacity-30"></div>
-            <SparklesIcon className="w-48 h-48 text-primary/40" />
+            <img
+              src={neuralVault}
+              alt="AI Visual"
+              className="w-64 h-64 object-contain opacity-80 group-hover:opacity-100 transition-opacity"
+            />
           </div>
         </div>
       </section>
@@ -101,12 +106,12 @@ const LandingPage: React.FC = () => {
           <div className="grid md:grid-cols-3 gap-8 text-center sm:text-left">
             {[
               {
-                icon: ShieldCheckIcon,
+                img: shieldImg,
                 title: "Data Sovereignty",
                 desc: "Your data is stored in your personal Google Sheet. You own it forever. We never see it.",
               },
               {
-                icon: SparklesIcon,
+                img: neuralVault,
                 title: "AI Insights",
                 desc: "Get personalized financial advice from Gemini 2.0 Flash based on your real spending habits.",
               },
@@ -120,7 +125,15 @@ const LandingPage: React.FC = () => {
                 key={i}
                 className="p-8 bg-background border border-gray-800 rounded-3xl hover:border-primary/50 transition-colors group"
               >
-                <feature.icon className="w-12 h-12 text-primary mb-6 group-hover:scale-110 transition-transform" />
+                {feature.img ? (
+                  <img
+                    src={feature.img}
+                    alt={feature.title}
+                    className="w-12 h-12 mb-6 group-hover:scale-110 transition-transform object-contain"
+                  />
+                ) : (
+                  <feature.icon className="w-12 h-12 text-primary mb-6 group-hover:scale-110 transition-transform" />
+                )}
                 <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
                 <p className="text-gray-400 leading-relaxed text-sm">
                   {feature.desc}
@@ -136,7 +149,11 @@ const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
           <div className="space-y-4 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2">
-              <SparklesIcon className="w-6 h-6 text-primary" />
+              <img
+                src={zenLogo}
+                alt="ZenFinance Logo"
+                className="w-6 h-6 object-contain"
+              />
               <span className="font-black text-xl">ZenFinance</span>
             </div>
             <p className="text-gray-500 text-sm font-medium">

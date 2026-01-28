@@ -8,6 +8,7 @@ import MainLayout from "./layouts/MainLayout";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
+import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
 import GoalsPage from "./pages/GoalsPage";
@@ -28,7 +29,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!profile.isLoggedIn) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
@@ -42,6 +43,7 @@ const App: React.FC = () => {
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<AuthPage />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
 

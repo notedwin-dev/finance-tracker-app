@@ -124,7 +124,8 @@ const History: React.FC<Props> = ({
             {grouped[dateStr].map((t) => (
               <div
                 key={t.id}
-                className="group flex items-center p-4 bg-card rounded-2xl border border-gray-800 hover:bg-surface transition-colors cursor-pointer"
+                onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
+                className="group flex items-center p-4 bg-card rounded-2xl border border-gray-800 hover:bg-surface transition-colors cursor-pointer transition-all active:scale-[0.99] relative overflow-hidden"
               >
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div
@@ -202,7 +203,7 @@ const History: React.FC<Props> = ({
                     className={`${
                       openMenuId === t.id
                         ? "flex"
-                        : "hidden lg:group-hover:flex"
+                        : "flex lg:hidden lg:group-hover:flex"
                     } items-center relative z-10`}
                   >
                     {openMenuId === t.id ? (

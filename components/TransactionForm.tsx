@@ -36,7 +36,7 @@ const TransactionForm: React.FC<Props> = ({
     initialTransaction ? initialTransaction.type : TransactionType.EXPENSE,
   );
   const [amount, setAmount] = useState(
-    initialTransaction ? initialTransaction.amount.toString() : "",
+    initialTransaction ? initialTransaction.amount.toFixed(2) : "",
   );
   const [currency, setCurrency] = useState<Currency>(
     initialTransaction ? initialTransaction.currency : "MYR",
@@ -69,28 +69,34 @@ const TransactionForm: React.FC<Props> = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Manual decimal amount handler
+  // Auto-decimal with manual "." support
   const handleAmountChange = (val: string) => {
-    // Only allow numbers and a single decimal point
-    let cleanVal = val.replace(/[^0-9.]/g, "");
-
-    // If it starts with a dot, prepend 0
-    if (cleanVal.startsWith(".")) {
-      cleanVal = "0" + cleanVal;
+    // If user deleted everything
+    if (!val) {
+      setAmount("");
+      return;
     }
 
-    // Handle multiple decimal points - keep only the first one
-    const parts = cleanVal.split(".");
-    if (parts.length > 2) {
-      cleanVal = parts[0] + "." + parts.slice(1).join("");
+    // Capture if dot was pressed (shortcut to promote current value to dollars)
+    const isDotPressed = val.endsWith(".") || val.includes("..");
+
+    // Extract only digits
+    let digits = val.replace(/\D/g, "");
+
+    if (isDotPressed) {
+      // Multiplies by 100 effectively
+      digits = digits + "00";
     }
 
-    // Limit to 2 decimal places
-    if (parts.length === 2 && parts[1].length > 2) {
-      cleanVal = parts[0] + "." + parts[1].slice(0, 2);
+    if (!digits) {
+      setAmount("");
+      return;
     }
 
-    setAmount(cleanVal);
+    // Convert digits to a 2-decimal number string
+    const cents = parseInt(digits, 10);
+    const formatted = (cents / 100).toFixed(2);
+    setAmount(formatted);
   };
 
   // Update currency based on selected account

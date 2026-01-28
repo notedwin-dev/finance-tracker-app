@@ -39,11 +39,27 @@ const AccountForm: React.FC<Props> = ({
   const [cvv, setCvv] = useState("");
   const [note, setNote] = useState("");
 
+  const handleBalanceChange = (val: string) => {
+    if (!val) {
+      setBalance("");
+      return;
+    }
+    const isDotPressed = val.endsWith(".") || val.includes("..");
+    let digits = val.replace(/\D/g, "");
+    if (isDotPressed) digits = digits + "00";
+    if (!digits) {
+      setBalance("");
+      return;
+    }
+    const cents = parseInt(digits, 10);
+    setBalance((cents / 100).toFixed(2));
+  };
+
   // Initialize form with account data
   const loadAccountData = (acc: Account) => {
     setEditingId(acc.id);
     setName(acc.name);
-    setBalance(acc.balance.toString());
+    setBalance(acc.balance.toFixed(2));
     setCurrency(acc.currency);
     setType(acc.type);
     setIconType(acc.iconType);
@@ -271,10 +287,10 @@ const AccountForm: React.FC<Props> = ({
                   Balance
                 </label>
                 <input
-                  type="number"
-                  step="any"
+                  type="text"
+                  inputMode="decimal"
                   value={balance}
-                  onChange={(e) => setBalance(e.target.value)}
+                  onChange={(e) => handleBalanceChange(e.target.value)}
                   className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white font-bold text-lg focus:border-primary focus:outline-none"
                   placeholder="0.00"
                   required

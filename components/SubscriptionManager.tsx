@@ -41,6 +41,22 @@ const SubscriptionManager: React.FC<Props> = ({
     new Date().toISOString().split("T")[0],
   );
 
+  const handleAmountFormat = (val: string) => {
+    if (!val) {
+      setAmount("");
+      return;
+    }
+    const isDotPressed = val.endsWith(".") || val.includes("..");
+    let digits = val.replace(/\D/g, "");
+    if (isDotPressed) digits = digits + "00";
+    if (!digits) {
+      setAmount("");
+      return;
+    }
+    const cents = parseInt(digits, 10);
+    setAmount((cents / 100).toFixed(2));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !amount || !accountId || !categoryId) return;
@@ -130,11 +146,11 @@ const SubscriptionManager: React.FC<Props> = ({
                     Amount
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={(e) => handleAmountFormat(e.target.value)}
                     placeholder="0.00"
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none"
                   />

@@ -7,7 +7,8 @@ import {
   BanknotesIcon,
   ChartBarIcon,
   WalletIcon,
-} from "@heroicons/react/24/outline";
+  XMarkIcon,
+} from "@heroicons/react/24/solid";
 
 interface Props {
   goals: Goal[];
@@ -45,12 +46,28 @@ const Goals: React.FC<Props> = ({
   const [goalDeadline, setGoalDeadline] = useState("");
   const [goalCategory, setGoalCategory] = useState("");
 
+  const handleAmountFormat = (val: string, setter: (v: string) => void) => {
+    if (!val) {
+      setter("");
+      return;
+    }
+    const isDotPressed = val.endsWith(".") || val.includes("..");
+    let digits = val.replace(/\D/g, "");
+    if (isDotPressed) digits = digits + "00";
+    if (!digits) {
+      setter("");
+      return;
+    }
+    const cents = parseInt(digits, 10);
+    setter((cents / 100).toFixed(2));
+  };
+
   const handleEditPot = (pot: Pot) => {
     setEditingId(pot.id);
     setPotName(pot.name);
     setPotAccountId(pot.accountId);
-    setPotTarget(pot.targetAmount.toString());
-    setPotCurrent(pot.currentAmount.toString());
+    setPotTarget(pot.targetAmount.toFixed(2));
+    setPotCurrent(pot.currentAmount.toFixed(2));
     setShowPotModal(true);
   };
 
@@ -340,11 +357,13 @@ const Goals: React.FC<Props> = ({
                     Target Amount
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={potTarget}
-                    onChange={(e) => setPotTarget(e.target.value)}
+                    onChange={(e) =>
+                      handleAmountFormat(e.target.value, setPotTarget)
+                    }
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                     placeholder="0.00"
                   />
@@ -354,11 +373,13 @@ const Goals: React.FC<Props> = ({
                     Current Balance
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={potCurrent}
-                    onChange={(e) => setPotCurrent(e.target.value)}
+                    onChange={(e) =>
+                      handleAmountFormat(e.target.value, setPotCurrent)
+                    }
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                     placeholder="0.00"
                   />
@@ -440,11 +461,13 @@ const Goals: React.FC<Props> = ({
                     Target Amount
                   </label>
                   <input
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={goalTarget}
-                    onChange={(e) => setGoalTarget(e.target.value)}
+                    onChange={(e) =>
+                      handleAmountFormat(e.target.value, setGoalTarget)
+                    }
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                     placeholder="0.00"
                   />

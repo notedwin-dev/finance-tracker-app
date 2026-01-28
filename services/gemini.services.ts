@@ -13,7 +13,7 @@ const getModel = (apiKey?: string) => {
   }
 
   const genAI = new GoogleGenerativeAI(finalKey);
-  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  return genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 };
 
 const checkDailyLimit = () => {
@@ -110,20 +110,9 @@ export const streamFinancialAdvice = async (
     // Add system instruction as the first turn or prefix
     const chat = model.startChat({
       history: [
-        {
-          role: "user",
-          parts: [{ text: systemInstruction }],
-        },
-        {
-          role: "model",
-          parts: [
-            {
-              text: "Understood. I am now ZenFinance AI, your minimalist financial assistant. How can I help you today?",
-            },
-          ],
-        },
         ...contents.slice(0, -1), // Everything except the last message which is the current query
       ],
+      systemInstruction,
     });
 
     const lastMessage = contents[contents.length - 1].parts[0].text || "";

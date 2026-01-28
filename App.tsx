@@ -1120,23 +1120,22 @@ const App: React.FC = () => {
           {activeTab === "DASHBOARD" && (
             <div className="animate-fadeIn space-y-6">
               {/* Data Recovery Banner */}
-              {profile.isLoggedIn && StorageService.hasLegacyData() && (
-                <div className="bg-indigo-600/20 border border-indigo-500/50 p-4 rounded-2xl flex items-center justify-between gap-4 animate-bounce">
+              {profile.isLoggedIn && (
+                <div className="bg-slate-800/50 border border-slate-700 p-3 rounded-xl flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">📥</span>
+                    <span className="text-xl">📥</span>
                     <div>
-                      <h4 className="text-sm font-bold text-white">
-                        Unsynced Data Found
+                      <h4 className="text-xs font-bold text-white">
+                        Data Recovery
                       </h4>
-                      <p className="text-xs text-indigo-300">
-                        We found records from your previous session. Import
-                        them?
+                      <p className="text-[10px] text-gray-400">
+                        Click to scan for records added while logged out.
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={handleMigrateData}
-                    className="bg-indigo-500 hover:bg-indigo-400 text-white text-xs px-4 py-2 rounded-lg font-bold transition-all whitespace-nowrap"
+                    className="bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap"
                   >
                     Recover Now
                   </button>

@@ -72,7 +72,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
         // 2. MIGRATION: Move any data created while "Logged Out" (Guest) into this account
         try {
+          // Pass the user ID to migrate Guest data into the user-specific storage
           await StorageService.migrateLegacyData(newProfile.id!);
+
+          // CRITICAL: After migration, we MUST reload the page or force the app to
+          // re-initialize with the new user-specific keys.
+          window.location.reload();
+          return; // Stop further execution as page is reloading
         } catch (e) {
           console.error("Migration failed", e);
         }

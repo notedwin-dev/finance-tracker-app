@@ -20,21 +20,31 @@ const KEYS = {
 };
 
 const getKey = (baseKey: string) => {
+  // Debug log to trace what keys are being used
+  const logKey = (k: string) => {
+    // console.log(`Storage Key: ${k}`);
+    return k;
+  };
+
   // PROFILE is always global in this context to determine the current user
-  if (baseKey === KEYS.PROFILE) return baseKey;
+  if (baseKey === KEYS.PROFILE) return logKey(baseKey);
 
   try {
     const profileStr = localStorage.getItem(KEYS.PROFILE);
     if (profileStr) {
       const profile = JSON.parse(profileStr);
-      if (profile.id) {
-        return `${baseKey}_${profile.id}`;
+      // CRITICAL: We only use the user-specific suffix IF they are logged in.
+      // If we use the suffix while they are technically logged out in storage,
+      // we'll be looking at an empty user key instead of the guest key.
+      if (profile.id && profile.isLoggedIn) {
+        return logKey(`${baseKey}_${profile.id}`);
       }
     }
   } catch (e) {
     /* ignore */
   }
-  return baseKey;
+  // Return the base key (Guest folder)
+  return logKey(baseKey);
 };
 
 export const hasLegacyData = (): boolean => {

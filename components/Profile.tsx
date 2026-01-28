@@ -12,6 +12,7 @@ interface Props {
   onExport?: () => void;
   onMigrate?: () => void;
   onSync?: () => void;
+  onResetSync?: () => void;
   isSyncing?: boolean;
 }
 
@@ -25,6 +26,7 @@ const Profile: React.FC<Props> = ({
   onExport,
   onMigrate,
   onSync,
+  onResetSync,
   isSyncing = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -106,6 +108,15 @@ const Profile: React.FC<Props> = ({
               >
                 {isSyncing ? "Synchronizing..." : "Sync with Google Sheets"}
                 <span className={isSyncing ? "animate-spin" : ""}>🔄</span>
+              </button>
+            )}
+            {onResetSync && (
+              <button
+                onClick={onResetSync}
+                className="w-full py-3 bg-red-600/10 border border-red-500/30 text-red-100 hover:bg-red-600/20 rounded-xl text-xs font-medium transition-colors"
+                title="Clears local cache and re-downloads everything from Cloud"
+              >
+                Force Cloud Restore (Clear Cache)
               </button>
             )}
             {onManageCategories && (

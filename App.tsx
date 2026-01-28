@@ -309,20 +309,23 @@ const App: React.FC = () => {
         ): T[] => {
           const map = new Map<string, T>();
           // Initialize with cloud data
-          cloud.forEach((i) => map.set(i.id, i));
+          cloud.forEach((i) => {
+            if (i.id) map.set(String(i.id), i);
+          });
 
           // Merge local data
           local.forEach((i) => {
-            if (map.has(i.id)) {
-              const cloudItem = map.get(i.id)!;
+            const id = String(i.id);
+            if (map.has(id)) {
+              const cloudItem = map.get(id)!;
               const localTime = i.updatedAt || 0;
               const cloudTime = cloudItem.updatedAt || 0;
 
               if (localTime > cloudTime) {
-                map.set(i.id, i);
+                map.set(id, i);
               }
             } else {
-              map.set(i.id, i);
+              if (i.id) map.set(id, i);
             }
           });
           return Array.from(map.values());
@@ -446,18 +449,71 @@ const App: React.FC = () => {
     setIsSyncing(false);
   };
 
+  const handleResetAndSync = async () => {
+    if (
+      !confirm(
+        "This will clear your local cache and re-download everything from Google Sheets. Continue?",
+      )
+    )
+      return;
+
+    setIsSyncing(true);
+    showToast("Resetting local data...", "info");
+
+    try {
+      // 1. Surgical Clear: Keep Auth Tokens and Profile
+      const keysToKeep = [
+        "google_access_token",
+        "google_token_expiry",
+        StorageService.KEYS.PROFILE,
+      ];
+      const savedItems: Record<string, string | null> = {};
+      keysToKeep.forEach((k) => (savedItems[k] = localStorage.getItem(k)));
+
+      localStorage.clear();
+
+      // Restore critical keys
+      keysToKeep.forEach((k) => {
+        if (savedItems[k]) localStorage.setItem(k, savedItems[k]!);
+      });
+
+      // 2. Fetch fresh data from Cloud
+      const cloudData = await SheetService.loadFromGoogleSheets();
+
+      if (cloudData) {
+        // 1. Save to fresh local storage (use direct storage to avoid redundant sync and handle ID normalization)
+        StorageService.saveAccounts(cloudData.accounts);
+        StorageService.saveTransactions(cloudData.transactions);
+        StorageService.saveCategories(cloudData.categories);
+        StorageService.saveGoals(cloudData.goals);
+        StorageService.saveSubscriptions(cloudData.subscriptions);
+        StorageService.savePots(cloudData.pots);
+
+        // 2. Load fresh state into UI (handles default injection, enum migrations, etc.)
+        loadData();
+
+        showToast("Cloud data restored successfully", "success");
+      }
+    } catch (e) {
+      console.error("Reset sync failed", e);
+      showToast("Reset failed", "alert");
+    }
+    setIsSyncing(false);
+  };
+
   const handleAccountSave = async (acc: Omit<Account, "userId">) => {
     const currentUserId = profile.id || "guest";
     // Ensure we preserve userId if it existed in 'acc' (though we typed it as Omit)
     // Actually we should reconstruct it.
     const accountWithTimestamp: Account = {
       ...acc,
+      id: String(acc.id),
       userId: (acc as any).userId || currentUserId,
       updatedAt: Date.now(),
     };
 
     let newAccounts;
-    const exists = accounts.find((a) => a.id === acc.id);
+    const exists = accounts.find((a) => String(a.id) === String(acc.id));
 
     // Auto-create transaction for balance adjustment
     let adjustmentTx: Transaction | undefined;
@@ -466,7 +522,7 @@ const App: React.FC = () => {
 
     if (exists) {
       newAccounts = accounts.map((a) =>
-        a.id === acc.id ? accountWithTimestamp : a,
+        String(a.id) === String(acc.id) ? accountWithTimestamp : a,
       );
 
       const diff = acc.balance - exists.balance;
@@ -673,8 +729,14 @@ const App: React.FC = () => {
     let newTxItems: Transaction[] = [];
 
     if (formData.type === TransactionType.TRANSFER && formData.toAccountId) {
-      const outgoingId = crypto.randomUUID();
-      const incomingId = crypto.randomUUID();
+      const outgoingId =
+        isEdit && editingTransaction?.id
+          ? editingTransaction.id
+          : crypto.randomUUID();
+      const incomingId =
+        isEdit && editingTransaction?.linkedTransactionId
+          ? editingTransaction.linkedTransactionId
+          : crypto.randomUUID();
       const now = Date.now();
 
       const outgoingTx: Transaction = {
@@ -703,7 +765,10 @@ const App: React.FC = () => {
         {
           ...formData,
           userId: currentUserId,
-          id: crypto.randomUUID(),
+          id:
+            isEdit && editingTransaction
+              ? editingTransaction.id
+              : crypto.randomUUID(),
           updatedAt: Date.now(),
         },
       ];
@@ -947,14 +1012,15 @@ const App: React.FC = () => {
     // Ensure userId is present
     const newGoal: Goal = {
       ...g,
+      id: String(g.id),
       userId: currentUserId,
       updatedAt: Date.now(),
     };
-    const exists = goals.find((g2) => g2.id === g.id);
+    const exists = goals.find((g2) => String(g2.id) === String(g.id));
 
     if (exists) {
       const newGoals = goals.map((Existing) =>
-        Existing.id === g.id ? newGoal : Existing,
+        String(Existing.id) === String(g.id) ? newGoal : Existing,
       );
       setGoals(newGoals);
       await StorageService.saveGoals(newGoals);
@@ -987,14 +1053,17 @@ const App: React.FC = () => {
     const currentUserId = profile.id || "guest";
     const potWithTimestamp: Pot = {
       ...pot,
+      id: String(pot.id), // Ensure ID is string
       userId: currentUserId,
       updatedAt: Date.now(),
     };
-    const exists = pots.find((p) => p.id === pot.id);
+    const exists = pots.find((p) => String(p.id) === String(pot.id));
     let newPots;
 
     if (exists) {
-      newPots = pots.map((p) => (p.id === pot.id ? potWithTimestamp : p));
+      newPots = pots.map((p) =>
+        String(p.id) === String(pot.id) ? potWithTimestamp : p,
+      );
       setPots(newPots);
       await StorageService.savePots(newPots);
       showToast("Pot updated", "success");
@@ -1556,6 +1625,7 @@ const App: React.FC = () => {
               onExport={handleExportData}
               onMigrate={handleMigrateData}
               onSync={syncData}
+              onResetSync={handleResetAndSync}
               isSyncing={isSyncing}
             />
           )}

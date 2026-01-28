@@ -116,7 +116,7 @@ const Goals: React.FC<Props> = ({
     setIsSubmitting(true);
     try {
       await onSavePot({
-        id: editingId || Date.now().toString(),
+        id: editingId || crypto.randomUUID(),
         name: potName,
         accountId: potAccountId,
         targetAmount: parseFloat(potTarget),
@@ -145,7 +145,7 @@ const Goals: React.FC<Props> = ({
     setIsSubmitting(true);
     try {
       await onAddGoal({
-        id: editingId || Date.now().toString(),
+        id: editingId || crypto.randomUUID(),
         name: goalName,
         targetAmount: parseFloat(goalTarget),
         currentAmount: parseFloat(goalCurrent) || 0,

@@ -342,8 +342,6 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
     let otherUsersData: any[] = [];
     if (targetUserId) {
       otherUsersData = existingData.filter((d) => {
-        const isDefaultCat = sheetName === "Categories" && /^c\d+$/.test(d.id);
-        if (isDefaultCat) return false;
         return d.userId !== targetUserId;
       });
     } else {
@@ -353,10 +351,10 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
     // 3. Merge
     const mergedMap = new Map<string, any>();
     otherUsersData.forEach((item) => {
-      if (item.id) mergedMap.set(item.id, item);
+      if (item.id) mergedMap.set(String(item.id), item);
     });
     data.forEach((item) => {
-      if (item.id) mergedMap.set(item.id, item);
+      if (item.id) mergedMap.set(String(item.id), item);
     });
 
     const combinedData = Array.from(mergedMap.values());
@@ -373,6 +371,10 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 
     // Generate headers from all items to ensure no fields are lost (migration support)
     const headerSet = new Set<string>();
+    // Force 'id' to be the first column if it exists in any item
+    const hasId = combinedData.some((item) => item.id !== undefined);
+    if (hasId) headerSet.add("id");
+
     combinedData.forEach((item) => {
       Object.keys(item).forEach((key) => headerSet.add(key));
     });
@@ -466,6 +468,15 @@ export const insertOne = async (sheetName: string, item: any) => {
   }
 };
 
+const getColumnLetter = (index: number): string => {
+  let letter = "";
+  while (index >= 0) {
+    letter = String.fromCharCode((index % 26) + 65) + letter;
+    index = Math.floor(index / 26) - 1;
+  }
+  return letter;
+};
+
 /**
  * Updates a specific row based on the 'id' field.
  * This is much faster than saveToSheet for single edits.
@@ -477,11 +488,25 @@ export const updateOne = async (sheetName: string, item: any) => {
     const fileId = await getSpreadsheetId();
     if (!fileId) return;
 
-    // 1. Find the row index of the ID
-    // We only fetch the ID column to save bandwidth
+    // 1. Get Headers to align columns and find ID column
+    const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!1:1`,
+    });
+    const headers = headerRes.result.values?.[0] || [];
+    const idColumnIndex = headers.indexOf("id");
+
+    if (idColumnIndex === -1) {
+      // If no id column, we might need a full save or something is wrong
+      return insertOne(sheetName, item);
+    }
+
+    const idColLetter = getColumnLetter(idColumnIndex);
+
+    // 2. Find the row index of the ID
     const res = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
-      range: `'${sheetName}'!A:A`, // Assumes 'id' is in Column A
+      range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
     });
 
     const ids = res.result.values || [];
@@ -491,13 +516,6 @@ export const updateOne = async (sheetName: string, item: any) => {
       // If not found, maybe it was deleted or just added. Fallback to insert.
       return insertOne(sheetName, item);
     }
-
-    // 2. Get Headers to align columns
-    const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: fileId,
-      range: `'${sheetName}'!1:1`,
-    });
-    const headers = headerRes.result.values?.[0] || [];
 
     // 3. Prepare the updated row
     const row = headers.map((header: string) => {
@@ -533,7 +551,7 @@ export const deleteOne = async (sheetName: string, id: string) => {
     const fileId = await getSpreadsheetId();
     if (!fileId) return;
 
-    // 1. Get the sheet ID (different from spreadsheetId)
+    // 1. Get the sheet ID (different from spreadsheetId) and Headers
     const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
       spreadsheetId: fileId,
     });
@@ -544,10 +562,20 @@ export const deleteOne = async (sheetName: string, id: string) => {
 
     const sheetId = sheet.properties.sheetId;
 
+    const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!1:1`,
+    });
+    const headers = headerRes.result.values?.[0] || [];
+    const idColumnIndex = headers.indexOf("id");
+
+    if (idColumnIndex === -1) return;
+    const idColLetter = getColumnLetter(idColumnIndex);
+
     // 2. Find the row index
     const res = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
-      range: `'${sheetName}'!A:A`,
+      range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
     });
 
     const ids = res.result.values || [];
@@ -705,6 +733,12 @@ export const loadFromGoogleSheets = async (): Promise<{
                 /* keep as string if parse fails */
               }
             }
+
+            // Ensure IDs are always strings to prevent merge mismatches
+            if (header === "id" && val !== undefined && val !== null) {
+              val = String(val);
+            }
+
             // Explicit check if undefined (ragged rows)
             if (val !== undefined) {
               obj[header] = val;
@@ -713,10 +747,10 @@ export const loadFromGoogleSheets = async (): Promise<{
           return obj;
         });
 
-        // FILTER: Only return data for the current user
+        // FILTER: Only return data for the current user OR global data (no userId)
         if (currentUserId) {
           result[sheet.toLowerCase()] = parsedData.filter(
-            (d: any) => d.userId === currentUserId,
+            (d: any) => d.userId === currentUserId || !d.userId,
           );
         } else {
           // Fallback: Return all if no user known? Or return filtered?

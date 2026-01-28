@@ -44,8 +44,10 @@ const Goals: React.FC<Props> = ({
   // Goal form state
   const [goalName, setGoalName] = useState("");
   const [goalTarget, setGoalTarget] = useState("");
+  const [goalCurrent, setGoalCurrent] = useState("");
   const [goalDeadline, setGoalDeadline] = useState("");
   const [goalCategory, setGoalCategory] = useState("");
+  const [goalLinkedAccountId, setGoalLinkedAccountId] = useState("");
 
   const handleAmountFormat = (
     val: string,
@@ -96,6 +98,17 @@ const Goals: React.FC<Props> = ({
     setShowPotModal(true);
   };
 
+  const handleEditGoal = (goal: Goal) => {
+    setEditingId(goal.id);
+    setGoalName(goal.name);
+    setGoalTarget(goal.targetAmount.toFixed(2));
+    setGoalCurrent(goal.currentAmount.toFixed(2));
+    setGoalDeadline(goal.deadline || "");
+    setGoalCategory(goal.type);
+    setGoalLinkedAccountId(goal.linkedAccountId || "");
+    setShowGoalModal(true);
+  };
+
   const handlePotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -135,18 +148,21 @@ const Goals: React.FC<Props> = ({
         id: editingId || Date.now().toString(),
         name: goalName,
         targetAmount: parseFloat(goalTarget),
-        currentAmount: 0,
-        deadline: goalDeadline,
+        currentAmount: parseFloat(goalCurrent) || 0,
+        deadline: goalDeadline || undefined,
         currency: "MYR",
         type: (goalCategory as any) || "SHORT_TERM",
+        linkedAccountId: goalLinkedAccountId || undefined,
         icon: "🎯",
         color: "bg-primary",
         updatedAt: Date.now(),
       });
       setGoalName("");
       setGoalTarget("");
+      setGoalCurrent("");
       setGoalDeadline("");
       setGoalCategory("");
+      setGoalLinkedAccountId("");
       setEditingId(null);
       setShowGoalModal(false);
     } finally {
@@ -279,47 +295,87 @@ const Goals: React.FC<Props> = ({
           </div>
         ) : (
           goals.map((goal) => {
-            const progress = (goal.currentAmount / goal.targetAmount) * 100;
+            let savedAmount = goal.currentAmount;
+            if (goal.linkedAccountId) {
+              const acc = accounts.find((a) => a.id === goal.linkedAccountId);
+              savedAmount = acc ? acc.balance : 0;
+            }
+            const progress = (savedAmount / goal.targetAmount) * 100;
+
             return (
               <div
                 key={goal.id}
-                className="bg-gray-900 rounded-2xl p-5 border border-gray-800 shadow-xl"
+                className="bg-gray-900 rounded-2xl p-5 border border-gray-800 shadow-xl flex flex-col justify-between"
               >
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-white font-bold text-lg">{goal.name}</h3>
-                  <button
-                    onClick={() => onDeleteGoal(goal.id)}
-                    className="p-2 text-gray-400 hover:text-red-400 transition-colors"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-white font-bold text-lg">
+                        {goal.name}
+                      </h3>
+                      {goal.linkedAccountId && (
+                        <p className="text-[10px] text-primary font-bold uppercase tracking-wider">
+                          Linked to {getAccountName(goal.linkedAccountId)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditGoal(goal)}
+                        className="p-2 text-gray-400 hover:text-white transition-colors"
+                      >
+                        <PencilIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onDeleteGoal(goal.id)}
+                        className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-400">Progress</span>
+                    <span className="text-white font-bold">
+                      {Math.round(progress)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-800 h-2 rounded-full mb-4 overflow-hidden">
+                    <div
+                      className="bg-primary h-full rounded-full transition-all duration-1000"
+                      style={{ width: `${Math.min(100, progress)}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase">Saved</p>
+                      <p className="text-primary font-bold">
+                        {goal.currency} {savedAmount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase">Target</p>
+                      <p className="text-white font-bold">
+                        {goal.currency} {goal.targetAmount.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-400">Progress</span>
-                  <span className="text-white font-bold">
-                    {Math.round(progress)}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-800 h-2 rounded-full mb-4">
-                  <div
-                    className="bg-primary h-full rounded-full transition-all duration-1000"
-                    style={{ width: `${Math.min(100, progress)}%` }}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase">Target</p>
-                    <p className="text-white font-bold">
-                      {goal.currency} {goal.targetAmount.toLocaleString()}
+
+                {goal.deadline && (
+                  <div className="mt-4 pt-4 border-t border-gray-800">
+                    <p className="text-xs text-gray-500 uppercase mb-1">
+                      Deadline
+                    </p>
+                    <p className="text-white font-medium text-sm">
+                      {new Date(goal.deadline).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase">Deadline</p>
-                    <p className="text-white font-bold">
-                      {new Date(goal.deadline).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
             );
           })
@@ -485,8 +541,10 @@ const Goals: React.FC<Props> = ({
                   setEditingId(null);
                   setGoalName("");
                   setGoalTarget("");
+                  setGoalCurrent("");
                   setGoalDeadline("");
                   setGoalCategory("");
+                  setGoalLinkedAccountId("");
                 }}
                 className="text-gray-400 hover:text-white p-1"
               >
@@ -535,16 +593,62 @@ const Goals: React.FC<Props> = ({
                 </div>
                 <div>
                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
-                    Deadline
+                    Current (Manual)
                   </label>
                   <input
-                    type="date"
-                    required
-                    value={goalDeadline}
-                    onChange={(e) => setGoalDeadline(e.target.value)}
-                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm focus:border-primary outline-none [color-scheme:dark]"
+                    type="text"
+                    inputMode="decimal"
+                    value={goalCurrent}
+                    disabled={!!goalLinkedAccountId}
+                    onChange={(e) =>
+                      handleAmountFormat(
+                        e.target.value,
+                        goalCurrent,
+                        setGoalCurrent,
+                      )
+                    }
+                    className={`w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none ${!!goalLinkedAccountId ? "opacity-30 cursor-not-allowed" : ""}`}
+                    placeholder="0.00"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
+                  Linked Account (Auto-sync)
+                </label>
+                <select
+                  value={goalLinkedAccountId}
+                  onChange={(e) => {
+                    setGoalLinkedAccountId(e.target.value);
+                    if (e.target.value) setGoalCurrent("");
+                  }}
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none appearance-none font-medium"
+                >
+                  <option value="">No Link (Manual Tracking)</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.currency} {acc.balance.toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+                {goalLinkedAccountId && (
+                  <p className="text-[10px] text-primary mt-2 font-medium">
+                    Goal progress will track this account's live balance.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
+                  Deadline (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={goalDeadline}
+                  onChange={(e) => setGoalDeadline(e.target.value)}
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm focus:border-primary outline-none [color-scheme:dark]"
+                />
               </div>
 
               <div>

@@ -17,6 +17,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -25,41 +28,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   );
   const [isInitialized, setIsInitialized] = useState(false);
 
+  const refreshAccessToken = async () => {
+    const refreshToken = localStorage.getItem("google_refresh_token");
+    if (!refreshToken) return null;
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      const data = await res.json();
+      if (data.access_token) {
+        const expiresAt = Date.now() + 3500 * 1000; // Assume ~1hr
+        SheetService.setGapiAccessToken(data.access_token, 3600);
+        localStorage.setItem("google_access_token", data.access_token);
+        localStorage.setItem("google_token_expiry", expiresAt.toString());
+        return data.access_token;
+      }
+    } catch (e) {
+      console.error("Token refresh failed", e);
+    }
+    return null;
+  };
+
   // Initialize GAPI client on mount
   useEffect(() => {
     if (profile.id) {
       SheetService.setSheetUser(profile.id);
     }
 
-    SheetService.initGapiClient().then(() => {
+    const initAuth = async () => {
+      await SheetService.initGapiClient();
+
       const savedToken = localStorage.getItem("google_access_token");
       const savedExpiry = localStorage.getItem("google_token_expiry");
-      if (savedToken) {
-        const expiresAt = savedExpiry ? parseInt(savedExpiry) : 0;
-        const now = Date.now();
-        if (now < expiresAt - 300000) {
-          // Valid for at least 5 mins
-          SheetService.setGapiAccessToken(savedToken, (expiresAt - now) / 1000);
-        }
+      const refreshToken = localStorage.getItem("google_refresh_token");
+
+      let token = savedToken;
+      let expiry = savedExpiry ? parseInt(savedExpiry) : 0;
+
+      if (refreshToken && (!token || Date.now() > expiry - 300000)) {
+        token = await refreshAccessToken();
+      } else if (token) {
+        SheetService.setGapiAccessToken(token, (expiry - Date.now()) / 1000);
       }
+
       setIsInitialized(true);
-    });
+    };
+
+    initAuth();
   }, []);
 
-  const handleGoogleSuccess = async (tokenResponse: any) => {
-    const expiresAt = Date.now() + tokenResponse.expires_in * 1000;
-    SheetService.setGapiAccessToken(
-      tokenResponse.access_token,
-      tokenResponse.expires_in,
-    );
-    localStorage.setItem("google_access_token", tokenResponse.access_token);
-    localStorage.setItem("google_token_expiry", expiresAt.toString());
-
+  const handleGoogleSuccess = async ({ code }) => {
     try {
+      const res = await fetch(`${BACKEND_URL}/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const tokens = await res.json();
+
+      if (!tokens.access_token) throw new Error("No access token returned");
+
+      const expiresAt = Date.now() + tokens.expires_in * 1000;
+      SheetService.setGapiAccessToken(tokens.access_token, tokens.expires_in);
+
+      localStorage.setItem("google_access_token", tokens.access_token);
+      localStorage.setItem("google_token_expiry", expiresAt.toString());
+      if (tokens.refresh_token) {
+        localStorage.setItem("google_refresh_token", tokens.refresh_token);
+      }
+
       const userInfoRes = await fetch(
         "https://www.googleapis.com/oauth2/v3/userinfo",
         {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
         },
       );
       const userInfo = await userInfoRes.json();
@@ -88,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setProfile(newProfile);
     } catch (error) {
-      console.error("User info fetch failed", error);
+      console.error("Authentication failed", error);
     }
   };
 
@@ -96,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     onSuccess: handleGoogleSuccess,
     scope:
       "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
+    flow: "auth-code",
   });
 
   const emailLogin = async (email: string, pass: string) => {

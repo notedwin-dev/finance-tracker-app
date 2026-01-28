@@ -392,15 +392,20 @@ const AIInsights: React.FC<Props> = ({
           })}
 
           {loading && !streamingText && (
-            <div className="flex justify-start">
-              <div className="bg-surface border border-gray-800 text-gray-400 rounded-2xl rounded-tl-none p-4 flex items-center gap-3">
+            <div className="flex justify-start animate-pulse">
+              <div className="bg-surface border border-primary/20 text-gray-400 rounded-2xl rounded-tl-none p-4 flex items-center gap-3 shadow-lg shadow-primary/5">
                 <div className="relative">
-                  <SparklesIcon className="w-5 h-5 text-primary animate-pulse" />
-                  <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
+                  <SparklesIcon className="w-5 h-5 text-primary" />
+                  <div className="absolute inset-0 bg-primary/40 blur-xl rounded-full" />
                 </div>
-                <span className="text-xs font-bold uppercase tracking-widest animate-pulse">
-                  Analyzing data...
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-primary font-black uppercase tracking-[0.2em]">
+                    ZenFinance AI
+                  </span>
+                  <span className="text-xs text-gray-300 font-medium">
+                    Analyzing your data...
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -454,9 +459,13 @@ const AIInsights: React.FC<Props> = ({
             <button
               type="submit"
               disabled={loading || !query.trim() || !apiKey}
-              className="absolute right-3 bottom-3 p-2.5 bg-primary text-white rounded-xl hover:bg-primary-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95"
+              className="absolute right-3 bottom-3 p-2.5 bg-primary text-white rounded-xl hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 flex items-center justify-center min-w-[40px] min-h-[40px]"
             >
-              <PaperAirplaneIcon className="w-5 h-5" />
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <PaperAirplaneIcon className="w-5 h-5" />
+              )}
             </button>
           </form>
           <p className="text-[10px] text-gray-600 text-center mt-3 font-medium uppercase tracking-widest">

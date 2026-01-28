@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Category, Transaction, TransactionType } from "../types";
 import { PencilIcon, CheckIcon } from "@heroicons/react/24/outline";
-import { normalizeDate } from "../utils/transactions";
+import { normalizeDate } from "../helpers/transactions.helper";
 
 interface Props {
   categories: Category[];

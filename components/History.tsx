@@ -11,8 +11,7 @@ import {
   groupTransactions,
   GroupedTransaction,
   normalizeDate,
-} from "../utils/transactions";
-import { ArrowRightIcon } from "@heroicons/react/24/outline";
+} from "../helpers/transactions.helper";
 
 interface Props {
   transactions: Transaction[];

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useAuth } from "../services/auth";
+import { useAuth } from "../services/auth.services";
 import {
   UserCircleIcon,
   LockClosedIcon,

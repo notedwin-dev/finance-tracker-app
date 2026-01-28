@@ -7,7 +7,8 @@ import {
   Subscription,
   Pot,
 } from "../types";
-import * as SheetService from "./sheets";
+import * as SheetService from "./sheets.services";
+import { getKey as getBaseKey } from "../helpers/storage.helper";
 
 export const KEYS = {
   ACCOUNTS: "zenfinance_accounts_v2",
@@ -19,33 +20,7 @@ export const KEYS = {
   POTS: "zenfinance_pots_v2",
 };
 
-const getKey = (baseKey: string) => {
-  // Debug log to trace what keys are being used
-  const logKey = (k: string) => {
-    // console.log(`Storage Key: ${k}`);
-    return k;
-  };
-
-  // PROFILE is always global in this context to determine the current user
-  if (baseKey === KEYS.PROFILE) return logKey(baseKey);
-
-  try {
-    const profileStr = localStorage.getItem(KEYS.PROFILE);
-    if (profileStr) {
-      const profile = JSON.parse(profileStr);
-      // CRITICAL: We only use the user-specific suffix IF they are logged in.
-      // If we use the suffix while they are technically logged out in storage,
-      // we'll be looking at an empty user key instead of the guest key.
-      if (profile.id && profile.isLoggedIn) {
-        return logKey(`${baseKey}_${profile.id}`);
-      }
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  // Return the base key (Guest folder)
-  return logKey(baseKey);
-};
+const getKey = (baseKey: string) => getBaseKey(baseKey, KEYS.PROFILE);
 
 export const hasLegacyData = (): boolean => {
   const checkKeys = [

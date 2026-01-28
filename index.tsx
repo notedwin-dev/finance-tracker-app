@@ -4,7 +4,7 @@ import ReactDOM from "react-dom/client";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import "./index.css";
 import App from "./App";
-import { AuthProvider } from "./services/auth";
+import { AuthProvider } from "./services/auth.services";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

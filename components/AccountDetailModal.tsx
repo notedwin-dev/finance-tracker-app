@@ -32,7 +32,7 @@ ChartJS.register(
   Legend,
 );
 
-import { normalizeDate } from "../utils/transactions";
+import { normalizeDate } from "../helpers/transactions.helper";
 
 interface Props {
   account: Account;

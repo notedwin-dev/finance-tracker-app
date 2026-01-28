@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useGoogleLogin } from "@react-oauth/google";
-import * as SheetService from "./sheets";
-import * as StorageService from "./storage";
+import * as SheetService from "./sheets.services";
+import * as StorageService from "./storage.services";
 import { UserProfile } from "../types";
-import { hashPassword, verifyPassword } from "./crypto";
+import { hashPassword, verifyPassword } from "./crypto.services";
 
 interface AuthContextType {
   profile: UserProfile;

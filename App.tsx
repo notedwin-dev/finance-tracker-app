@@ -12,9 +12,9 @@ import {
   ChartBarIcon as ChartBarIconSolid,
   UserIcon as UserIconSolid,
 } from "@heroicons/react/24/solid";
-import * as StorageService from "./services/storage";
-import * as SheetService from "./services/sheets";
-import { useAuth } from "./services/auth";
+import * as StorageService from "./services/storage.services";
+import * as SheetService from "./services/sheets.services";
+import { useAuth } from "./services/auth.services";
 import {
   Account,
   Category,
@@ -33,14 +33,18 @@ import History from "./components/History";
 import Goals from "./components/Goals";
 import Profile from "./components/Profile";
 import CategoryManager from "./components/CategoryManager";
+import CurrencyRateCard from "./components/CurrencyRateCard";
 import {
   RevenueChart,
   GoalProgressCard,
   NetWorthChart,
 } from "./components/Charts";
-import { groupTransactions, normalizeDate } from "./utils/transactions";
+import {
+  groupTransactions,
+  normalizeDate,
+} from "./helpers/transactions.helper";
 import { AuthScreen } from "./components/AuthScreen";
-import { getUSDToMYRRate } from "./services/exchange";
+import { getUSDToMYRRate } from "./services/exchange.services";
 
 type Tab = "DASHBOARD" | "HISTORY" | "GOALS" | "PROFILE";
 
@@ -1397,9 +1401,11 @@ const App: React.FC = () => {
               </div>
 
               {/* Top Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <CurrencyRateCard usdRate={usdRate} />
+
                 {/* Net Worth Card */}
-                <div className="col-span-1 md:col-span-1 bg-gradient-to-br from-primary to-purple-800 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between h-64 border border-white/10">
+                <div className="col-span-1 md:col-span-2 lg:col-span-1 bg-gradient-to-br from-primary to-purple-800 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between h-64 border border-white/10">
                   <div className="relative z-10">
                     <p className="text-indigo-200 text-sm font-medium mb-1">
                       Total Balance
@@ -1424,7 +1430,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Recent Activity Mini List */}
-                <div className="col-span-1 md:col-span-2 bg-card rounded-3xl p-6 border border-gray-800 h-64 flex flex-col">
+                <div className="col-span-1 md:col-span-3 lg:col-span-2 bg-card rounded-3xl p-6 border border-gray-800 h-64 flex flex-col">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-gray-200">Recent Activity</h3>
                     <button

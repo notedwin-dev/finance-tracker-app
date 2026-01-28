@@ -231,8 +231,22 @@ export const insertOneAccount = async (account: Account) => {
 };
 
 export const getStoredCategories = (): Category[] => {
+  const profile = getStoredProfile();
+  const userId = profile.id || "guest";
   const stored = localStorage.getItem(getKey(KEYS.CATEGORIES));
-  return stored ? JSON.parse(stored) : DEFAULT_CATEGORIES;
+
+  const categories = stored
+    ? (JSON.parse(stored) as Category[])
+    : DEFAULT_CATEGORIES;
+
+  return categories.map((c) => {
+    const isDefault = /^c\d+$/.test(c.id);
+    return {
+      ...c,
+      // Default categories are global (no userId), others belong to user
+      userId: isDefault ? undefined : c.userId || userId,
+    };
+  });
 };
 
 export const saveCategories = async (categories: Category[]) => {

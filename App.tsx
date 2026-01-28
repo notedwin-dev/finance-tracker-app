@@ -284,19 +284,63 @@ const App: React.FC = () => {
           StorageService.saveAccounts(mergedAccounts);
         }
 
+        const mergedCategories = merge(localCategories, cloudData.categories);
+
+        // MIGRATION: Deduplicate categories by name and restore "Default" IDs
+        const categoryIdMap = new Map<string, string>();
+        const dedupByName = (cats: Category[]) => {
+          const nameMap = new Map<string, Category>();
+          cats.forEach((c) => {
+            const nameKey = c.name.toLowerCase().trim();
+            const existing = nameMap.get(nameKey);
+            if (!existing) {
+              nameMap.set(nameKey, c);
+            } else {
+              const isDefault = (id: string) => /^c\d+$/.test(id);
+              let keep = existing;
+              let discard = c;
+              if (isDefault(c.id) && !isDefault(existing.id)) {
+                keep = c;
+                discard = existing;
+              } else if (!isDefault(c.id) && isDefault(existing.id)) {
+                keep = existing;
+                discard = c;
+              } else if ((c.updatedAt || 0) > (existing.updatedAt || 0)) {
+                keep = c;
+                discard = existing;
+              }
+              nameMap.set(nameKey, keep);
+              categoryIdMap.set(discard.id, keep.id);
+            }
+          });
+          return Array.from(nameMap.values());
+        };
+        const finalCategories = dedupByName(mergedCategories);
+
+        if (finalCategories.length > 0 || localCategories.length > 0) {
+          setCategories(finalCategories);
+          StorageService.saveCategories(finalCategories);
+        }
+
         const mergedTransactions = merge(
           localTransactions,
           cloudData.transactions,
         );
-        if (mergedTransactions.length > 0 || localTransactions.length > 0) {
-          setTransactions(mergedTransactions);
-          StorageService.saveTransactions(mergedTransactions);
-        }
+        // Apply category ID migration to transactions
+        const finalTransactions = mergedTransactions.map((t) => {
+          if (t.categoryId && categoryIdMap.has(t.categoryId)) {
+            return {
+              ...t,
+              categoryId: categoryIdMap.get(t.categoryId)!,
+              updatedAt: Date.now(),
+            };
+          }
+          return t;
+        });
 
-        const mergedCategories = merge(localCategories, cloudData.categories);
-        if (mergedCategories.length > 0 || localCategories.length > 0) {
-          setCategories(mergedCategories);
-          StorageService.saveCategories(mergedCategories);
+        if (finalTransactions.length > 0 || localTransactions.length > 0) {
+          setTransactions(finalTransactions);
+          StorageService.saveTransactions(finalTransactions);
         }
 
         const mergedGoals = merge(localGoals, cloudData.goals);
@@ -316,6 +360,18 @@ const App: React.FC = () => {
           setPots(mergedPots);
           StorageService.savePots(mergedPots);
         }
+
+        // 3. PUSH the merged state back to cloud to ensure consistency
+        // This ensures that new local records (e.g., added while offline or on mobile)
+        // actually reach Google Sheets.
+        await SheetService.syncWithGoogleSheets(
+          mergedAccounts,
+          mergedTransactions,
+          mergedCategories,
+          mergedGoals,
+          mergedSubs,
+          mergedPots,
+        );
 
         // Post-Sync processing
         processSubscriptions(mergedSubs, mergedTransactions);

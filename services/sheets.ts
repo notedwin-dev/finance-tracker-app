@@ -121,29 +121,29 @@ const getSheetNames = async (
 export const saveToSheet = async (sheetName: string, data: any[]) => {
   if (!gapiInited || !hasAccessToken) return;
 
-  const fileId = await getSpreadsheetId();
-  if (!fileId) return;
-
-  // Check if sheet exists to avoid 400 errors (if metadata fetch succeeds)
-  const existingSheets = await getSheetNames(fileId);
-
-  if (!existingSheets || !existingSheets.includes(sheetName)) {
-    try {
-      await window.gapi.client.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: fileId,
-        resource: {
-          requests: [{ addSheet: { properties: { title: sheetName } } }],
-        },
-      });
-    } catch (e) {
-      /* ignore if exists race condition */
-    }
-  }
-
-  // Multi-user Safe Sync:
-  // 1. Fetch ALL existing data
-  let existingData: any[] = [];
   try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return;
+
+    // Check if sheet exists
+    const existingSheets = await getSheetNames(fileId);
+
+    if (!existingSheets || !existingSheets.includes(sheetName)) {
+      try {
+        await window.gapi.client.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: fileId,
+          resource: {
+            requests: [{ addSheet: { properties: { title: sheetName } } }],
+          },
+        });
+      } catch (e) {
+        /* ignore if exists race condition */
+      }
+    }
+
+    // Multi-user Safe Sync:
+    // 1. Fetch ALL existing data
+    let existingData: any[] = [];
     const res = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
       range: `'${sheetName}'!A:Z`,
@@ -173,62 +173,65 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
         return obj;
       });
     }
-  } catch (e) {
-    /* ignore read error, assume empty */
-  }
 
-  // 2. Filter out CURRENT user's data (keeping other users')
-  // We need currentUserId to do this safely. If not set, we might be in trouble, but App sets it on login.
-  // We double check if the passed data has userId to infer it if missing?
-  // Better to rely on the module variable set by Auth.
-  const targetUserId =
-    currentUserId || (data.length > 0 ? data[0].userId : null);
+    // 2. Filter out CURRENT user's data (keeping other users')
+    const targetUserId =
+      currentUserId || data.find((d) => !/^c\d+$/.test(d.id))?.userId || null;
 
-  let otherUsersData: any[] = [];
-  if (targetUserId) {
-    otherUsersData = existingData.filter((d) => d.userId !== targetUserId);
-  } else {
-    // If we can't identify the user, we run a RISK.
-    // Ideally we shouldn't save if we're not sure, OR we assume single user mode if no userId column.
-    // For this app, we assume everything has userId now.
-    otherUsersData = existingData;
-    console.warn(
-      "Saving to sheet without known userId - Risk of data Duplication/Loss",
-    );
-  }
+    let otherUsersData: any[] = [];
+    if (targetUserId) {
+      otherUsersData = existingData.filter((d) => {
+        // Shared categories (id starts with 'c' followed by digits) are GLOBAL
+        const isDefaultCat = sheetName === "Categories" && /^c\d+$/.test(d.id);
+        if (isDefaultCat) return false; // Exclude from "otherUsersData" so they merge as singletons
 
-  // 3. Merge
-  const combinedData = [...otherUsersData, ...data];
+        return d.userId !== targetUserId;
+      });
+    } else {
+      otherUsersData = existingData;
+    }
 
-  if (combinedData.length === 0) {
-    // Clear the sheet if empty data
-    try {
+    // 3. Merge and Deduplicate by ID
+    // We use a Map to ensure each ID only appears once in the final save.
+    // We prioritize the NEW data (the 'data' parameter) over existing data.
+    const mergedMap = new Map<string, any>();
+
+    // Add existing data from other users first
+    otherUsersData.forEach((item) => {
+      if (item.id) mergedMap.set(item.id, item);
+    });
+
+    // Add/Overwrite with current user's data
+    data.forEach((item) => {
+      if (item.id) mergedMap.set(item.id, item);
+    });
+
+    const combinedData = Array.from(mergedMap.values());
+
+    if (combinedData.length === 0) {
+      // Clear the sheet if empty data
       await window.gapi.client.sheets.spreadsheets.values.clear({
         spreadsheetId: fileId,
         range: `'${sheetName}'!A:Z`,
       });
-    } catch (e) {
-      console.warn("Clear failed", e);
+      return;
     }
-    return;
-  }
 
-  // Generate headers from the first item (prefer new data structure if available)
-  const headers = Object.keys(combinedData[0]);
+    // Generate headers from the first item
+    const headers = Object.keys(combinedData[0]);
 
-  const rows = combinedData.map((item) => {
-    return headers.map((header) => {
-      const val = item[header];
-      if (typeof val === "object" && val !== null) {
-        return JSON.stringify(val);
-      }
-      return val;
+    const rowsToUpdate = combinedData.map((item) => {
+      return headers.map((header) => {
+        const val = item[header];
+        if (typeof val === "object" && val !== null) {
+          return JSON.stringify(val);
+        }
+        return val;
+      });
     });
-  });
 
-  const values = [headers, ...rows];
+    const values = [headers, ...rowsToUpdate];
 
-  try {
     // Clear content first
     await window.gapi.client.sheets.spreadsheets.values.clear({
       spreadsheetId: fileId,
@@ -242,8 +245,12 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
       valueInputOption: "USER_ENTERED",
       resource: { values },
     });
-    console.log(`Saved ${sheetName} to Google Sheets (Grid Format)`);
-  } catch (err) {
+    console.log(`Saved ${sheetName} to Google Sheets`);
+  } catch (err: any) {
+    if (err?.status === 401) {
+      console.warn("Google Access Token expired, clearing session.");
+      clearGapiAccessToken();
+    }
     console.error(`Error saving ${sheetName}`, err);
   }
 };

@@ -241,7 +241,33 @@ const App: React.FC = () => {
   const syncData = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
+    console.log("Starting sync sequence...");
+
+    // Ensure SheetService knows who the current user is
+    if (profile.id) {
+      SheetService.setSheetUser(profile.id);
+    }
+
     try {
+      // Final attempt to initialize GAPI if it's not ready
+      if (!SheetService.isClientReady()) {
+        console.log("GAPI Client not ready, attempting late initialization...");
+        await SheetService.initGapiClient();
+        const savedToken = localStorage.getItem("google_access_token");
+        if (savedToken) {
+          SheetService.setGapiAccessToken(savedToken);
+        }
+      }
+
+      if (!SheetService.isClientReady()) {
+        console.warn("Sync skipped: GAPI client still not ready");
+        showToast("Please sign in to Google to sync", "info");
+        setIsSyncing(false);
+        return;
+      }
+
+      showToast("Syncing with Google Sheets...", "info");
+
       const cloudData = await SheetService.loadFromGoogleSheets();
       if (cloudData) {
         // Pull current local data from Storage to ensure we aren't using stale state
@@ -380,6 +406,11 @@ const App: React.FC = () => {
       } else {
         // If cloudData is null, it could be that auth expired or Sheets API is not ready
         console.warn("Sync returned no data from cloud.");
+        if (!SheetService.isClientReady()) {
+          showToast("Please sign in to Google to sync", "info");
+        } else {
+          showToast("Cloud data not accessible", "alert");
+        }
       }
     } catch (e) {
       console.error("Sync failed", e);

@@ -19,14 +19,10 @@ const DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ];
 
+const API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
+
 let gapiInited = false;
 let hasAccessToken = false;
-
-// We assume these are available in environment or fall back to user intervention
-// Hardcoded fallback included for environments where .env is not processed
-const API_KEY =
-  process.env.REACT_APP_GOOGLE_API_KEY ||
-  "AIzaSyCNH6pugQi4Yw0lgDrFu6FKcDu2QdfdTFA";
 
 export const initGapiClient = async (): Promise<void> => {
   if (!API_KEY) {
@@ -34,13 +30,46 @@ export const initGapiClient = async (): Promise<void> => {
     return;
   }
 
+  // Ensure window.gapi is available (it might take a moment to load from index.html)
+  const waitForGapi = (): Promise<void> => {
+    return new Promise((resolve) => {
+      if (window.gapi) {
+        resolve();
+      } else {
+        const interval = setInterval(() => {
+          if (window.gapi) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          clearInterval(interval);
+          resolve();
+        }, 5000);
+      }
+    });
+  };
+
+  await waitForGapi();
+
+  if (!window.gapi) {
+    console.error("Google API script (gapi) failed to load.");
+    return;
+  }
+
   return new Promise<void>((resolve) => {
     window.gapi.load("client", async () => {
-      await window.gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: DISCOVERY_DOCS,
-      });
-      gapiInited = true;
+      try {
+        await window.gapi.client.init({
+          apiKey: API_KEY,
+          discoveryDocs: DISCOVERY_DOCS,
+        });
+        gapiInited = true;
+        console.log("GAPI Client initialized");
+      } catch (err) {
+        console.error("GAPI Client init error", err);
+      }
       resolve();
     });
   });
@@ -345,10 +374,20 @@ export const loadFromGoogleSheets = async (): Promise<{
   subscriptions: Subscription[];
   pots: Pot[];
 } | null> => {
-  if (!gapiInited || !hasAccessToken) return null;
+  if (!gapiInited) {
+    console.error("GAPI not initialized");
+    return null;
+  }
+  if (!hasAccessToken) {
+    console.warn("No access token found for sync");
+    return null;
+  }
 
   const fileId = await getSpreadsheetId();
-  if (!fileId) return null;
+  if (!fileId) {
+    console.warn("Could not retrieve spreadsheet ID");
+    return null;
+  }
 
   const result: any = {};
   const sheets = [
@@ -361,7 +400,8 @@ export const loadFromGoogleSheets = async (): Promise<{
   ];
 
   // Check which sheets exist to avoid 400 errors for missing sheets
-  const existingSheets = await getSheetNames(fileId);
+  const names = await getSheetNames(fileId);
+  const existingSheets = names || [];
 
   for (const sheet of sheets) {
     if (!existingSheets.includes(sheet)) {

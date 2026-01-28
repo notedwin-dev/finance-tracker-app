@@ -10,10 +10,7 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Fallback to hardcoded ID if env var is not present in the environment
-const CLIENT_ID =
-  process.env.REACT_APP_GOOGLE_CLIENT_ID ||
-  "727983171082-shiicmce4p9623q0cuk0s93886reefvt.apps.googleusercontent.com";
+const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

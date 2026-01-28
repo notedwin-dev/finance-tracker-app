@@ -1,25 +1,30 @@
 import { GoogleGenAI } from "@google/genai";
-import { Account, Transaction, Category } from '../types';
+import { Account, Transaction, Category } from "../types";
 
 export const getFinancialAdvice = async (
   accounts: Account[],
   transactions: Transaction[],
   categories: Category[],
-  query: string
+  query: string,
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+
   // Prepare context data
   const contextData = {
-    accounts: accounts.map(a => ({ name: a.name, balance: a.balance, type: a.type })),
-    categories: categories.map(c => ({ name: c.name, limit: c.budgetLimit })),
-    recentTransactions: transactions.slice(0, 50).map(t => ({
+    accounts: accounts.map((a) => ({
+      name: a.name,
+      balance: a.balance,
+      type: a.type,
+    })),
+    categories: categories.map((c) => ({ name: c.name, limit: c.budgetLimit })),
+    recentTransactions: transactions.slice(0, 50).map((t) => ({
       date: t.date,
       shop: t.shopName,
       amount: t.amount,
       type: t.type,
-      category: categories.find(c => c.id === t.categoryId)?.name || 'Uncategorized'
-    }))
+      category:
+        categories.find((c) => c.id === t.categoryId)?.name || "Uncategorized",
+    })),
   };
 
   const prompt = `
@@ -36,7 +41,7 @@ export const getFinancialAdvice = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: "gemini-3-flash-preview",
       contents: prompt,
     });
     return response.text || "I couldn't generate an answer at this time.";

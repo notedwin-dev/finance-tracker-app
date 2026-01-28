@@ -19,7 +19,7 @@ const DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ];
 
-const API_KEY = process.env.REACT_APP_GOOGLE_API_KEY;
+const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
 
 let gapiInited = false;
 let hasAccessToken = false;

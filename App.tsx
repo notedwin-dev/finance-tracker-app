@@ -1119,6 +1119,30 @@ const App: React.FC = () => {
         <main className="flex-1 p-6 pb-28 lg:pb-8 overflow-y-auto w-full mx-auto">
           {activeTab === "DASHBOARD" && (
             <div className="animate-fadeIn space-y-6">
+              {/* Data Recovery Banner */}
+              {profile.isLoggedIn && StorageService.hasLegacyData() && (
+                <div className="bg-indigo-600/20 border border-indigo-500/50 p-4 rounded-2xl flex items-center justify-between gap-4 animate-bounce">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">📥</span>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">
+                        Unsynced Data Found
+                      </h4>
+                      <p className="text-xs text-indigo-300">
+                        We found records from your previous session. Import
+                        them?
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleMigrateData}
+                    className="bg-indigo-500 hover:bg-indigo-400 text-white text-xs px-4 py-2 rounded-lg font-bold transition-all whitespace-nowrap"
+                  >
+                    Recover Now
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">

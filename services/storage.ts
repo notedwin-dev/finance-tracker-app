@@ -37,6 +37,28 @@ const getKey = (baseKey: string) => {
   return baseKey;
 };
 
+export const hasLegacyData = (): boolean => {
+  const checkKeys = [
+    KEYS.ACCOUNTS,
+    KEYS.TRANSACTIONS,
+    KEYS.GOALS,
+    KEYS.SUBSCRIPTIONS,
+    KEYS.POTS,
+  ];
+  for (const key of checkKeys) {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (Array.isArray(data) && data.length > 0) return true;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+  return false;
+};
+
 export const migrateLegacyData = async (userId: string): Promise<boolean> => {
   if (!userId) return false;
   let hasChanges = false;
@@ -67,6 +89,9 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
         hasChanges = true;
         console.log(`Migrated ${itemsToMigrate.length} items for ${sheetName}`);
       }
+
+      // Clear legacy key to prevent repeated migration prompts/logic
+      localStorage.removeItem(key);
     } catch (e) {
       console.error(`Error migrating ${sheetName}`, e);
     }

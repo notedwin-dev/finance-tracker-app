@@ -70,10 +70,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // 1. Save Profile (Critical for StorageService.getKey to work for this user)
         StorageService.saveProfile(newProfile);
 
-        // Tricky: Ensure the setProfile update propagates or we use the local variable
-        // We'll use newProfile directly for the next steps
+        // 2. MIGRATION: Move any data created while "Logged Out" (Guest) into this account
+        try {
+          await StorageService.migrateLegacyData(newProfile.id!);
+        } catch (e) {
+          console.error("Migration failed", e);
+        }
 
-        // 2. Pull latest data from cloud (New Device Login support)
+        // 3. Pull latest data from cloud (New Device Login support)
         try {
           // Initialize GAPI client if not already (safeguard)
           if (

@@ -1183,7 +1183,7 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl">
         {/* Mobile Header */}
-        <header className="lg:hidden flex justify-between items-center p-6 bg-background/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-800">
+        <header className="lg:hidden flex justify-between items-center px-6 py-6 bg-background/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+1rem)]">
           <h1 className="text-xl font-bold">
             Zen<span className="text-primary">Finance</span>
           </h1>
@@ -1191,17 +1191,17 @@ const App: React.FC = () => {
             {profile.isLoggedIn && profile.photoUrl ? (
               <img
                 src={profile.photoUrl}
-                className="w-8 h-8 rounded-full border border-gray-700"
+                className="w-9 h-9 rounded-full border border-gray-700 shadow-md"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-surface border border-gray-700 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-full bg-surface border border-gray-700 flex items-center justify-center shadow-md">
                 <UserIcon className="w-5 h-5 text-gray-400" />
               </div>
             )}
           </button>
         </header>
 
-        <main className="flex-1 p-6 pb-28 lg:pb-8 overflow-y-auto w-full mx-auto">
+        <main className="flex-1 p-4 pb-32 lg:pb-8 overflow-y-auto w-full mx-auto">
           {activeTab === "DASHBOARD" && (
             <div className="animate-fadeIn space-y-6">
               {/* Data Recovery Banner */}
@@ -1489,8 +1489,8 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        <nav className="bg-surface/90 backdrop-blur-xl border-t border-gray-800 pb-safe pt-2 px-6 h-20 shadow-2xl">
-          <div className="flex justify-between items-start h-full">
+        <nav className="bg-surface/90 backdrop-blur-xl border-t border-gray-800 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 px-6 h-auto shadow-2xl">
+          <div className="flex justify-between items-center h-full max-w-md mx-auto">
             <MobileNavLink
               tab="DASHBOARD"
               icon={HomeIcon}
@@ -1507,7 +1507,7 @@ const App: React.FC = () => {
               active={activeTab}
               setActive={setActiveTab}
             />
-            <div className="w-12"></div> {/* Spacer for FAB */}
+            <div className="w-16"></div> {/* Larger spacer for FAB */}
             <MobileNavLink
               tab="GOALS"
               icon={ChartBarIcon}

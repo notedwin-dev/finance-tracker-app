@@ -358,20 +358,20 @@ const TransactionForm: React.FC<Props> = ({
                   <PlusIcon className="w-3 h-3" /> Manage
                 </button>
               </div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-4 sm:grid-cols-4 gap-2">
                 {categories.map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
                     onClick={() => setCategoryId(cat.id)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all aspect-square sm:aspect-auto sm:min-h-[60px] ${
                       categoryId === cat.id
                         ? "bg-primary text-white border-primary"
                         : "bg-surface border-gray-800 text-gray-400 hover:border-gray-600"
                     }`}
                   >
-                    <span className="text-lg">{cat.icon}</span>
-                    <span className="text-[9px] font-medium truncate w-full text-center mt-1">
+                    <span className="text-xl sm:text-lg">{cat.icon}</span>
+                    <span className="text-[8px] sm:text-[9px] font-medium truncate w-full text-center mt-1">
                       {cat.name}
                     </span>
                   </button>

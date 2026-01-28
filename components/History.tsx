@@ -124,11 +124,11 @@ const History: React.FC<Props> = ({
             {grouped[dateStr].map((t) => (
               <div
                 key={t.id}
-                className="group flex items-center justify-between p-4 bg-card rounded-2xl border border-gray-800 hover:bg-surface transition-colors cursor-pointer"
+                className="group flex items-center p-4 bg-card rounded-2xl border border-gray-800 hover:bg-surface transition-colors cursor-pointer"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg bg-surface border border-gray-700`}
+                    className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xl bg-surface border border-gray-700 shadow-sm`}
                   >
                     {t.linkedTransaction
                       ? "↔️"
@@ -136,17 +136,17 @@ const History: React.FC<Props> = ({
                         ? "💰"
                         : getCategoryIcon(t.categoryId)}
                   </div>
-                  <div>
-                    <p className="font-bold text-white text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-white text-[15px] leading-tight truncate">
                       {t.shopName ||
                         (t.linkedTransaction ? "Transfer" : "Untitled")}
                     </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-gray-500 uppercase bg-white/5 px-1.5 rounded">
+                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                      <span className="flex-shrink-0 text-[9px] font-bold text-gray-500 uppercase bg-white/5 px-1.5 py-0.5 rounded">
                         {t.currency}
                       </span>
                       {t.linkedTransaction ? (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[11px] text-gray-400 truncate">
                           {accounts.find((a) => a.id === t.accountId)?.name ||
                             "Unknown"}{" "}
                           ➔{" "}
@@ -154,58 +154,56 @@ const History: React.FC<Props> = ({
                             "Unknown"}
                         </p>
                       ) : (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[11px] text-gray-400 truncate uppercase tracking-wider">
                           {categories.find((c) => c.id === t.categoryId)
-                            ?.name || t.type}
+                            ?.name ||
+                            (t.type === TransactionType.ACCOUNT_OPENING
+                              ? "Opening Balance"
+                              : t.type)}
                         </p>
                       )}
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-row items-end gap-2">
-                  <div>
-                    {t.linkedTransaction ? (
-                      <>
-                        <span className="font-mono font-bold text-indigo-400">
-                          {Math.abs(t.amount).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                          })}{" "}
-                          <span className="text-[10px] text-gray-500">
-                            {t.currency}
-                          </span>
-                        </span>
-                      </>
-                    ) : (
-                      <span
-                        className={`font-mono font-bold ${
-                          t.type === TransactionType.INCOME ||
-                          t.type === TransactionType.ACCOUNT_OPENING ||
-                          (t.type === TransactionType.ADJUSTMENT &&
-                            t.amount >= 0)
+
+                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                  <div className="flex flex-col items-end">
+                    <span
+                      className={`font-mono font-bold text-[15px] ${
+                        t.linkedTransaction
+                          ? "text-indigo-400"
+                          : t.type === TransactionType.INCOME ||
+                              t.type === TransactionType.ACCOUNT_OPENING ||
+                              (t.type === TransactionType.ADJUSTMENT &&
+                                t.amount >= 0)
                             ? "text-emerald-400"
                             : "text-red-400"
-                        }`}
-                      >
-                        {t.type === TransactionType.INCOME ||
-                        t.type === TransactionType.ACCOUNT_OPENING ||
-                        (t.type === TransactionType.ADJUSTMENT && t.amount >= 0)
+                      }`}
+                    >
+                      {t.linkedTransaction
+                        ? ""
+                        : t.type === TransactionType.INCOME ||
+                            t.type === TransactionType.ACCOUNT_OPENING ||
+                            (t.type === TransactionType.ADJUSTMENT &&
+                              t.amount >= 0)
                           ? "+"
                           : "-"}
-                        {Math.abs(t.amount).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                        })}{" "}
-                        <span className="text-[10px] text-gray-500">
-                          {t.currency}
-                        </span>
-                      </span>
-                    )}
+                      {Math.abs(t.amount).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                    <span className="text-[9px] text-gray-600 font-bold uppercase mt-0.5">
+                      {t.currency}
+                    </span>
                   </div>
 
                   {/* Expandable Actions Menu */}
                   <div
                     className={`${
-                      openMenuId === t.id ? "flex" : "hidden group-hover:flex"
-                    } items-center ml-2 relative z-10`}
+                      openMenuId === t.id
+                        ? "flex"
+                        : "hidden lg:group-hover:flex"
+                    } items-center relative z-10`}
                   >
                     {openMenuId === t.id ? (
                       /* Expanded Actions */

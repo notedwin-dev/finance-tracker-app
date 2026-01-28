@@ -975,12 +975,34 @@ const App: React.FC = () => {
   const handlePotDelete = async (id: string) => {
     if (!confirm("Delete this pot? Unused funds will stay in your account."))
       return;
+
+    // 1. Remove from Pots list
     const newPots = pots.filter((p) => p.id !== id);
     setPots(newPots);
     await StorageService.savePots(newPots);
 
+    // 2. Unlink from Transactions
+    const affectedTxs = transactions.filter((t) => t.potId === id);
+    if (affectedTxs.length > 0) {
+      const newTransactions = transactions.map((t) =>
+        t.potId === id ? { ...t, potId: undefined } : t,
+      );
+      setTransactions(newTransactions);
+      await StorageService.saveTransactions(newTransactions);
+    }
+
     if (SheetService.isClientReady()) {
-      await SheetService.deleteOne("Pots", id);
+      const syncTasks = [];
+      syncTasks.push(SheetService.deleteOne("Pots", id));
+
+      // Surgical update for each unlinked transaction
+      affectedTxs.forEach((t) => {
+        syncTasks.push(
+          SheetService.updateOne("Transactions", { ...t, potId: undefined }),
+        );
+      });
+
+      await Promise.all(syncTasks);
     }
     showToast("Pot deleted", "success");
   };

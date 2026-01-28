@@ -126,11 +126,12 @@ export const streamFinancialAdvice = async (
       
       Rules:
       1. Be concise and friendly.
-      2. Use Markdown for formatting.
-      3. If asked about spending, reference their specific categories and limits.
-      4. Never give professional investment advice; always include a disclaimer if needed but keep it brief.
-      5. Always respond in the language the user is using.
-      6. At the end of your response, provide 2-3 brief follow-up suggestions in the format:
+      2. Use Markdown for formatting. Use headers (###), bold text, and bullet points to make info digestible.
+      3. Use double newlines between paragraphs and headers to ensure proper spacing.
+      4. If asked about spending, reference their specific categories and limits.
+      5. Never give professional investment advice; always include a disclaimer if needed but keep it brief.
+      6. Always respond in the language the user is using.
+      7. At the end of your response, provide 2-3 brief follow-up suggestions in the format:
          <suggestion>Question 1?</suggestion>
          <suggestion>Question 2?</suggestion>
     `;

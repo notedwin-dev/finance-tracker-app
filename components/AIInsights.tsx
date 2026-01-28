@@ -349,11 +349,17 @@ const AIInsights: React.FC<Props> = ({
                       : "bg-surface border border-gray-800 text-gray-200 rounded-tl-none"
                   }`}
                 >
-                  <div className="prose prose-invert prose-sm max-w-none break-words">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {cleanText}
-                    </ReactMarkdown>
-                  </div>
+                  {m.role === "user" ? (
+                    <div className="text-sm sm:text-base whitespace-pre-wrap break-words">
+                      {m.content}
+                    </div>
+                  ) : (
+                    <div className="prose prose-invert prose-sm max-w-none break-words prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black prose-strong:text-primary prose-strong:font-bold prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {cleanText}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                   <p
                     className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${
                       m.role === "user" ? "text-white/50" : "text-gray-600"
@@ -385,10 +391,24 @@ const AIInsights: React.FC<Props> = ({
             );
           })}
 
+          {loading && !streamingText && (
+            <div className="flex justify-start">
+              <div className="bg-surface border border-gray-800 text-gray-400 rounded-2xl rounded-tl-none p-4 flex items-center gap-3">
+                <div className="relative">
+                  <SparklesIcon className="w-5 h-5 text-primary animate-pulse" />
+                  <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full animate-pulse" />
+                </div>
+                <span className="text-xs font-bold uppercase tracking-widest animate-pulse">
+                  Analyzing data...
+                </span>
+              </div>
+            </div>
+          )}
+
           {streamingText && (
             <div className="flex justify-start">
               <div className="max-w-[85%] sm:max-w-[75%] bg-surface border border-gray-800 text-gray-200 rounded-2xl rounded-tl-none p-4 sm:p-5">
-                <div className="prose prose-invert prose-sm max-w-none">
+                <div className="prose prose-invert prose-sm max-w-none break-words prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black prose-strong:text-primary">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {parseMessage(streamingText).cleanText}
                   </ReactMarkdown>

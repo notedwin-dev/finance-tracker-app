@@ -386,6 +386,120 @@ export const insertOne = async (sheetName: string, item: any) => {
   }
 };
 
+/**
+ * Updates a specific row based on the 'id' field.
+ * This is much faster than saveToSheet for single edits.
+ */
+export const updateOne = async (sheetName: string, item: any) => {
+  if (!gapiInited || !hasAccessToken || !item.id) return;
+
+  try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return;
+
+    // 1. Find the row index of the ID
+    // We only fetch the ID column to save bandwidth
+    const res = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!A:A`, // Assumes 'id' is in Column A
+    });
+
+    const ids = res.result.values || [];
+    const rowIndex = ids.findIndex((row: any[]) => row[0] === item.id);
+
+    if (rowIndex === -1) {
+      // If not found, maybe it was deleted or just added. Fallback to insert.
+      return insertOne(sheetName, item);
+    }
+
+    // 2. Get Headers to align columns
+    const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!1:1`,
+    });
+    const headers = headerRes.result.values?.[0] || [];
+
+    // 3. Prepare the updated row
+    const row = headers.map((header: string) => {
+      const val = item[header];
+      if (typeof val === "object" && val !== null) {
+        return JSON.stringify(val);
+      }
+      return val ?? "";
+    });
+
+    // 4. Update specific row (using 1-based index)
+    await window.gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!A${rowIndex + 1}`,
+      valueInputOption: "USER_ENTERED",
+      resource: { values: [row] },
+    });
+
+    console.log(`Updated row in ${sheetName} at row ${rowIndex + 1}`);
+  } catch (e) {
+    console.warn(`Error updating row in ${sheetName}`, e);
+    // Fallback: If finding specific row fails, we might need a full sync
+  }
+};
+
+/**
+ * Deletes a specific row based on the 'id' field.
+ */
+export const deleteOne = async (sheetName: string, id: string) => {
+  if (!gapiInited || !hasAccessToken || !id) return;
+
+  try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return;
+
+    // 1. Get the sheet ID (different from spreadsheetId)
+    const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
+      spreadsheetId: fileId,
+    });
+    const sheet = spreadsheet.result.sheets.find(
+      (s: any) => s.properties.title === sheetName,
+    );
+    if (!sheet) return;
+
+    const sheetId = sheet.properties.sheetId;
+
+    // 2. Find the row index
+    const res = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!A:A`,
+    });
+
+    const ids = res.result.values || [];
+    const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+
+    if (rowIndex === -1) return;
+
+    // 3. Delete the specific row
+    await window.gapi.client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: fileId,
+      resource: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheetId,
+                dimension: "ROWS",
+                startIndex: rowIndex,
+                endIndex: rowIndex + 1,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    console.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
+  } catch (e) {
+    console.error(`Error deleting row from ${sheetName}`, e);
+  }
+};
+
 export const syncWithGoogleSheets = async (
   accounts?: Account[],
   transactions?: Transaction[],

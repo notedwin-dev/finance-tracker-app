@@ -224,14 +224,7 @@ const App: React.FC = () => {
     await StorageService.saveSubscriptions(updated);
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        updated,
-        undefined,
-      );
+      await SheetService.insertOne("Subscriptions", newSub);
     }
     setToast({ message: "Subscription added", type: "success" });
   };
@@ -242,14 +235,7 @@ const App: React.FC = () => {
     await StorageService.saveSubscriptions(updated);
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        updated,
-        undefined,
-      );
+      await SheetService.deleteOne("Subscriptions", id);
     }
   };
 
@@ -540,14 +526,15 @@ const App: React.FC = () => {
     }
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        newAccounts,
-        finalTransactions,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-      );
+      if (exists) {
+        await SheetService.updateOne("Accounts", accountWithTimestamp);
+      } else {
+        await SheetService.insertOne("Accounts", accountWithTimestamp);
+      }
+
+      if (adjustmentTx) {
+        await SheetService.insertOne("Transactions", adjustmentTx);
+      }
     }
 
     setShowAccountForm(false);
@@ -594,14 +581,18 @@ const App: React.FC = () => {
     }
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        newAccounts,
-        finalTransactions,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+      const syncTasks = [];
+      syncTasks.push(SheetService.deleteOne("Accounts", id));
+
+      // If we added a deletion transaction, sync that too
+      const deleteTxFound = finalTransactions.find(
+        (t) => t.accountId === id && t.type === TransactionType.ACCOUNT_DELETE,
       );
+      if (deleteTxFound) {
+        syncTasks.push(SheetService.insertOne("Transactions", deleteTxFound));
+      }
+
+      await Promise.all(syncTasks);
     }
 
     showToast("Holding removed", "success");
@@ -617,9 +608,13 @@ const App: React.FC = () => {
     const currentUserId = profile.id || "guest";
 
     const isEdit = !!editingTransaction;
+    let originalIdx = -1;
 
     // If Editing, Delete original first
     if (editingTransaction) {
+      originalIdx = currentTransactions.findIndex(
+        (t) => t.id === editingTransaction.id,
+      );
       const idsToDelete = [editingTransaction.id];
       if (editingTransaction.linkedTransactionId)
         idsToDelete.push(editingTransaction.linkedTransactionId);
@@ -696,7 +691,14 @@ const App: React.FC = () => {
       ];
     }
 
-    const newTransactionsList = [...newTxItems, ...currentTransactions];
+    let newTransactionsList;
+    if (isEdit && originalIdx !== -1) {
+      newTransactionsList = [...currentTransactions];
+      newTransactionsList.splice(originalIdx, 0, ...newTxItems);
+    } else {
+      newTransactionsList = [...newTxItems, ...currentTransactions];
+    }
+
     setTransactions(newTransactionsList);
 
     // Update Balance (New)
@@ -755,14 +757,37 @@ const App: React.FC = () => {
     }
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        newAccounts,
-        newTransactionsList,
-        undefined,
-        undefined,
-        undefined,
-        newPots,
+      // SURGICAL UPDATES to Google Sheets instead of full reload
+      const syncTasks = [];
+
+      // 1. Transactions
+      if (isEdit) {
+        newTxItems.forEach((tx) =>
+          syncTasks.push(SheetService.updateOne("Transactions", tx)),
+        );
+      } else {
+        newTxItems.forEach((tx) =>
+          syncTasks.push(SheetService.insertOne("Transactions", tx)),
+        );
+      }
+
+      // 2. Accounts (Update only the ones that changed)
+      const changedAccountIds = new Set(newTxItems.map((tx) => tx.accountId));
+      if (formData.toAccountId) changedAccountIds.add(formData.toAccountId);
+
+      newAccounts
+        .filter((a) => changedAccountIds.has(a.id))
+        .forEach((a) => syncTasks.push(SheetService.updateOne("Accounts", a)));
+
+      // 3. Pots (Update only the ones that changed)
+      const changedPotIds = new Set(
+        newTxItems.map((tx) => tx.potId).filter(Boolean),
       );
+      newPots
+        .filter((p) => changedPotIds.has(p.id))
+        .forEach((p) => syncTasks.push(SheetService.updateOne("Pots", p)));
+
+      await Promise.all(syncTasks);
     }
 
     // Sync viewAccount if currently viewing one
@@ -836,14 +861,34 @@ const App: React.FC = () => {
     await StorageService.savePots(currentPots);
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        currentAccounts,
-        newTransactionsList,
-        undefined,
-        undefined,
-        undefined,
-        currentPots,
+      const syncTasks = [];
+
+      // 1. Delete transactions
+      idsToDelete.forEach((tid) =>
+        syncTasks.push(SheetService.deleteOne("Transactions", tid)),
       );
+
+      // 2. Update affected accounts
+      const affectedAccountIds = new Set(
+        idsToDelete
+          .map((tid) => transactions.find((t) => t.id === tid)?.accountId)
+          .filter(Boolean),
+      );
+      currentAccounts
+        .filter((a) => affectedAccountIds.has(a.id))
+        .forEach((a) => syncTasks.push(SheetService.updateOne("Accounts", a)));
+
+      // 3. Update affected pots
+      const affectedPotIds = new Set(
+        idsToDelete
+          .map((tid) => transactions.find((t) => t.id === tid)?.potId)
+          .filter(Boolean),
+      );
+      currentPots
+        .filter((p) => affectedPotIds.has(p.id))
+        .forEach((p) => syncTasks.push(SheetService.updateOne("Pots", p)));
+
+      await Promise.all(syncTasks);
     }
 
     // Sync viewAccount if currently viewing one
@@ -873,12 +918,7 @@ const App: React.FC = () => {
       await StorageService.saveGoals(newGoals);
 
       if (SheetService.isClientReady()) {
-        await SheetService.syncWithGoogleSheets(
-          undefined,
-          undefined,
-          undefined,
-          newGoals,
-        );
+        await SheetService.updateOne("Goals", newGoal);
       }
     } else {
       const newGoals = [...goals, newGoal];
@@ -886,12 +926,7 @@ const App: React.FC = () => {
       await StorageService.insertOneGoal(newGoal);
 
       if (SheetService.isClientReady()) {
-        await SheetService.syncWithGoogleSheets(
-          undefined,
-          undefined,
-          undefined,
-          newGoals,
-        );
+        await SheetService.insertOne("Goals", newGoal);
       }
     }
   };
@@ -902,12 +937,7 @@ const App: React.FC = () => {
     await StorageService.saveGoals(newGoals);
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        undefined,
-        newGoals,
-      );
+      await SheetService.deleteOne("Goals", id);
     }
   };
 
@@ -934,14 +964,11 @@ const App: React.FC = () => {
     }
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        newPots,
-      );
+      if (exists) {
+        await SheetService.updateOne("Pots", potWithTimestamp);
+      } else {
+        await SheetService.insertOne("Pots", potWithTimestamp);
+      }
     }
   };
 
@@ -953,14 +980,7 @@ const App: React.FC = () => {
     await StorageService.savePots(newPots);
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        newPots,
-      );
+      await SheetService.deleteOne("Pots", id);
     }
     showToast("Pot deleted", "success");
   };
@@ -990,14 +1010,11 @@ const App: React.FC = () => {
     }
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        newCategories,
-        undefined,
-        undefined,
-        undefined,
-      );
+      if (exists) {
+        await SheetService.updateOne("Categories", catWithTimestamp);
+      } else {
+        await SheetService.insertOne("Categories", catWithTimestamp);
+      }
     }
   };
 
@@ -1007,14 +1024,7 @@ const App: React.FC = () => {
     await StorageService.saveCategories(newCategories);
 
     if (SheetService.isClientReady()) {
-      await SheetService.syncWithGoogleSheets(
-        undefined,
-        undefined,
-        newCategories,
-        undefined,
-        undefined,
-        undefined,
-      );
+      await SheetService.deleteOne("Categories", id);
     }
     showToast("Category deleted", "success");
   };

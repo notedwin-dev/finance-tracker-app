@@ -482,8 +482,8 @@ const getColumnLetter = (index: number): string => {
  * Updates a specific row based on the 'id' field.
  * This is much faster than saveToSheet for single edits.
  */
-export const updateOne = async (sheetName: string, item: any) => {
-  if (!gapiInited || !hasAccessToken || !item.id) return;
+export const updateOne = async (sheetName: string, id: string, item: any) => {
+  if (!gapiInited || !hasAccessToken || !id) return;
 
   try {
     const fileId = await getSpreadsheetId();
@@ -511,7 +511,7 @@ export const updateOne = async (sheetName: string, item: any) => {
     });
 
     const ids = res.result.values || [];
-    const rowIndex = ids.findIndex((row: any[]) => row[0] === item.id);
+    const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
 
     if (rowIndex === -1) {
       // If not found, maybe it was deleted or just added. Fallback to insert.
@@ -527,7 +527,7 @@ export const updateOne = async (sheetName: string, item: any) => {
       return val ?? "";
     });
 
-    // 4. Update specific row (using 1-based index)
+    // 4. Update specific row (A1 notation requires 1-based indexing for rows)
     await window.gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: fileId,
       range: `'${sheetName}'!A${rowIndex + 1}`,

@@ -1,0 +1,65 @@
+import React from "react";
+import { useOutletContext } from "react-router-dom";
+import Profile from "../components/Profile";
+import { useAuth } from "../services/auth.services";
+import { useData } from "../context/DataContext";
+
+const ProfilePage: React.FC = () => {
+  const { profile, loginWithGoogle, updateProfile } = useAuth();
+  const {
+    isSyncing,
+    syncData,
+    handleResetAndSync,
+    handleMigrateData,
+    accounts,
+    transactions,
+    categories,
+    goals,
+    subscriptions,
+    pots,
+  } = useData();
+  const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
+    useOutletContext<any>();
+
+  const handleExportData = () => {
+    const data = {
+      profile,
+      accounts,
+      transactions,
+      categories,
+      goals,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `zenfinance_backup_${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="animate-fadeIn max-w-2xl mx-auto">
+      <Profile
+        profile={profile}
+        onLogin={loginWithGoogle}
+        onLogout={handleLogout}
+        onUpdate={updateProfile}
+        onManageCategories={() => setShowCategoryManager(true)}
+        onManageSubscriptions={() => setShowSubscriptionManager(true)}
+        onExport={handleExportData}
+        onMigrate={handleMigrateData}
+        onSync={syncData}
+        onResetSync={handleResetAndSync}
+        isSyncing={isSyncing}
+      />
+    </div>
+  );
+};
+
+export default ProfilePage;

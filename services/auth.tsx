@@ -26,6 +26,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (profile.id) {
       SheetService.setSheetUser(profile.id);
+
+      // Attempt to restore token from localStorage for auto-sync
+      const savedToken = localStorage.getItem("google_access_token");
+      if (savedToken) {
+        SheetService.setGapiAccessToken(savedToken);
+      }
     }
     SheetService.initGapiClient().then(() => setIsInitialized(true));
   }, []);
@@ -34,6 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     onSuccess: async (tokenResponse) => {
       // 1. Set Access Token for Sheets API
       SheetService.setGapiAccessToken(tokenResponse.access_token);
+      localStorage.setItem("google_access_token", tokenResponse.access_token);
 
       // 2. Fetch User Profile Info (optional, using standard Google UserInfo endpoint)
       try {

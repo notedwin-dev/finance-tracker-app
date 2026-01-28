@@ -118,6 +118,17 @@ const AccountForm: React.FC<Props> = ({
     }
   };
 
+  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, "");
+    if (val.length > 4) val = val.slice(0, 4);
+
+    if (val.length >= 3) {
+      setExpiry(val.slice(0, 2) + "/" + val.slice(2));
+    } else {
+      setExpiry(val);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
@@ -362,8 +373,9 @@ const AccountForm: React.FC<Props> = ({
                   <div className="grid grid-cols-2 gap-4">
                     <input
                       type="text"
+                      inputMode="numeric"
                       value={expiry}
-                      onChange={(e) => setExpiry(e.target.value)}
+                      onChange={handleExpiryChange}
                       className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none"
                       placeholder="Expiry (MM/YY)"
                     />

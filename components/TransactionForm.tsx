@@ -69,6 +69,21 @@ const TransactionForm: React.FC<Props> = ({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Auto-decimal amount handler (calculator style)
+  const handleAmountChange = (val: string) => {
+    // Remove all non-digit characters
+    const digits = val.replace(/\D/g, "");
+
+    if (digits === "") {
+      setAmount("");
+      return;
+    }
+
+    // Convert to number and divide by 100
+    const numericValue = parseInt(digits, 10) / 100;
+    setAmount(numericValue.toFixed(2));
+  };
+
   // Update currency based on selected account
   useEffect(() => {
     if (!initialTransaction) {
@@ -184,11 +199,11 @@ const TransactionForm: React.FC<Props> = ({
                 <option value="USD">USD</option>
               </select>
               <input
-                type="number"
-                step="any"
+                type="text"
+                inputMode="decimal"
                 required
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => handleAmountChange(e.target.value)}
                 className="flex-1 bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white text-xl font-bold focus:outline-none focus:border-primary"
                 placeholder="0.00"
                 autoFocus

@@ -1121,7 +1121,10 @@ const App: React.FC = () => {
                                 <span className="text-success">
                                   {t.linkedTransaction.amount.toLocaleString(
                                     undefined,
-                                    { minimumFractionDigits: 2 },
+                                    {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    },
                                   )}{" "}
                                   <span className="text-[10px] text-gray-500">
                                     {t.currency}
@@ -1137,7 +1140,10 @@ const App: React.FC = () => {
                                 }
                               >
                                 {t.type === TransactionType.EXPENSE ? "-" : "+"}
-                                {t.amount.toLocaleString()}{" "}
+                                {t.amount.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}{" "}
                                 <span className="text-[10px] text-gray-500">
                                   {t.currency}
                                 </span>

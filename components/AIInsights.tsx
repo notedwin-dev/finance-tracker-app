@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Account,
   Transaction,
@@ -65,11 +67,27 @@ const AIInsights: React.FC<Props> = ({
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeSession?.messages, streamingText]);
 
-  const handleAsk = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!query.trim() || loading) return;
+  const parseMessage = (content: string) => {
+    const suggestions: string[] = [];
+    const suggestionRegex = /<suggestion>([\s\S]*?)<\/suggestion>/g;
+    let match;
+    let cleanText = content;
 
-    const userQuery = query.trim();
+    while ((match = suggestionRegex.exec(content)) !== null) {
+      suggestions.push(match[1].trim());
+    }
+
+    cleanText = content.replace(suggestionRegex, "").trim();
+
+    return { cleanText, suggestions };
+  };
+
+  const handleAsk = async (e?: React.FormEvent, overrideQuery?: string) => {
+    e?.preventDefault();
+    const activeQuery = overrideQuery || query;
+    if (!activeQuery.trim() || loading) return;
+
+    const userQuery = activeQuery.trim();
     setQuery("");
     setLoading(true);
     setStreamingText("");
@@ -298,6 +316,11 @@ const AIInsights: React.FC<Props> = ({
                     key={i}
                     onClick={() => {
                       setQuery(s);
+                      // Trigger handleAsk manually since it's a fixed suggestion
+                      const fakeEvent = {
+                        preventDefault: () => {},
+                      } as React.FormEvent;
+                      handleAsk(fakeEvent, s);
                     }}
                     className="text-left p-4 bg-surface border border-gray-800 rounded-2xl text-xs sm:text-sm text-gray-300 hover:border-primary/50 transition-all hover:bg-primary/5 shadow-sm"
                   >
@@ -308,50 +331,67 @@ const AIInsights: React.FC<Props> = ({
             </div>
           )}
 
-          {activeSession?.messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${
-                m.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
+          {activeSession?.messages.map((m, i) => {
+            const { cleanText, suggestions: aiSuggestions } = parseMessage(
+              m.content,
+            );
+            return (
               <div
-                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 sm:p-5 ${
-                  m.role === "user"
-                    ? "bg-primary text-white rounded-tr-none shadow-lg shadow-primary/10"
-                    : "bg-surface border border-gray-800 text-gray-200 rounded-tl-none"
+                key={i}
+                className={`flex flex-col ${
+                  m.role === "user" ? "items-end" : "items-start"
                 }`}
               >
-                <div className="prose prose-invert prose-sm max-w-none break-words">
-                  {m.content.split("\n").map((line, idx) => (
-                    <p key={idx} className={idx > 0 ? "mt-2" : ""}>
-                      {line}
-                    </p>
-                  ))}
-                </div>
-                <p
-                  className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${
-                    m.role === "user" ? "text-white/50" : "text-gray-600"
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 sm:p-5 ${
+                    m.role === "user"
+                      ? "bg-primary text-white rounded-tr-none shadow-lg shadow-primary/10"
+                      : "bg-surface border border-gray-800 text-gray-200 rounded-tl-none"
                   }`}
                 >
-                  {new Date(m.timestamp).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
+                  <div className="prose prose-invert prose-sm max-w-none break-words">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {cleanText}
+                    </ReactMarkdown>
+                  </div>
+                  <p
+                    className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${
+                      m.role === "user" ? "text-white/50" : "text-gray-600"
+                    }`}
+                  >
+                    {new Date(m.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+
+                {/* AI Suggestions */}
+                {m.role === "model" && aiSuggestions.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2 max-w-[85%] sm:max-w-[75%]">
+                    {aiSuggestions.map((suggestion, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleAsk(undefined, suggestion)}
+                        className="text-xs bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 py-1.5 px-3 rounded-full transition-all flex items-center gap-1.5"
+                      >
+                        <PlusIcon className="w-3 h-3" />
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {streamingText && (
             <div className="flex justify-start">
               <div className="max-w-[85%] sm:max-w-[75%] bg-surface border border-gray-800 text-gray-200 rounded-2xl rounded-tl-none p-4 sm:p-5">
                 <div className="prose prose-invert prose-sm max-w-none">
-                  {streamingText.split("\n").map((line, idx) => (
-                    <p key={idx} className={idx > 0 ? "mt-2" : ""}>
-                      {line}
-                    </p>
-                  ))}
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {parseMessage(streamingText).cleanText}
+                  </ReactMarkdown>
                 </div>
                 <div className="mt-2 flex items-center gap-1">
                   <div className="w-1 h-1 bg-primary rounded-full animate-bounce" />

@@ -130,6 +130,9 @@ export const streamFinancialAdvice = async (
       3. If asked about spending, reference their specific categories and limits.
       4. Never give professional investment advice; always include a disclaimer if needed but keep it brief.
       5. Always respond in the language the user is using.
+      6. At the end of your response, provide 2-3 brief follow-up suggestions in the format:
+         <suggestion>Question 1?</suggestion>
+         <suggestion>Question 2?</suggestion>
     `;
 
     // Map history to Google's format

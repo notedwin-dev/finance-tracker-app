@@ -282,7 +282,9 @@ const App: React.FC = () => {
         const savedToken = localStorage.getItem("google_access_token");
         const savedExpiry = localStorage.getItem("google_token_expiry");
         if (savedToken) {
-          const expiresIn = savedExpiry ? (parseInt(savedExpiry) - Date.now()) / 1000 : undefined;
+          const expiresIn = savedExpiry
+            ? (parseInt(savedExpiry) - Date.now()) / 1000
+            : undefined;
           SheetService.setGapiAccessToken(savedToken, expiresIn);
         }
       }

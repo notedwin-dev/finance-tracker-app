@@ -32,7 +32,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const savedToken = localStorage.getItem("google_access_token");
       const savedExpiry = localStorage.getItem("google_token_expiry");
       if (savedToken) {
-        const expiresIn = savedExpiry ? (parseInt(savedExpiry) - Date.now()) / 1000 : undefined;
+        const expiresIn = savedExpiry
+          ? (parseInt(savedExpiry) - Date.now()) / 1000
+          : undefined;
         SheetService.setGapiAccessToken(savedToken, expiresIn);
       }
       setIsInitialized(true);
@@ -42,7 +44,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const loginFlow = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       // 1. Set Access Token for Sheets API
-      SheetService.setGapiAccessToken(tokenResponse.access_token, tokenResponse.expires_in);
+      SheetService.setGapiAccessToken(
+        tokenResponse.access_token,
+        tokenResponse.expires_in,
+      );
       localStorage.setItem("google_access_token", tokenResponse.access_token);
 
       // 2. Fetch User Profile Info (optional, using standard Google UserInfo endpoint)
@@ -149,8 +154,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("Failed to fetch user info", error);
       }
     },
-    // Adding prompt: 'consent' is usually what causes frequent re-logins. 
-    // If we remove it or use default, it might be smoother. 
+    // Adding prompt: 'consent' is usually what causes frequent re-logins.
+    // If we remove it or use default, it might be smoother.
     // But to truly "Stay Signed In", we should occasionally try a silent re-auth.
     scope:
       "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",

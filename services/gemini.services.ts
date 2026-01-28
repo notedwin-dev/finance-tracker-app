@@ -112,7 +112,10 @@ export const streamFinancialAdvice = async (
       history: [
         ...contents.slice(0, -1), // Everything except the last message which is the current query
       ],
-      systemInstruction,
+      systemInstruction: {
+        role: "system",
+        parts: [{ text: systemInstruction }],
+      },
     });
 
     const lastMessage = contents[contents.length - 1].parts[0].text || "";

@@ -71,34 +71,48 @@ const TransactionForm: React.FC<Props> = ({
 
   // Auto-decimal with manual "." support
   const handleAmountChange = (val: string) => {
-    // If user deleted everything
     if (!val) {
       setAmount("");
       return;
     }
 
-    // Capture if dot was pressed (shortcut to promote current value to dollars)
-    const isDotPressed = val.endsWith(".") || val.includes("..");
-
-    // Extract only digits
-    let digits = val.replace(/\D/g, "");
-
-    if (isDotPressed) {
-      // Multiplies by 100 effectively
-      digits = digits + "00";
+    // 1. Handle Dot "Promotion" (e.g., 0.11 + "." -> 11.00)
+    if (val.endsWith(".") && !amount.endsWith(".")) {
+      const d = amount.replace(/\D/g, "");
+      setAmount(parseInt(d || "0", 10).toFixed(2));
+      return;
     }
 
+    // 2. Manual Decimal Entry (e.g., 11.00 + "2" -> 11.20)
+    // If we were at a clean dollar or had a placeholder 0, replace it
+    if (val.length > amount.length) {
+      const newChar = val.slice(-1);
+      if (/\d/.test(newChar)) {
+        // From ".00" -> ".X0"
+        if (amount.endsWith(".00")) {
+          const whole = amount.split(".")[0];
+          setAmount(whole + "." + newChar + "0");
+          return;
+        }
+        // From ".X0" -> ".XY"
+        if (amount.match(/\.\d0$/)) {
+          const parts = amount.split(".");
+          setAmount(parts[0] + "." + parts[1][0] + newChar);
+          return;
+        }
+      }
+    }
+
+    // 3. Default Shifting Logic (Calculator style)
+    const digits = val.replace(/\D/g, "");
     if (!digits) {
       setAmount("");
       return;
     }
 
-    // Convert digits to a 2-decimal number string
     const cents = parseInt(digits, 10);
-    const formatted = (cents / 100).toFixed(2);
-    setAmount(formatted);
+    setAmount((cents / 100).toFixed(2));
   };
-
   // Update currency based on selected account
   useEffect(() => {
     if (!initialTransaction) {

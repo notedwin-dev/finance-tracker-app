@@ -44,9 +44,30 @@ const AccountForm: React.FC<Props> = ({
       setBalance("");
       return;
     }
-    const isDotPressed = val.endsWith(".") || val.includes("..");
-    let digits = val.replace(/\D/g, "");
-    if (isDotPressed) digits = digits + "00";
+
+    if (val.endsWith(".") && !balance.endsWith(".")) {
+      const d = balance.replace(/\D/g, "");
+      setBalance(parseInt(d || "0", 10).toFixed(2));
+      return;
+    }
+
+    if (val.length > balance.length) {
+      const newChar = val.slice(-1);
+      if (/\d/.test(newChar)) {
+        if (balance.endsWith(".00")) {
+          const whole = balance.split(".")[0];
+          setBalance(whole + "." + newChar + "0");
+          return;
+        }
+        if (balance.match(/\.\d0$/)) {
+          const parts = balance.split(".");
+          setBalance(parts[0] + "." + parts[1][0] + newChar);
+          return;
+        }
+      }
+    }
+
+    const digits = val.replace(/\D/g, "");
     if (!digits) {
       setBalance("");
       return;

@@ -46,14 +46,39 @@ const Goals: React.FC<Props> = ({
   const [goalDeadline, setGoalDeadline] = useState("");
   const [goalCategory, setGoalCategory] = useState("");
 
-  const handleAmountFormat = (val: string, setter: (v: string) => void) => {
+  const handleAmountFormat = (
+    val: string,
+    currentVal: string,
+    setter: (v: string) => void,
+  ) => {
     if (!val) {
       setter("");
       return;
     }
-    const isDotPressed = val.endsWith(".") || val.includes("..");
-    let digits = val.replace(/\D/g, "");
-    if (isDotPressed) digits = digits + "00";
+
+    if (val.endsWith(".") && !currentVal.endsWith(".")) {
+      const d = currentVal.replace(/\D/g, "");
+      setter(parseInt(d || "0", 10).toFixed(2));
+      return;
+    }
+
+    if (val.length > currentVal.length) {
+      const newChar = val.slice(-1);
+      if (/\d/.test(newChar)) {
+        if (currentVal.endsWith(".00")) {
+          const whole = currentVal.split(".")[0];
+          setter(whole + "." + newChar + "0");
+          return;
+        }
+        if (currentVal.match(/\.\d0$/)) {
+          const parts = currentVal.split(".");
+          setter(parts[0] + "." + parts[1][0] + newChar);
+          return;
+        }
+      }
+    }
+
+    const digits = val.replace(/\D/g, "");
     if (!digits) {
       setter("");
       return;
@@ -362,7 +387,11 @@ const Goals: React.FC<Props> = ({
                     required
                     value={potTarget}
                     onChange={(e) =>
-                      handleAmountFormat(e.target.value, setPotTarget)
+                      handleAmountFormat(
+                        e.target.value,
+                        potTarget,
+                        setPotTarget,
+                      )
                     }
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                     placeholder="0.00"
@@ -378,7 +407,11 @@ const Goals: React.FC<Props> = ({
                     required
                     value={potCurrent}
                     onChange={(e) =>
-                      handleAmountFormat(e.target.value, setPotCurrent)
+                      handleAmountFormat(
+                        e.target.value,
+                        potCurrent,
+                        setPotCurrent,
+                      )
                     }
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                     placeholder="0.00"
@@ -466,7 +499,11 @@ const Goals: React.FC<Props> = ({
                     required
                     value={goalTarget}
                     onChange={(e) =>
-                      handleAmountFormat(e.target.value, setGoalTarget)
+                      handleAmountFormat(
+                        e.target.value,
+                        goalTarget,
+                        setGoalTarget,
+                      )
                     }
                     className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm sm:text-base focus:border-primary outline-none"
                     placeholder="0.00"

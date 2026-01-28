@@ -46,9 +46,32 @@ const SubscriptionManager: React.FC<Props> = ({
       setAmount("");
       return;
     }
-    const isDotPressed = val.endsWith(".") || val.includes("..");
-    let digits = val.replace(/\D/g, "");
-    if (isDotPressed) digits = digits + "00";
+
+    // Capture Dot "Promotion"
+    if (val.endsWith(".") && !amount.endsWith(".")) {
+      const d = amount.replace(/\D/g, "");
+      setAmount(parseInt(d || "0", 10).toFixed(2));
+      return;
+    }
+
+    // Manual Decimal Entry
+    if (val.length > amount.length) {
+      const newChar = val.slice(-1);
+      if (/\d/.test(newChar)) {
+        if (amount.endsWith(".00")) {
+          const whole = amount.split(".")[0];
+          setAmount(whole + "." + newChar + "0");
+          return;
+        }
+        if (amount.match(/\.\d0$/)) {
+          const parts = amount.split(".");
+          setAmount(parts[0] + "." + parts[1][0] + newChar);
+          return;
+        }
+      }
+    }
+
+    const digits = val.replace(/\D/g, "");
     if (!digits) {
       setAmount("");
       return;

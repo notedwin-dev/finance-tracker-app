@@ -250,7 +250,7 @@ const AIInsights: React.FC<Props> = ({
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">
-                  Gemini 1.5 Flash
+                  Gemini 2.5 Flash
                 </span>
               </div>
             </div>

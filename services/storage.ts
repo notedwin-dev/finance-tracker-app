@@ -119,7 +119,8 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
   return hasChanges;
 };
 
-// Emergency Recovery: Scan for ANY key that looks like it belongs to our app
+// Emergency Recovery: Scan ONLY for "Guest" records (data added while logged out)
+// This excludes other users' partitioned data to ensure privacy and isolation.
 export const rescueScatteredData = (): {
   type: string;
   count: number;
@@ -133,24 +134,24 @@ export const rescueScatteredData = (): {
     const key = localStorage.key(i);
     if (!key) continue;
 
+    // ONLY look for the base Guest keys (no _userId suffix)
+    const isGuestKey = basePatterns.includes(key);
+    if (!isGuestKey) continue;
+
     // Skip keys that are currently active/loaded to avoid confusing the user
     if (activeKeys.has(key)) continue;
 
-    // Is it one of our keys?
-    const match = basePatterns.find((p) => key.startsWith(p));
-    if (match) {
-      try {
-        const data = JSON.parse(localStorage.getItem(key) || "[]");
-        if (Array.isArray(data) && data.length > 0) {
-          found.push({
-            type: match.replace("zenfinance_", "").replace("_v2", ""),
-            count: data.length,
-            key: key,
-          });
-        }
-      } catch (e) {
-        /* ignore */
+    try {
+      const data = JSON.parse(localStorage.getItem(key) || "[]");
+      if (Array.isArray(data) && data.length > 0) {
+        found.push({
+          type: key.replace("zenfinance_", "").replace("_v2", ""),
+          count: data.length,
+          key: key,
+        });
       }
+    } catch (e) {
+      /* ignore */
     }
   }
   return found;
@@ -302,7 +303,10 @@ export const insertOneTransaction = async (transaction: Transaction) => {
 export const insertManyTransactions = async (newItems: Transaction[]) => {
   const transactions = getStoredTransactions();
   const newTransactions = [...newItems, ...transactions];
-  localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(newTransactions));
+  localStorage.setItem(
+    getKey(KEYS.TRANSACTIONS),
+    JSON.stringify(newTransactions),
+  );
 
   if (isLoggedIn()) {
     // Insert purely new items one by one (or could optimize to append batch)

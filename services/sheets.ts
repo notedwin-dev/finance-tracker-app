@@ -30,7 +30,7 @@ export const initGapiClient = async (): Promise<void> => {
     return;
   }
 
-  // Ensure window.gapi is available (it might take a moment to load from index.html)
+  // Ensure window.gapi is available
   const waitForGapi = (): Promise<void> => {
     return new Promise((resolve) => {
       if (window.gapi) {
@@ -42,11 +42,10 @@ export const initGapiClient = async (): Promise<void> => {
             resolve();
           }
         }, 100);
-        // Timeout after 5 seconds
         setTimeout(() => {
           clearInterval(interval);
           resolve();
-        }, 5000);
+        }, 10000); // 10s timeout
       }
     });
   };
@@ -65,8 +64,19 @@ export const initGapiClient = async (): Promise<void> => {
           apiKey: API_KEY,
           discoveryDocs: DISCOVERY_DOCS,
         });
-        gapiInited = true;
-        console.log("GAPI Client initialized");
+
+        // Final verification that we have the expected services
+        if (window.gapi.client.sheets && window.gapi.client.drive) {
+          gapiInited = true;
+          console.log(
+            "GAPI Client successfully initialized with Sheets and Drive",
+          );
+        } else {
+          console.error("GAPI Client init finished but services missing", {
+            sheets: !!window.gapi.client.sheets,
+            drive: !!window.gapi.client.drive,
+          });
+        }
       } catch (err) {
         console.error("GAPI Client init error", err);
       }
@@ -105,6 +115,12 @@ export const setSheetUser = (userId: string) => {
 const getSpreadsheetId = async (): Promise<string | null> => {
   if (!gapiInited || !hasAccessToken) return null;
 
+  // Defensive check for gapi client libraries
+  if (!window.gapi?.client?.drive || !window.gapi?.client?.sheets) {
+    console.warn("GAPI client libraries (drive/sheets) not fully loaded");
+    return null;
+  }
+
   // Find the file
   try {
     const response = await window.gapi.client.drive.files.list({
@@ -115,7 +131,11 @@ const getSpreadsheetId = async (): Promise<string | null> => {
     if (files && files.length > 0) {
       return files[0].id;
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.status === 401) {
+      console.warn("Unauthorized in getSpreadsheetId, clearing token");
+      clearGapiAccessToken();
+    }
     console.error("Error finding sheet", err);
     return null;
   }
@@ -126,7 +146,11 @@ const getSpreadsheetId = async (): Promise<string | null> => {
       properties: { title: currentSheetTitle },
     });
     return createResponse.result.spreadsheetId;
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.status === 401) {
+      console.warn("Unauthorized in creating sheet, clearing token");
+      clearGapiAccessToken();
+    }
     console.error("Error creating sheet", err);
     return null;
   }

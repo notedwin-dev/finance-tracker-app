@@ -411,9 +411,12 @@ const App: React.FC = () => {
         // If cloudData is null, it could be that auth expired or Sheets API is not ready
         console.warn("Sync returned no data from cloud.");
         if (!SheetService.isClientReady()) {
-          showToast("Please sign in to Google to sync", "info");
+          showToast("Session expired, please sign in", "info");
         } else {
-          showToast("Cloud data not accessible", "alert");
+          showToast(
+            "Google Settings Error: Ensure Drive & Sheets API are enabled",
+            "alert",
+          );
         }
       }
     } catch (e) {

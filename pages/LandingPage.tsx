@@ -9,7 +9,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 const LandingPage: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -17,6 +17,14 @@ const LandingPage: React.FC = () => {
       navigate("/app", { replace: true });
     }
   }, [profile.isLoggedIn, navigate]);
+
+  const handleLaunchApp = () => {
+    if (profile.isLoggedIn) {
+      navigate("/app");
+    } else {
+      loginWithGoogle();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-white selection:bg-primary/30">
@@ -29,12 +37,12 @@ const LandingPage: React.FC = () => {
           <span className="font-black text-xl tracking-tight">ZenFinance</span>
         </div>
         <div className="flex items-center gap-8">
-          <Link
-            to="/app"
-            className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 active:scale-95"
+          <button
+            onClick={handleLaunchApp}
+            className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 active:scale-95 cursor-pointer"
           >
             Launch App
-          </Link>
+          </button>
         </div>
       </nav>
 
@@ -58,12 +66,12 @@ const LandingPage: React.FC = () => {
             own Google Sheets. AI-powered insights meets decentralized storage.
           </p>
           <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
-            <Link
-              to="/app"
-              className="w-full sm:w-auto px-8 py-4 bg-primary hover:bg-primary-dark text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-primary/25 text-center"
+            <button
+              onClick={handleLaunchApp}
+              className="w-full sm:w-auto px-8 py-4 bg-primary hover:bg-primary-dark text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-primary/25 text-center cursor-pointer"
             >
               Start Tracking Free
-            </Link>
+            </button>
             <p className="text-gray-500 text-sm font-bold uppercase tracking-widest">
               No credit card. No subscription.
             </p>

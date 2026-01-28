@@ -19,7 +19,7 @@ interface Props {
   pots?: Pot[];
   initialTransaction?: Transaction;
   onClose: () => void;
-  onSubmit: (transaction: Omit<Transaction, "id" | "userId">) => void;
+  onSubmit: (transaction: Omit<Transaction, "userId">) => void;
   onManageCategories: () => void;
 }
 
@@ -162,6 +162,7 @@ const TransactionForm: React.FC<Props> = ({
     setIsSubmitting(true);
     try {
       await onSubmit({
+        id: initialTransaction?.id || crypto.randomUUID(),
         accountId,
         potId: potId || undefined,
         toAccountId:

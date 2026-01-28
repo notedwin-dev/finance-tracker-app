@@ -70,8 +70,8 @@ const MainLayout: React.FC = () => {
   }
 
   const handleLogout = async () => {
-    // In a real app we might want to sync one last time
     logout();
+    navigate("/", { replace: true });
   };
 
   return (

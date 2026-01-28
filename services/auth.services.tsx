@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { useGoogleLogin } from "@react-oauth/google";
+import { useGoogleLogin, googleLogout } from "@react-oauth/google";
 import * as SheetService from "./sheets.services";
 import * as StorageService from "./storage.services";
 import { UserProfile } from "../types";
@@ -187,6 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const logout = () => {
+    googleLogout();
     SheetService.clearGapiAccessToken();
     const emptyProfile: UserProfile = {
       name: "",
@@ -195,7 +196,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     setProfile(emptyProfile);
     StorageService.saveProfile(emptyProfile);
-    window.location.reload();
   };
 
   return (

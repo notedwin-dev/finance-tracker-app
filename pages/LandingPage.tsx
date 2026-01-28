@@ -1,5 +1,6 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../services/auth.services";
 import {
   SparklesIcon,
   ShieldCheckIcon,
@@ -8,6 +9,15 @@ import {
 } from "@heroicons/react/24/outline";
 
 const LandingPage: React.FC = () => {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (profile.isLoggedIn) {
+      navigate("/app", { replace: true });
+    }
+  }, [profile.isLoggedIn, navigate]);
+
   return (
     <div className="min-h-screen bg-background text-white selection:bg-primary/30">
       {/* Navigation */}

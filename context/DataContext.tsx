@@ -37,13 +37,13 @@ interface DataContextType {
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   handleAccountSave: (acc: Omit<Account, "userId">) => Promise<void>;
   handleAccountDelete: (id: string) => Promise<void>;
-  handleTransactionSubmit: (tx: Transaction) => Promise<void>;
+  handleTransactionSubmit: (tx: Omit<Transaction, "userId">) => Promise<void>;
   handleTransactionDelete: (id: string) => Promise<void>;
-  handleCategorySave: (cat: Category) => Promise<void>;
+  handleCategorySave: (cat: Omit<Category, "userId">) => Promise<void>;
   handleCategoryDelete: (id: string) => Promise<void>;
-  handleGoalUpdate: (goal: Goal) => Promise<void>;
+  handleGoalUpdate: (goal: Omit<Goal, "userId">) => Promise<void>;
   handleGoalDelete: (id: string) => Promise<void>;
-  handlePotSave: (pot: Pot) => Promise<void>;
+  handlePotSave: (pot: Omit<Pot, "userId">) => Promise<void>;
   handlePotDelete: (id: string) => Promise<void>;
   handleAddSubscription: (sub: Omit<Subscription, "userId">) => Promise<void>;
   handleDeleteSubscription: (id: string) => Promise<void>;
@@ -311,33 +311,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast("Account deleted", "success");
   };
 
-  const handleTransactionSubmit = async (tx: Transaction) => {
+  const handleTransactionSubmit = async (tx: Omit<Transaction, "userId">) => {
     const isEdit = transactions.some((t) => t.id === tx.id);
+    const txWithUser = { ...tx, userId: profile.id || "local" } as Transaction;
     let updatedTransactions;
     if (isEdit) {
-      updatedTransactions = transactions.map((t) => (t.id === tx.id ? tx : t));
+      updatedTransactions = transactions.map((t) =>
+        t.id === tx.id ? txWithUser : t,
+      );
       if (SheetService.isClientReady())
-        await SheetService.updateOne("Transactions", tx.id, tx);
+        await SheetService.updateOne("Transactions", tx.id, txWithUser);
     } else {
-      updatedTransactions = [...transactions, tx];
+      updatedTransactions = [...transactions, txWithUser];
       if (SheetService.isClientReady())
-        await SheetService.insertOne("Transactions", tx);
+        await SheetService.insertOne("Transactions", txWithUser);
     }
     setTransactions(updatedTransactions);
     StorageService.saveTransactions(updatedTransactions);
 
-    // Update balance
+    // Update account balance
     const updatedAccounts = accounts.map((a) => {
       if (a.id === tx.accountId) {
-        const diff = isEdit
-          ? (transactions.find((t) => t.id === tx.id)?.amount || 0) - tx.amount
-          : -tx.amount;
-        return {
-          ...a,
-          balance:
-            a.balance + (tx.type === TransactionType.INCOME ? -diff : diff),
-        };
+        const oldTx = transactions.find((t) => t.id === tx.id);
+        const amountDiff = isEdit
+          ? tx.amount - (oldTx?.amount || 0)
+          : tx.amount;
+
+        let balanceChange = 0;
+        if (tx.type === TransactionType.INCOME) {
+          balanceChange = amountDiff;
+        } else if (
+          tx.type === TransactionType.EXPENSE ||
+          tx.type === TransactionType.ADJUSTMENT
+        ) {
+          balanceChange = -amountDiff;
+        }
+        // Transfers are handled as two transactions usually, but here we just update the source
+        // If it's a transfer, we might need more logic or just handle it as expense for source
+        if (tx.type === TransactionType.TRANSFER) {
+          balanceChange = -amountDiff;
+        }
+
+        return { ...a, balance: a.balance + balanceChange };
       }
+
+      if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
+        const oldTx = transactions.find((t) => t.id === tx.id);
+        const amountDiff = isEdit
+          ? tx.amount - (oldTx?.amount || 0)
+          : tx.amount;
+        return { ...a, balance: a.balance + amountDiff };
+      }
+
       return a;
     });
     setAccounts(updatedAccounts);
@@ -350,12 +375,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (tx) {
       const updatedAccounts = accounts.map((a) => {
         if (a.id === tx.accountId) {
-          return {
-            ...a,
-            balance:
-              a.balance +
-              (tx.type === TransactionType.EXPENSE ? tx.amount : -tx.amount),
-          };
+          let balanceRestore = 0;
+          if (tx.type === TransactionType.INCOME) balanceRestore = -tx.amount;
+          else balanceRestore = tx.amount;
+          return { ...a, balance: a.balance + balanceRestore };
+        }
+        if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
+          return { ...a, balance: a.balance - tx.amount };
         }
         return a;
       });
@@ -370,17 +396,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast("Transaction deleted", "success");
   };
 
-  const handleCategorySave = async (cat: Category) => {
+  const handleCategorySave = async (cat: Omit<Category, "userId">) => {
     const isEdit = categories.some((c) => c.id === cat.id);
+    const catWithUser = { ...cat, userId: profile.id || "local" } as Category;
     const updated = isEdit
-      ? categories.map((c) => (c.id === cat.id ? cat : c))
-      : [...categories, cat];
+      ? categories.map((c) => (c.id === cat.id ? catWithUser : c))
+      : [...categories, catWithUser];
     setCategories(updated);
     StorageService.saveCategories(updated);
     if (SheetService.isClientReady()) {
-      if (isEdit) await SheetService.updateOne("Categories", cat.id, cat);
-      else await SheetService.insertOne("Categories", cat);
+      if (isEdit)
+        await SheetService.updateOne("Categories", cat.id, catWithUser);
+      else await SheetService.insertOne("Categories", catWithUser);
     }
+    showToast("Category saved", "success");
   };
 
   const handleCategoryDelete = async (id: string) => {
@@ -389,19 +418,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     StorageService.saveCategories(updated);
     if (SheetService.isClientReady())
       await SheetService.deleteOne("Categories", id);
+    showToast("Category deleted", "success");
   };
 
-  const handleGoalUpdate = async (goal: Goal) => {
+  const handleGoalUpdate = async (goal: Omit<Goal, "userId">) => {
     const isEdit = goals.some((g) => g.id === goal.id);
+    const goalWithUser = { ...goal, userId: profile.id || "local" } as Goal;
     const updated = isEdit
-      ? goals.map((g) => (g.id === goal.id ? goal : g))
-      : [...goals, goal];
+      ? goals.map((g) => (g.id === goal.id ? goalWithUser : g))
+      : [...goals, goalWithUser];
     setGoals(updated);
     StorageService.saveGoals(updated);
     if (SheetService.isClientReady()) {
-      if (isEdit) await SheetService.updateOne("Goals", goal.id, goal);
-      else await SheetService.insertOne("Goals", goal);
+      if (isEdit) await SheetService.updateOne("Goals", goal.id, goalWithUser);
+      else await SheetService.insertOne("Goals", goalWithUser);
     }
+    showToast("Goal updated", "success");
   };
 
   const handleGoalDelete = async (id: string) => {
@@ -409,19 +441,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setGoals(updated);
     StorageService.saveGoals(updated);
     if (SheetService.isClientReady()) await SheetService.deleteOne("Goals", id);
+    showToast("Goal deleted", "success");
   };
 
-  const handlePotSave = async (pot: Pot) => {
+  const handlePotSave = async (pot: Omit<Pot, "userId">) => {
     const isEdit = pots.some((p) => p.id === pot.id);
+    const potWithUser = { ...pot, userId: profile.id || "local" } as Pot;
     const updated = isEdit
-      ? pots.map((p) => (p.id === pot.id ? pot : p))
-      : [...pots, pot];
+      ? pots.map((p) => (p.id === pot.id ? potWithUser : p))
+      : [...pots, potWithUser];
     setPots(updated);
     StorageService.savePots(updated);
     if (SheetService.isClientReady()) {
-      if (isEdit) await SheetService.updateOne("Pots", pot.id, pot);
-      else await SheetService.insertOne("Pots", pot);
+      if (isEdit) await SheetService.updateOne("Pots", pot.id, potWithUser);
+      else await SheetService.insertOne("Pots", potWithUser);
     }
+    showToast("Pot saved", "success");
   };
 
   const handlePotDelete = async (id: string) => {
@@ -429,6 +464,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setPots(updated);
     StorageService.savePots(updated);
     if (SheetService.isClientReady()) await SheetService.deleteOne("Pots", id);
+    showToast("Pot deleted", "success");
   };
 
   const handleAddSubscription = async (sub: Omit<Subscription, "userId">) => {

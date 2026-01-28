@@ -61,7 +61,7 @@ const AIInsights: React.FC<Props> = ({
 
   const handleAsk = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!query.trim() || loading || !apiKey) return;
+    if (!query.trim() || loading) return;
 
     const userQuery = query.trim();
     setQuery("");
@@ -100,7 +100,7 @@ const AIInsights: React.FC<Props> = ({
       const history = currentSession.messages;
 
       const aiResponsePromise = streamFinancialAdvice(
-        apiKey,
+        apiKey || "",
         accounts,
         transactions,
         categories,
@@ -130,17 +130,22 @@ const AIInsights: React.FC<Props> = ({
         currentSession.title === "New Chat" &&
         currentSession.messages.length === 1
       ) {
-        const title = await generateChatTitle(apiKey, userQuery, finalResponse);
+        const title = await generateChatTitle(
+          apiKey || "",
+          userQuery,
+          finalResponse,
+        );
         updatedSession.title = title;
       }
 
       onSaveSession(updatedSession);
       setStreamingText("");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       const errorMessage: ChatMessage = {
         role: "model",
         content:
+          err?.message ||
           "Sorry, I encountered an error. Please check your API key or try again later.",
         timestamp: Date.now(),
       };

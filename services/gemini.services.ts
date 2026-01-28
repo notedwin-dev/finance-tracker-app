@@ -2,10 +2,48 @@ import { GoogleGenerativeAI, Content } from "@google/generative-ai";
 import { Account, Transaction, Category, ChatMessage } from "../types";
 
 const getModel = (apiKey?: string) => {
-  const genAI = new GoogleGenerativeAI(
-    apiKey || import.meta.env.VITE_GOOGLE_API_KEY,
-  );
-  return genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const finalKey = apiKey || import.meta.env.VITE_GOOGLE_API_KEY;
+  if (!finalKey) {
+    throw new Error("No Gemini API key provided.");
+  }
+
+  // If using the developer's key (fallback), check daily limits
+  if (!apiKey && finalKey === import.meta.env.VITE_GOOGLE_API_KEY) {
+    checkDailyLimit();
+  }
+
+  const genAI = new GoogleGenerativeAI(finalKey);
+  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+};
+
+const checkDailyLimit = () => {
+  const LIMIT = 30; // 30 requests per day for the public key
+  const now = new Date();
+  const today = now.toISOString().split("T")[0]; // YYYY-MM-DD
+
+  const usageData = localStorage.getItem("zenfinance_ai_usage");
+  let usage = { date: today, count: 0 };
+
+  if (usageData) {
+    try {
+      const parsed = JSON.parse(usageData);
+      if (parsed.date === today) {
+        usage = parsed;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  if (usage.count >= LIMIT) {
+    throw new Error(
+      "Daily limit reached for the public AI assistant. Please provide your own Gemini API key in Profile settings to continue indefinitely.",
+    );
+  }
+
+  // Increment usage
+  usage.count++;
+  localStorage.setItem("zenfinance_ai_usage", JSON.stringify(usage));
 };
 
 const prepareContext = (

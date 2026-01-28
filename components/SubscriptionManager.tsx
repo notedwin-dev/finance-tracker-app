@@ -30,6 +30,7 @@ const SubscriptionManager: React.FC<Props> = ({
   onClose,
 }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -77,27 +78,32 @@ const SubscriptionManager: React.FC<Props> = ({
     setAmount((cents / 100).toFixed(2));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !amount || !accountId || !categoryId) return;
+    if (!name || !amount || !accountId || !categoryId || isSubmitting) return;
 
-    const acc = accounts.find((a) => a.id === accountId);
+    setIsSubmitting(true);
+    try {
+      const acc = accounts.find((a) => a.id === accountId);
 
-    const newSub: Omit<Subscription, "userId"> = {
-      id: crypto.randomUUID(),
-      name,
-      amount: parseFloat(amount),
-      currency: acc?.currency || "MYR",
-      accountId,
-      categoryId,
-      frequency,
-      nextPaymentDate,
-      active: true,
-    };
+      const newSub: Omit<Subscription, "userId"> = {
+        id: crypto.randomUUID(),
+        name,
+        amount: parseFloat(amount),
+        currency: acc?.currency || "MYR",
+        accountId,
+        categoryId,
+        frequency,
+        nextPaymentDate,
+        active: true,
+      };
 
-    onAdd(newSub);
-    setIsAdding(false);
-    resetForm();
+      await onAdd(newSub);
+      setIsAdding(false);
+      resetForm();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetForm = () => {
@@ -247,9 +253,14 @@ const SubscriptionManager: React.FC<Props> = ({
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-[0.98] text-sm"
+                  disabled={isSubmitting}
+                  className={`flex-1 text-white font-bold py-3 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm ${
+                    isSubmitting
+                      ? "bg-gray-600 cursor-not-allowed"
+                      : "bg-primary hover:bg-primary-hover shadow-primary/20"
+                  }`}
                 >
-                  Save Subscription
+                  {isSubmitting ? "Saving..." : "Save Subscription"}
                 </button>
                 <button
                   type="button"

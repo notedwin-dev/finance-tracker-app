@@ -225,6 +225,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     icon: "🍔",
     budgetLimit: 0,
     color: "bg-orange-500",
+    isDefault: true,
   },
   {
     id: "c2",
@@ -232,6 +233,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     icon: "🚗",
     budgetLimit: 0,
     color: "bg-blue-500",
+    isDefault: true,
   },
   {
     id: "c3",
@@ -239,6 +241,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     icon: "🛍️",
     budgetLimit: 0,
     color: "bg-pink-500",
+    isDefault: true,
   },
   {
     id: "c4",
@@ -246,6 +249,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     icon: "🎬",
     budgetLimit: 0,
     color: "bg-purple-500",
+    isDefault: true,
   },
   {
     id: "c5",
@@ -253,14 +257,23 @@ const DEFAULT_CATEGORIES: Category[] = [
     icon: "💡",
     budgetLimit: 0,
     color: "bg-yellow-500",
+    isDefault: true,
   },
-  { id: "c6", name: "Health", icon: "🏥", budgetLimit: 0, color: "bg-red-500" },
+  {
+    id: "c6",
+    name: "Health",
+    icon: "🏥",
+    budgetLimit: 0,
+    color: "bg-red-500",
+    isDefault: true,
+  },
   {
     id: "c7",
     name: "Salary",
     icon: "💰",
     budgetLimit: 0,
     color: "bg-green-500",
+    isDefault: true,
   },
   {
     id: "c8",
@@ -268,6 +281,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     icon: "📈",
     budgetLimit: 0,
     color: "bg-indigo-500",
+    isDefault: true,
   },
 ];
 

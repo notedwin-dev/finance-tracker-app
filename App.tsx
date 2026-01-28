@@ -216,19 +216,41 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddSubscription = (sub: Omit<Subscription, "userId">) => {
+  const handleAddSubscription = async (sub: Omit<Subscription, "userId">) => {
     const currentUserId = profile.id || "guest";
     const newSub: Subscription = { ...sub, userId: currentUserId };
     const updated = [...subscriptions, newSub];
     setSubscriptions(updated);
-    StorageService.saveSubscriptions(updated);
+    await StorageService.saveSubscriptions(updated);
+
+    if (SheetService.isClientReady()) {
+      await SheetService.syncWithGoogleSheets(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        updated,
+        undefined,
+      );
+    }
     setToast({ message: "Subscription added", type: "success" });
   };
 
-  const handleDeleteSubscription = (id: string) => {
+  const handleDeleteSubscription = async (id: string) => {
     const updated = subscriptions.filter((s) => s.id !== id);
     setSubscriptions(updated);
-    StorageService.saveSubscriptions(updated);
+    await StorageService.saveSubscriptions(updated);
+
+    if (SheetService.isClientReady()) {
+      await SheetService.syncWithGoogleSheets(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        updated,
+        undefined,
+      );
+    }
   };
 
   // Sync when profile changes (logged in) and auth is initialized
@@ -515,10 +537,10 @@ const App: React.FC = () => {
       await SheetService.syncWithGoogleSheets(
         newAccounts,
         finalTransactions,
-        categories,
-        goals,
-        subscriptions,
-        pots,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     }
 
@@ -569,10 +591,10 @@ const App: React.FC = () => {
       await SheetService.syncWithGoogleSheets(
         newAccounts,
         finalTransactions,
-        categories,
-        goals,
-        subscriptions,
-        pots,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
       );
     }
 
@@ -730,9 +752,9 @@ const App: React.FC = () => {
       await SheetService.syncWithGoogleSheets(
         newAccounts,
         newTransactionsList,
-        categories,
-        goals,
-        subscriptions,
+        undefined,
+        undefined,
+        undefined,
         newPots,
       );
     }
@@ -811,9 +833,9 @@ const App: React.FC = () => {
       await SheetService.syncWithGoogleSheets(
         currentAccounts,
         newTransactionsList,
-        categories,
-        goals,
-        subscriptions,
+        undefined,
+        undefined,
+        undefined,
         currentPots,
       );
     }
@@ -846,12 +868,10 @@ const App: React.FC = () => {
 
       if (SheetService.isClientReady()) {
         await SheetService.syncWithGoogleSheets(
-          accounts,
-          transactions,
-          categories,
+          undefined,
+          undefined,
+          undefined,
           newGoals,
-          subscriptions,
-          pots,
         );
       }
     } else {
@@ -861,12 +881,10 @@ const App: React.FC = () => {
 
       if (SheetService.isClientReady()) {
         await SheetService.syncWithGoogleSheets(
-          accounts,
-          transactions,
-          categories,
+          undefined,
+          undefined,
+          undefined,
           newGoals,
-          subscriptions,
-          pots,
         );
       }
     }
@@ -879,12 +897,10 @@ const App: React.FC = () => {
 
     if (SheetService.isClientReady()) {
       await SheetService.syncWithGoogleSheets(
-        accounts,
-        transactions,
-        categories,
+        undefined,
+        undefined,
+        undefined,
         newGoals,
-        subscriptions,
-        pots,
       );
     }
   };
@@ -913,11 +929,11 @@ const App: React.FC = () => {
 
     if (SheetService.isClientReady()) {
       await SheetService.syncWithGoogleSheets(
-        accounts,
-        transactions,
-        categories,
-        goals,
-        subscriptions,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
         newPots,
       );
     }
@@ -932,11 +948,11 @@ const App: React.FC = () => {
 
     if (SheetService.isClientReady()) {
       await SheetService.syncWithGoogleSheets(
-        accounts,
-        transactions,
-        categories,
-        goals,
-        subscriptions,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
         newPots,
       );
     }
@@ -966,12 +982,34 @@ const App: React.FC = () => {
       await StorageService.insertOneCategory(catWithTimestamp);
       showToast("Category added", "success");
     }
+
+    if (SheetService.isClientReady()) {
+      await SheetService.syncWithGoogleSheets(
+        undefined,
+        undefined,
+        newCategories,
+        undefined,
+        undefined,
+        undefined,
+      );
+    }
   };
 
   const handleCategoryDelete = async (id: string) => {
     const newCategories = categories.filter((c) => c.id !== id);
     setCategories(newCategories);
     await StorageService.saveCategories(newCategories);
+
+    if (SheetService.isClientReady()) {
+      await SheetService.syncWithGoogleSheets(
+        undefined,
+        undefined,
+        newCategories,
+        undefined,
+        undefined,
+        undefined,
+      );
+    }
     showToast("Category deleted", "success");
   };
 

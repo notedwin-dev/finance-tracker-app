@@ -16,6 +16,7 @@ const CategoryManager: React.FC<Props> = ({
   onDelete,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("🏷️");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -110,20 +111,25 @@ const CategoryManager: React.FC<Props> = ({
     setBudgetPeriod("MONTHLY");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name || isSubmitting) return;
 
-    onSave({
-      id: editingId || crypto.randomUUID(),
-      name,
-      icon,
-      color,
-      budgetLimit: parseFloat(budgetLimit) || 0,
-      budgetPeriod,
-    });
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        id: editingId || crypto.randomUUID(),
+        name,
+        icon,
+        color,
+        budgetLimit: parseFloat(budgetLimit) || 0,
+        budgetPeriod,
+      });
 
-    handleCancelEdit();
+      handleCancelEdit();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -238,10 +244,18 @@ const CategoryManager: React.FC<Props> = ({
 
             <button
               type="submit"
-              disabled={!name}
-              className="w-full bg-primary hover:bg-primary-hover text-white py-2.5 sm:py-3 rounded-lg font-bold transition-all shadow-lg active:scale-95 text-sm"
+              disabled={!name || isSubmitting}
+              className={`w-full py-2.5 sm:py-3 rounded-lg font-bold transition-all shadow-lg active:scale-95 text-sm ${
+                isSubmitting
+                  ? "bg-gray-600 cursor-not-allowed"
+                  : "bg-primary hover:bg-primary-hover text-white"
+              }`}
             >
-              {editingId ? "Update Category" : "Add Category"}
+              {isSubmitting
+                ? "Saving..."
+                : editingId
+                  ? "Update Category"
+                  : "Add Category"}
             </button>
           </form>
 

@@ -194,8 +194,15 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
       }
     }
 
-    // Multi-user Safe Sync:
-    // 1. Fetch ALL existing data
+    // Optimization: If it's a small dataset, just write it.
+    // If it's a large dataset (like Transactions), we might want to be smarter,
+    // but the most efficient way to maintain multi-user consistency is still
+    // fetching existing data once and merging locally.
+
+    // To speed up: We'll skip the 'clear' call and use 'update' with a range that overwrites.
+    // If the new data is shorter, we'll clear ONLY the remaining rows.
+
+    // 1. Fetch ALL existing data (still needed for multi-user merge)
     let existingData: any[] = [];
     const res = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
@@ -203,8 +210,10 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
       valueRenderOption: "UNFORMATTED_VALUE",
     });
 
-    const rows = res.result.values;
-    if (rows && rows.length > 1) {
+    const rows = res.result.values || [];
+    const totalExistingRows = rows.length;
+
+    if (totalExistingRows > 1) {
       const headers = rows[0] as string[];
       const dataRows = rows.slice(1);
       existingData = dataRows.map((row: any[]) => {
@@ -234,27 +243,19 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
     let otherUsersData: any[] = [];
     if (targetUserId) {
       otherUsersData = existingData.filter((d) => {
-        // Shared categories (id starts with 'c' followed by digits) are GLOBAL
         const isDefaultCat = sheetName === "Categories" && /^c\d+$/.test(d.id);
-        if (isDefaultCat) return false; // Exclude from "otherUsersData" so they merge as singletons
-
+        if (isDefaultCat) return false;
         return d.userId !== targetUserId;
       });
     } else {
       otherUsersData = existingData;
     }
 
-    // 3. Merge and Deduplicate by ID
-    // We use a Map to ensure each ID only appears once in the final save.
-    // We prioritize the NEW data (the 'data' parameter) over existing data.
+    // 3. Merge
     const mergedMap = new Map<string, any>();
-
-    // Add existing data from other users first
     otherUsersData.forEach((item) => {
       if (item.id) mergedMap.set(item.id, item);
     });
-
-    // Add/Overwrite with current user's data
     data.forEach((item) => {
       if (item.id) mergedMap.set(item.id, item);
     });
@@ -262,17 +263,17 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
     const combinedData = Array.from(mergedMap.values());
 
     if (combinedData.length === 0) {
-      // Clear the sheet if empty data
-      await window.gapi.client.sheets.spreadsheets.values.clear({
-        spreadsheetId: fileId,
-        range: `'${sheetName}'!A:Z`,
-      });
+      if (totalExistingRows > 0) {
+        await window.gapi.client.sheets.spreadsheets.values.clear({
+          spreadsheetId: fileId,
+          range: `'${sheetName}'!A:Z`,
+        });
+      }
       return;
     }
 
     // Generate headers from the first item
     const headers = Object.keys(combinedData[0]);
-
     const rowsToUpdate = combinedData.map((item) => {
       return headers.map((header) => {
         const val = item[header];
@@ -285,19 +286,22 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 
     const values = [headers, ...rowsToUpdate];
 
-    // Clear content first
-    await window.gapi.client.sheets.spreadsheets.values.clear({
-      spreadsheetId: fileId,
-      range: `'${sheetName}'!A:Z`,
-    });
-
-    // Write new data
+    // Write new data starting from A1
     await window.gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: fileId,
       range: `'${sheetName}'!A1`,
       valueInputOption: "USER_ENTERED",
       resource: { values },
     });
+
+    // If new data is shorter than old data, clear the bottom rows
+    if (totalExistingRows > values.length) {
+      await window.gapi.client.sheets.spreadsheets.values.clear({
+        spreadsheetId: fileId,
+        range: `'${sheetName}'!A${values.length + 1}:Z${totalExistingRows}`,
+      });
+    }
+
     console.log(`Saved ${sheetName} to Google Sheets`);
   } catch (err: any) {
     if (err?.status === 401) {
@@ -359,22 +363,22 @@ export const insertOne = async (sheetName: string, item: any) => {
 };
 
 export const syncWithGoogleSheets = async (
-  accounts: Account[],
-  transactions: Transaction[],
-  categories: Category[],
-  goals: Goal[],
-  subscriptions: Subscription[] = [],
-  pots: Pot[] = [],
+  accounts?: Account[],
+  transactions?: Transaction[],
+  categories?: Category[],
+  goals?: Goal[],
+  subscriptions?: Subscription[],
+  pots?: Pot[],
 ) => {
-  // Sync in parallel
-  await Promise.all([
-    saveToSheet("Accounts", accounts),
-    saveToSheet("Transactions", transactions),
-    saveToSheet("Categories", categories),
-    saveToSheet("Goals", goals),
-    saveToSheet("Subscriptions", subscriptions),
-    saveToSheet("Pots", pots),
-  ]);
+  const tasks = [];
+  if (accounts) tasks.push(saveToSheet("Accounts", accounts));
+  if (transactions) tasks.push(saveToSheet("Transactions", transactions));
+  if (categories) tasks.push(saveToSheet("Categories", categories));
+  if (goals) tasks.push(saveToSheet("Goals", goals));
+  if (subscriptions) tasks.push(saveToSheet("Subscriptions", subscriptions));
+  if (pots) tasks.push(saveToSheet("Pots", pots));
+
+  await Promise.all(tasks);
 };
 
 // Helper to convert Google Sheets serial date number to YYYY-MM-DD string

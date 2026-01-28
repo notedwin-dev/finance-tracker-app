@@ -38,6 +38,7 @@ const AccountForm: React.FC<Props> = ({
   const [expiry, setExpiry] = useState("");
   const [cvv, setCvv] = useState("");
   const [note, setNote] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleBalanceChange = (val: string) => {
     if (!val) {
@@ -165,28 +166,35 @@ const AccountForm: React.FC<Props> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      id: editingId || crypto.randomUUID(),
-      name,
-      balance: parseFloat(balance) || 0,
-      currency,
-      type,
-      color: "bg-gradient-to-br from-gray-800 to-gray-900",
-      iconType,
-      iconValue,
-      providerId: selectedProviderId || undefined,
-      details: {
-        accountNumber,
-        cardNumber,
-        holderName,
-        expiry,
-        cvv,
-        note,
-      },
-    });
-    onClose();
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        id: editingId || crypto.randomUUID(),
+        name,
+        balance: parseFloat(balance) || 0,
+        currency,
+        type,
+        color: "bg-gradient-to-br from-gray-800 to-gray-900",
+        iconType,
+        iconValue,
+        providerId: selectedProviderId || undefined,
+        details: {
+          accountNumber,
+          cardNumber,
+          holderName,
+          expiry,
+          cvv,
+          note,
+        },
+      });
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -442,9 +450,18 @@ const AccountForm: React.FC<Props> = ({
         <div className="p-5 border-t border-gray-800 space-y-3">
           <button
             onClick={handleSubmit}
-            className="w-full bg-primary hover:bg-primaryDark text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+            disabled={isSubmitting}
+            className={`w-full text-white font-bold py-3 rounded-xl transition-all shadow-lg ${
+              isSubmitting
+                ? "bg-gray-600 cursor-not-allowed"
+                : "bg-primary hover:bg-primaryDark shadow-indigo-500/20"
+            }`}
           >
-            {editingId ? "Update Asset" : "Add Asset"}
+            {isSubmitting
+              ? "Saving..."
+              : editingId
+                ? "Update Asset"
+                : "Add Asset"}
           </button>
           {editingId && onDelete && (
             <button

@@ -40,6 +40,7 @@ export interface Category {
   budgetPeriod?: "WEEKLY" | "MONTHLY";
   color: string;
   updatedAt?: number;
+  isDefault?: boolean;
 }
 
 export interface Transaction {

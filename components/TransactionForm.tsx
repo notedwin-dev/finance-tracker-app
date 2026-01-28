@@ -68,6 +68,7 @@ const TransactionForm: React.FC<Props> = ({
       : new Date().toISOString().split("T")[0],
   );
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Auto-decimal with manual "." support
   const handleAmountChange = (val: string) => {
@@ -125,8 +126,10 @@ const TransactionForm: React.FC<Props> = ({
     (selectedPot.currentAmount <= 0 ||
       selectedPot.currentAmount / selectedPot.targetAmount <= 0.1);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setValidationError(null);
 
     const missingFields: string[] = [];
@@ -153,20 +156,27 @@ const TransactionForm: React.FC<Props> = ({
       return;
     }
 
-    onSubmit({
-      accountId,
-      potId: potId || undefined,
-      toAccountId: type === TransactionType.TRANSFER ? toAccountId : undefined,
-      amount: Math.abs(parseFloat(amount)),
-      currency,
-      type,
-      categoryId:
-        type === TransactionType.EXPENSE || type === TransactionType.INCOME
-          ? categoryId
-          : undefined,
-      shopName,
-      date,
-    });
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        accountId,
+        potId: potId || undefined,
+        toAccountId:
+          type === TransactionType.TRANSFER ? toAccountId : undefined,
+        amount: Math.abs(parseFloat(amount)),
+        currency,
+        type,
+        categoryId:
+          type === TransactionType.EXPENSE || type === TransactionType.INCOME
+            ? categoryId
+            : undefined,
+        shopName,
+        date,
+      });
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -412,9 +422,14 @@ const TransactionForm: React.FC<Props> = ({
           )}
           <button
             onClick={handleSubmit}
-            className="w-full bg-primary hover:bg-primaryDark text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-900/20 transition-all active:scale-[0.98]"
+            disabled={isSubmitting}
+            className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] ${
+              isSubmitting
+                ? "bg-gray-600 cursor-not-allowed"
+                : "bg-primary hover:bg-primaryDark shadow-indigo-900/20"
+            }`}
           >
-            Save Record
+            {isSubmitting ? "Saving..." : "Save Record"}
           </button>
         </div>
       </div>

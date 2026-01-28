@@ -33,6 +33,7 @@ const Goals: React.FC<Props> = ({
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showPotModal, setShowPotModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Pot form state
   const [potName, setPotName] = useState("");
@@ -95,47 +96,62 @@ const Goals: React.FC<Props> = ({
     setShowPotModal(true);
   };
 
-  const handlePotSubmit = (e: React.FormEvent) => {
+  const handlePotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSavePot({
-      id: editingId || Date.now().toString(),
-      name: potName,
-      accountId: potAccountId,
-      targetAmount: parseFloat(potTarget),
-      currentAmount: parseFloat(potCurrent) || 0,
-      currency: accounts.find((a) => a.id === potAccountId)?.currency || "MYR",
-      icon: "💰",
-      color: "bg-primary",
-      updatedAt: Date.now(),
-    });
-    setPotName("");
-    setPotAccountId("");
-    setPotTarget("");
-    setPotCurrent("");
-    setEditingId(null);
-    setShowPotModal(false);
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSavePot({
+        id: editingId || Date.now().toString(),
+        name: potName,
+        accountId: potAccountId,
+        targetAmount: parseFloat(potTarget),
+        currentAmount: parseFloat(potCurrent) || 0,
+        currency:
+          accounts.find((a) => a.id === potAccountId)?.currency || "MYR",
+        icon: "💰",
+        color: "bg-primary",
+        updatedAt: Date.now(),
+      });
+      setPotName("");
+      setPotAccountId("");
+      setPotTarget("");
+      setPotCurrent("");
+      setEditingId(null);
+      setShowPotModal(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleGoalSubmit = (e: React.FormEvent) => {
+  const handleGoalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onAddGoal({
-      id: editingId || Date.now().toString(),
-      name: goalName,
-      targetAmount: parseFloat(goalTarget),
-      currentAmount: 0,
-      deadline: goalDeadline,
-      currency: "MYR",
-      type: (goalCategory as any) || "SHORT_TERM",
-      icon: "🎯",
-      color: "bg-primary",
-      updatedAt: Date.now(),
-    });
-    setGoalName("");
-    setGoalTarget("");
-    setGoalDeadline("");
-    setGoalCategory("");
-    setEditingId(null);
-    setShowGoalModal(false);
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onAddGoal({
+        id: editingId || Date.now().toString(),
+        name: goalName,
+        targetAmount: parseFloat(goalTarget),
+        currentAmount: 0,
+        deadline: goalDeadline,
+        currency: "MYR",
+        type: (goalCategory as any) || "SHORT_TERM",
+        icon: "🎯",
+        color: "bg-primary",
+        updatedAt: Date.now(),
+      });
+      setGoalName("");
+      setGoalTarget("");
+      setGoalDeadline("");
+      setGoalCategory("");
+      setEditingId(null);
+      setShowGoalModal(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getAccountName = (id: string) =>
@@ -431,9 +447,18 @@ const Goals: React.FC<Props> = ({
               <div className="flex gap-3 pt-4 shrink-0">
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 sm:py-4 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm"
+                  disabled={isSubmitting}
+                  className={`flex-1 text-white font-bold py-3 sm:py-4 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm ${
+                    isSubmitting
+                      ? "bg-gray-600 cursor-not-allowed"
+                      : "bg-primary hover:bg-primary-hover"
+                  }`}
                 >
-                  {editingId ? "Update Pot" : "Create Pot"}
+                  {isSubmitting
+                    ? "Saving..."
+                    : editingId
+                      ? "Update Pot"
+                      : "Create Pot"}
                 </button>
               </div>
             </form>
@@ -540,9 +565,18 @@ const Goals: React.FC<Props> = ({
               <div className="flex gap-3 pt-4 shrink-0">
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 sm:py-4 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm"
+                  disabled={isSubmitting}
+                  className={`flex-1 text-white font-bold py-3 sm:py-4 rounded-xl transition-all shadow-lg active:scale-[0.98] text-sm ${
+                    isSubmitting
+                      ? "bg-gray-600 cursor-not-allowed"
+                      : "bg-primary hover:bg-primary-hover"
+                  }`}
                 >
-                  {editingId ? "Update Goal" : "Create Goal"}
+                  {isSubmitting
+                    ? "Saving..."
+                    : editingId
+                      ? "Update Goal"
+                      : "Create Goal"}
                 </button>
               </div>
             </form>

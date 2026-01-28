@@ -1,7 +1,11 @@
 import React, { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../services/auth.services";
-import { CloudArrowUpIcon } from "@heroicons/react/24/outline";
+import {
+  CloudArrowUpIcon,
+  MagnifyingGlassCircleIcon,
+  ShieldCheckIcon,
+} from "@heroicons/react/24/outline";
 
 import zenLogo from "../images/ZenFinance.svg";
 import neuralVault from "../images/neural-vault.png";
@@ -84,7 +88,7 @@ const LandingPage: React.FC = () => {
             <img
               src={neuralVault}
               alt="AI Visual"
-              className="w-64 h-64 object-contain opacity-80 group-hover:opacity-100 transition-opacity"
+              className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
             />
           </div>
         </div>
@@ -106,12 +110,12 @@ const LandingPage: React.FC = () => {
           <div className="grid md:grid-cols-3 gap-8 text-center sm:text-left">
             {[
               {
-                img: shieldImg,
+                icon: ShieldCheckIcon,
                 title: "Data Sovereignty",
                 desc: "Your data is stored in your personal Google Sheet. You own it forever. We never see it.",
               },
               {
-                img: neuralVault,
+                icon: MagnifyingGlassCircleIcon,
                 title: "AI Insights",
                 desc: "Get personalized financial advice from Gemini 2.0 Flash based on your real spending habits.",
               },
@@ -125,15 +129,8 @@ const LandingPage: React.FC = () => {
                 key={i}
                 className="p-8 bg-background border border-gray-800 rounded-3xl hover:border-primary/50 transition-colors group"
               >
-                {feature.img ? (
-                  <img
-                    src={feature.img}
-                    alt={feature.title}
-                    className="w-12 h-12 mb-6 group-hover:scale-110 transition-transform object-contain"
-                  />
-                ) : (
-                  <feature.icon className="w-12 h-12 text-primary mb-6 group-hover:scale-110 transition-transform" />
-                )}
+                <feature.icon className="w-12 h-12 text-primary mb-6 group-hover:scale-110 transition-transform" />
+
                 <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
                 <p className="text-gray-400 leading-relaxed text-sm">
                   {feature.desc}

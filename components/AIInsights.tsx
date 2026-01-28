@@ -23,6 +23,7 @@ import {
   ChatBubbleLeftRightIcon,
   Bars3Icon,
 } from "@heroicons/react/24/outline";
+import neuralVault from "../images/neural-vault.png";
 
 interface Props {
   accounts: Account[];
@@ -298,8 +299,12 @@ const AIInsights: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
           {!activeSession && !loading && (
             <div className="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-8 animate-slideUp">
-              <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center rotate-3">
-                <SparklesIcon className="w-10 h-10 text-primary" />
+              <div className="w-32 h-32 bg-primary/10 rounded-[2rem] flex items-center justify-center rotate-3 overflow-hidden border border-white/5 shadow-2xl">
+                <img
+                  src={neuralVault}
+                  alt="AI Assistant"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div>
                 <h3 className="text-2xl font-black text-white mb-2">

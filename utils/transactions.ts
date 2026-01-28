@@ -10,11 +10,20 @@ export const groupTransactions = (
   const grouped: GroupedTransaction[] = [];
   const processedIds = new Set<string>();
 
-  // Ensure transactions are sorted by date/time (newest first) usually
-  // But we trust the input order for now or sort it if needed.
-  // Assuming input is already sorted or we process in order.
+  // Sort transactions by date, time, and createdAt (Newest first)
+  const sorted = [...transactions].sort((a, b) => {
+    const dateA = normalizeDate(a.date);
+    const dateB = normalizeDate(b.date);
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
 
-  for (const t of transactions) {
+    const timeA = a.time || "";
+    const timeB = b.time || "";
+    if (timeA !== timeB) return timeB.localeCompare(timeA);
+
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+
+  for (const t of sorted) {
     if (processedIds.has(t.id)) continue;
 
     if (t.linkedTransactionId && t.type === TransactionType.TRANSFER) {

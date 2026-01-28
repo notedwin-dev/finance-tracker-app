@@ -69,11 +69,13 @@ const toYMD = (dateInput: string | number | undefined): string => {
 interface Props {
   transactions: Transaction[];
   currentTotal?: number;
+  usdRate?: number;
 }
 
 export const NetWorthChart: React.FC<Props> = ({
   transactions,
   currentTotal = 0,
+  usdRate = 4.5,
 }) => {
   const chartData = useMemo(() => {
     if (transactions.length === 0) return { labels: [], datasets: [] };
@@ -116,7 +118,7 @@ export const NetWorthChart: React.FC<Props> = ({
         effect = -t.amount;
       }
 
-      if (t.currency === "USD") effect *= 4.5;
+      if (t.currency === "USD") effect *= usdRate;
       dailyEffects.set(date, (dailyEffects.get(date) || 0) + effect);
     });
 

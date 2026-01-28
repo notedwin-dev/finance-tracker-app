@@ -195,6 +195,81 @@ const getSheetNames = async (
   }
 };
 
+export const findUser = async (email: string) => {
+  if (!gapiInited || !hasAccessToken) return null;
+  try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return null;
+
+    const res = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: "'Users'!A:Z",
+    });
+
+    const rows = res.result.values || [];
+    if (rows.length <= 1) return null;
+
+    const headers = rows[0];
+    const emailIdx = headers.indexOf("email");
+    if (emailIdx === -1) return null;
+
+    const userRow = rows.find((row: any[]) => row[emailIdx] === email);
+    if (!userRow) return null;
+
+    const user: any = {};
+    headers.forEach((h: string, i: number) => (user[h] = userRow[i]));
+    return user;
+  } catch (e) {
+    return null;
+  }
+};
+
+export const createUser = async (userData: any) => {
+  if (!gapiInited || !hasAccessToken) return false;
+  try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return false;
+
+    // Ensure sheet exists
+    const sheets = await getSheetNames(fileId);
+    if (!sheets?.includes("Users")) {
+      await window.gapi.client.sheets.spreadsheets.batchUpdate({
+        spreadsheetId: fileId,
+        resource: {
+          requests: [{ addSheet: { properties: { title: "Users" } } }],
+        },
+      });
+      // Add headers
+      await window.gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId: fileId,
+        range: "'Users'!A1:D1",
+        valueInputOption: "RAW",
+        resource: { values: [["email", "password", "name", "createdAt"]] },
+      });
+    }
+
+    await window.gapi.client.sheets.spreadsheets.values.append({
+      spreadsheetId: fileId,
+      range: "'Users'!A:D",
+      valueInputOption: "RAW",
+      resource: {
+        values: [
+          [
+            userData.email,
+            userData.password,
+            userData.name,
+            new Date().toISOString(),
+          ],
+        ],
+      },
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to create user", e);
+    return false;
+  }
+};
+
 export const saveToSheet = async (sheetName: string, data: any[]) => {
   if (!gapiInited || !hasAccessToken) return;
 
@@ -296,15 +371,20 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
       return;
     }
 
-    // Generate headers from the first item
-    const headers = Object.keys(combinedData[0]);
+    // Generate headers from all items to ensure no fields are lost (migration support)
+    const headerSet = new Set<string>();
+    combinedData.forEach((item) => {
+      Object.keys(item).forEach((key) => headerSet.add(key));
+    });
+    const headers = Array.from(headerSet);
+
     const rowsToUpdate = combinedData.map((item) => {
       return headers.map((header) => {
         const val = item[header];
         if (typeof val === "object" && val !== null) {
           return JSON.stringify(val);
         }
-        return val;
+        return val ?? "";
       });
     });
 
@@ -522,6 +602,9 @@ export const syncWithGoogleSheets = async (
 // Helper to convert Google Sheets serial date number to YYYY-MM-DD string
 const fromSerialDate = (serial: number | any): string => {
   if (typeof serial !== "number") return String(serial || "");
+  // If it's a large number, it's definitely a timestamp (Date.now()) or ID, not a serial date
+  if (serial > 100000) return String(serial);
+
   // Excel/Sheets base date is Dec 30, 1899 in UTC
   const baseDate = Date.UTC(1899, 11, 30);
   const d = new Date(baseDate + serial * 24 * 60 * 60 * 1000);
@@ -530,6 +613,16 @@ const fromSerialDate = (serial: number | any): string => {
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+};
+
+const fromSerialTime = (serial: number | any): string => {
+  if (typeof serial !== "number") return String(serial || "");
+  // Time is a fraction of a day
+  const fraction = serial % 1;
+  const totalSeconds = Math.round(fraction * 24 * 3600);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 };
 
 export const loadFromGoogleSheets = async (): Promise<{
@@ -595,6 +688,10 @@ export const loadFromGoogleSheets = async (): Promise<{
             // Special handling for Google Sheets Serial Dates (Numbers in the 'date' column)
             if (header === "date" && typeof val === "number") {
               val = fromSerialDate(val);
+            }
+
+            if (header === "time" && typeof val === "number") {
+              val = fromSerialTime(val);
             }
 
             // Basic check if it's a stringified object/array

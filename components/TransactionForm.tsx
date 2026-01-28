@@ -67,6 +67,9 @@ const TransactionForm: React.FC<Props> = ({
       ? initialTransaction.date
       : new Date().toISOString().split("T")[0],
   );
+  const [time, setTime] = useState(
+    initialTransaction ? initialTransaction.time || "" : "",
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -172,6 +175,8 @@ const TransactionForm: React.FC<Props> = ({
             : undefined,
         shopName,
         date,
+        time: time || undefined,
+        createdAt: initialTransaction?.createdAt || Date.now(),
       });
       onClose();
     } finally {
@@ -400,17 +405,30 @@ const TransactionForm: React.FC<Props> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">
-              Date
-            </label>
-            <input
-              type="date"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Time (Optional)
+              </label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
+              />
+            </div>
           </div>
         </form>
 

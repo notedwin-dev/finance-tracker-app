@@ -39,11 +39,14 @@ import {
   NetWorthChart,
 } from "./components/Charts";
 import { groupTransactions, normalizeDate } from "./utils/transactions";
+import { AuthScreen } from "./components/AuthScreen";
+import { getUSDToMYRRate } from "./services/exchange";
 
 type Tab = "DASHBOARD" | "HISTORY" | "GOALS" | "PROFILE";
 
 const App: React.FC = () => {
-  const { profile, login, logout, updateProfile, isInitialized } = useAuth();
+  const { profile, loginWithGoogle, logout, updateProfile, isInitialized } =
+    useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("DASHBOARD");
 
   // Modals
@@ -73,6 +76,7 @@ const App: React.FC = () => {
 
   // Sync State
   const [isSyncing, setIsSyncing] = useState(false);
+  const [usdRate, setUsdRate] = useState<number>(4.5);
 
   const loadData = () => {
     setAccounts(StorageService.getStoredAccounts());
@@ -122,6 +126,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    getUSDToMYRRate().then(setUsdRate);
   }, [profile.id]);
 
   const processSubscriptions = (
@@ -156,6 +161,7 @@ const App: React.FC = () => {
           categoryId: sub.categoryId,
           shopName: sub.name + " (Subscription)",
           date: txDate,
+          createdAt: Date.now(),
           updatedAt: Date.now(),
         };
         newTxs.push(newTx);
@@ -279,7 +285,7 @@ const App: React.FC = () => {
         console.warn("Sync skipped: GAPI client still not ready");
         // If the user manually clicked sync, we should prompt login
         showToast("Session expired. Please sign in again.", "info");
-        login(); // Trigger the Google Login popup
+        loginWithGoogle(); // Trigger the Google Login popup
         setIsSyncing(false);
         return;
       }
@@ -475,6 +481,7 @@ const App: React.FC = () => {
           type: diff > 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
           shopName: "Balance Adjustment",
           date: todayStr,
+          createdAt: Date.now(),
           updatedAt: Date.now(),
           categoryId: "system-adjustment", // Special marker
         };
@@ -495,6 +502,7 @@ const App: React.FC = () => {
           type: TransactionType.ACCOUNT_OPENING,
           shopName: acc.name,
           date: todayStr,
+          createdAt: Date.now(),
           updatedAt: Date.now(),
           categoryId: "system-init", // We might map this to a real category ID or leave it
         };
@@ -565,6 +573,7 @@ const App: React.FC = () => {
         type: TransactionType.ACCOUNT_DELETE,
         shopName: `${name} (Deleted)`,
         date: todayStr,
+        createdAt: Date.now(),
         updatedAt: Date.now(),
         categoryId: "system-deletion",
       };
@@ -637,10 +646,19 @@ const App: React.FC = () => {
           if (tx.potId) {
             const pIdx = currentPots.findIndex((p) => p.id === tx.potId);
             if (pIdx !== -1) {
-              const isPositive = tx.type === TransactionType.INCOME;
-              if (isPositive) currentPots[pIdx].currentAmount -= tx.amount;
-              else currentPots[pIdx].currentAmount += tx.amount;
-              currentPots[pIdx].updatedAt = Date.now();
+              const pot = currentPots[pIdx];
+              if (pot.accountId === tx.accountId) {
+                const isPositive =
+                  tx.type === TransactionType.INCOME ||
+                  (tx.type === TransactionType.TRANSFER &&
+                    tx.transferDirection === "IN") ||
+                  tx.type === TransactionType.ACCOUNT_OPENING ||
+                  (tx.type === TransactionType.ADJUSTMENT && tx.amount >= 0);
+
+                if (isPositive) currentPots[pIdx].currentAmount -= tx.amount;
+                else currentPots[pIdx].currentAmount += tx.amount;
+                currentPots[pIdx].updatedAt = Date.now();
+              }
             }
           }
         }
@@ -730,12 +748,27 @@ const App: React.FC = () => {
       if (tx.potId) {
         const pIdx = newPots.findIndex((p) => p.id === tx.potId);
         if (pIdx !== -1) {
-          if (tx.type === TransactionType.EXPENSE) {
-            newPots[pIdx].currentAmount -= tx.amount;
-          } else if (tx.type === TransactionType.INCOME) {
-            newPots[pIdx].currentAmount += tx.amount;
+          const pot = newPots[pIdx];
+          // Only update the pot if it belongs to the account currently being processed
+          if (pot.accountId === tx.accountId) {
+            if (
+              tx.type === TransactionType.EXPENSE ||
+              (tx.type === TransactionType.TRANSFER &&
+                tx.transferDirection === "OUT") ||
+              (tx.type === TransactionType.ADJUSTMENT && tx.amount < 0)
+            ) {
+              newPots[pIdx].currentAmount -= tx.amount;
+            } else if (
+              tx.type === TransactionType.INCOME ||
+              (tx.type === TransactionType.TRANSFER &&
+                tx.transferDirection === "IN") ||
+              tx.type === TransactionType.ACCOUNT_OPENING ||
+              (tx.type === TransactionType.ADJUSTMENT && tx.amount >= 0)
+            ) {
+              newPots[pIdx].currentAmount += tx.amount;
+            }
+            newPots[pIdx].updatedAt = Date.now();
           }
-          newPots[pIdx].updatedAt = Date.now();
         }
       }
     });
@@ -838,10 +871,19 @@ const App: React.FC = () => {
         if (tx.potId) {
           const pIdx = currentPots.findIndex((p) => p.id === tx.potId);
           if (pIdx !== -1) {
-            const isPositive = tx.type === TransactionType.INCOME;
-            if (isPositive) currentPots[pIdx].currentAmount -= tx.amount;
-            else currentPots[pIdx].currentAmount += tx.amount;
-            currentPots[pIdx].updatedAt = Date.now();
+            const pot = currentPots[pIdx];
+            if (pot.accountId === tx.accountId) {
+              const isPositive =
+                tx.type === TransactionType.INCOME ||
+                (tx.type === TransactionType.TRANSFER &&
+                  tx.transferDirection === "IN") ||
+                tx.type === TransactionType.ACCOUNT_OPENING ||
+                (tx.type === TransactionType.ADJUSTMENT && tx.amount >= 0);
+
+              if (isPositive) currentPots[pIdx].currentAmount -= tx.amount;
+              else currentPots[pIdx].currentAmount += tx.amount;
+              currentPots[pIdx].updatedAt = Date.now();
+            }
           }
         }
       }
@@ -1144,19 +1186,38 @@ const App: React.FC = () => {
   // Calculations for Dashboard
   const totalBalanceMYR = accounts.reduce((sum, a) => {
     let val = a.balance;
-    if (a.currency === "USD") val = val * 4.5;
+    if (a.currency === "USD") val = val * usdRate;
     return sum + val;
   }, 0);
 
-  // Goal Progress Calculations
-  const totalGoalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+  // Goal Progress Calculations (Convert to MYR for dashboard)
+  const totalGoalTarget = goals.reduce((sum, g) => {
+    let val = g.targetAmount;
+    if (g.currency === "USD") val *= usdRate;
+    return sum + val;
+  }, 0);
+
   const totalGoalSaved = goals.reduce((sum, g) => {
+    let savedVal = 0;
     if (g.linkedAccountId) {
       const acc = accounts.find((a) => a.id === g.linkedAccountId);
-      return sum + (acc ? acc.balance : 0);
+      savedVal = acc ? acc.balance : 0;
+      // Convert acc balance to goal currency if different?
+      // Actually the dashboard sum should be MYR.
+      if (acc && acc.currency === "USD") savedVal *= usdRate;
+      else if (acc && acc.currency === "MYR" && g.currency === "USD") {
+        // This case is unlikely if we want MYR sum, but let's be consistent.
+      }
+    } else {
+      savedVal = g.currentAmount;
+      if (g.currency === "USD") savedVal *= usdRate;
     }
-    return sum + g.currentAmount;
+    return sum + savedVal;
   }, 0);
+
+  if (!profile.isLoggedIn) {
+    return <AuthScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-background text-gray-100 font-sans flex justify-center">
@@ -1398,6 +1459,7 @@ const App: React.FC = () => {
                   <NetWorthChart
                     transactions={transactions}
                     currentTotal={totalBalanceMYR}
+                    usdRate={usdRate}
                   />
                 </div>
                 <div className="col-span-1 h-80">
@@ -1486,7 +1548,7 @@ const App: React.FC = () => {
           {activeTab === "PROFILE" && (
             <Profile
               profile={profile}
-              onLogin={login}
+              onLogin={loginWithGoogle}
               onLogout={handleLogout}
               onUpdate={updateProfile}
               onManageCategories={() => setShowCategoryManager(true)}

@@ -49,10 +49,20 @@ const History: React.FC<Props> = ({
     );
   }
 
-  // 1. Sort transactions by date descending (Newest first)
-  const sortedTransactions = [...transactions].sort((a, b) =>
-    normalizeDate(b.date).localeCompare(normalizeDate(a.date)),
-  );
+  // 1. Sort transactions by date and time (Newest first)
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const dateA = normalizeDate(a.date);
+    const dateB = normalizeDate(b.date);
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
+
+    // If dates are equal, sort by time (HH:mm)
+    const timeA = a.time || "";
+    const timeB = b.time || "";
+    if (timeA !== timeB) return timeB.localeCompare(timeA);
+
+    // If times are equal (or missing), sort by createdAt
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
 
   // Group grouped transactions first, then by date
   const groupedList = groupTransactions(sortedTransactions);
@@ -138,10 +148,17 @@ const History: React.FC<Props> = ({
                         : getCategoryIcon(t.categoryId)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-white text-[15px] leading-tight truncate">
-                      {t.shopName ||
-                        (t.linkedTransaction ? "Transfer" : "Untitled")}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-white text-[15px] leading-tight truncate">
+                        {t.shopName ||
+                          (t.linkedTransaction ? "Transfer" : "Untitled")}
+                      </p>
+                      {t.time && (
+                        <span className="text-[10px] text-gray-500 font-medium bg-white/5 px-1.5 py-0.5 rounded">
+                          {t.time}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 mt-1 min-w-0">
                       <span className="flex-shrink-0 text-[9px] font-bold text-gray-500 uppercase bg-white/5 px-1.5 py-0.5 rounded">
                         {t.currency}

@@ -53,7 +53,9 @@ export interface Transaction {
   type: TransactionType;
   categoryId?: string;
   shopName: string;
-  date: string; // ISO String
+  date: string; // ISO String (YYYY-MM-DD or full ISO)
+  time?: string; // Optional time (HH:mm)
+  createdAt: number; // For sorting and conflict resolution
   note?: string;
   updatedAt?: number;
   linkedTransactionId?: string; // For split transfers

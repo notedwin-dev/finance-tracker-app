@@ -3,10 +3,13 @@ import { useGoogleLogin } from "@react-oauth/google";
 import * as SheetService from "./sheets";
 import * as StorageService from "./storage";
 import { UserProfile } from "../types";
+import { hashPassword, verifyPassword } from "./crypto";
 
 interface AuthContextType {
   profile: UserProfile;
-  login: () => void;
+  loginWithGoogle: () => void;
+  emailLogin: (email: string, pass: string) => Promise<void>;
+  emailSignup: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => void;
   updateProfile: (updates: Partial<UserProfile>) => void;
   isInitialized: boolean;
@@ -32,172 +35,121 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const savedToken = localStorage.getItem("google_access_token");
       const savedExpiry = localStorage.getItem("google_token_expiry");
       if (savedToken) {
-        const expiresIn = savedExpiry
-          ? (parseInt(savedExpiry) - Date.now()) / 1000
-          : undefined;
-        SheetService.setGapiAccessToken(savedToken, expiresIn);
+        const expiresAt = savedExpiry ? parseInt(savedExpiry) : 0;
+        const now = Date.now();
+        if (now < expiresAt - 300000) {
+          // Valid for at least 5 mins
+          SheetService.setGapiAccessToken(savedToken, (expiresAt - now) / 1000);
+        }
       }
       setIsInitialized(true);
     });
   }, []);
 
-  const loginFlow = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      // 1. Set Access Token for Sheets API
-      SheetService.setGapiAccessToken(
-        tokenResponse.access_token,
-        tokenResponse.expires_in,
+  const handleGoogleSuccess = async (tokenResponse: any) => {
+    const expiresAt = Date.now() + tokenResponse.expires_in * 1000;
+    SheetService.setGapiAccessToken(
+      tokenResponse.access_token,
+      tokenResponse.expires_in,
+    );
+    localStorage.setItem("google_access_token", tokenResponse.access_token);
+    localStorage.setItem("google_token_expiry", expiresAt.toString());
+
+    try {
+      const userInfoRes = await fetch(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        },
       );
-      localStorage.setItem("google_access_token", tokenResponse.access_token);
+      const userInfo = await userInfoRes.json();
 
-      // 2. Fetch User Profile Info (optional, using standard Google UserInfo endpoint)
+      SheetService.setSheetUser(userInfo.sub || userInfo.email);
+
+      const newProfile: UserProfile = {
+        ...profile,
+        id: userInfo.sub || userInfo.email,
+        name: userInfo.name,
+        email: userInfo.email,
+        photoUrl: userInfo.picture,
+        isLoggedIn: true,
+      };
+
+      StorageService.saveProfile(newProfile);
+
+      // Attempt migration if guest
       try {
-        const userInfoRes = await fetch(
-          "https://www.googleapis.com/oauth2/v3/userinfo",
-          {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-          },
-        );
-        const userInfo = await userInfoRes.json();
-
-        // Separate Sheet for User
-        SheetService.setSheetUser(userInfo.sub || userInfo.email);
-
-        const newProfile: UserProfile = {
-          ...profile,
-          id: userInfo.sub || userInfo.email,
-          name: userInfo.name,
-          email: userInfo.email,
-          photoUrl: userInfo.picture,
-          isLoggedIn: true,
-        };
-
-        // 1. Save Profile (Critical for StorageService.getKey to work for this user)
-        StorageService.saveProfile(newProfile);
-
-        // 2. MIGRATION: Move any data created while "Logged Out" (Guest) into this account
-        try {
-          // Pass the user ID to migrate Guest data into the user-specific storage
-          await StorageService.migrateLegacyData(newProfile.id!);
-
-          // CRITICAL: After migration, we MUST reload the page or force the app to
-          // re-initialize with the new user-specific keys.
-          window.location.reload();
-          return; // Stop further execution as page is reloading
-        } catch (e) {
-          console.error("Migration failed", e);
-        }
-
-        // 3. Pull latest data from cloud (New Device Login support)
-        try {
-          // Initialize GAPI client if not already (safeguard)
-          if (
-            typeof window.gapi !== "undefined" &&
-            !SheetService.isClientReady()
-          ) {
-            await SheetService.initGapiClient();
-          }
-          // Re-set user and token to be absolutely sure
-          SheetService.setSheetUser(newProfile.id!);
-          SheetService.setGapiAccessToken(tokenResponse.access_token);
-
-          const cloudData = await SheetService.loadFromGoogleSheets();
-          if (cloudData) {
-            // MERGE instead of REPLACE to prevent data loss if cloud is empty
-            const local = {
-              accounts: StorageService.getStoredAccounts(),
-              transactions: StorageService.getStoredTransactions(),
-              categories: StorageService.getStoredCategories(),
-              goals: StorageService.getStoredGoals(),
-              subscriptions: StorageService.getStoredSubscriptions(),
-              pots: StorageService.getStoredPots(),
-            };
-
-            const merge = <T extends { id: string; updatedAt?: number }>(
-              l: T[],
-              c: T[],
-            ): T[] => {
-              const map = new Map<string, T>();
-              c.forEach((i) => map.set(i.id, i));
-              l.forEach((i) => {
-                const cloudItem = map.get(i.id);
-                if (
-                  !cloudItem ||
-                  (i.updatedAt || 0) > (cloudItem.updatedAt || 0)
-                ) {
-                  map.set(i.id, i);
-                }
-              });
-              return Array.from(map.values());
-            };
-
-            StorageService.saveLocalData({
-              accounts: merge(local.accounts, cloudData.accounts),
-              transactions: merge(local.transactions, cloudData.transactions),
-              categories: merge(local.categories, cloudData.categories),
-              goals: merge(local.goals, cloudData.goals),
-              subscriptions: merge(
-                local.subscriptions,
-                cloudData.subscriptions,
-              ),
-              pots: merge(local.pots, cloudData.pots),
-            });
-            console.log("Merged cloud data with local data on login");
-          }
-        } catch (e) {
-          console.warn("Failed to sync data on login", e);
-        }
-
-        // 3. Update State (Triggers App re-render and loadData)
-        setProfile(newProfile);
-      } catch (error) {
-        console.error("Failed to fetch user info", error);
+        await StorageService.migrateLegacyData(newProfile.id!);
+        window.location.reload();
+        return;
+      } catch (e) {
+        console.error("Migration failed", e);
       }
-    },
-    // Adding prompt: 'consent' is usually what causes frequent re-logins.
-    // If we remove it or use default, it might be smoother.
-    // But to truly "Stay Signed In", we should occasionally try a silent re-auth.
+
+      setProfile(newProfile);
+    } catch (error) {
+      console.error("User info fetch failed", error);
+    }
+  };
+
+  const loginWithGoogle = useGoogleLogin({
+    onSuccess: handleGoogleSuccess,
     scope:
       "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
-    onError: (errorResponse) => console.error(errorResponse),
   });
 
-  // Watch for token expiry and potentially warn or refresh
-  useEffect(() => {
-    if (!profile.isLoggedIn) return;
+  const emailLogin = async (email: string, pass: string) => {
+    if (!SheetService.isClientReady()) {
+      throw new Error(
+        "Please connect Google first to access your secure vault.",
+      );
+    }
+    const user = await SheetService.findUser(email);
+    if (!user) throw new Error("Account not found.");
 
-    const checkToken = () => {
-      if (!SheetService.isClientReady()) {
-        console.warn("Session token expired, needs refresh.");
-        // We don't force logout, we just let the UI handle the 'Not Synced' state
-      }
+    const isValid = await verifyPassword(pass, user.password);
+    if (!isValid) throw new Error("Invalid password.");
+
+    const newProfile: UserProfile = {
+      ...profile,
+      id: user.email,
+      name: user.name,
+      email: user.email,
+      isLoggedIn: true,
     };
-
-    const interval = setInterval(checkToken, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [profile.isLoggedIn]);
-
-  const updateProfile = (updates: Partial<UserProfile>) => {
-    const newProfile = { ...profile, ...updates };
-    setProfile(newProfile);
     StorageService.saveProfile(newProfile);
+    setProfile(newProfile);
+    window.location.reload();
+  };
+
+  const emailSignup = async (email: string, pass: string, name: string) => {
+    if (!SheetService.isClientReady()) {
+      throw new Error(
+        "Please connect Google first to initialize your secure vault.",
+      );
+    }
+    const existing = await SheetService.findUser(email);
+    if (existing) throw new Error("Account already exists.");
+
+    const hashedPassword = await hashPassword(pass);
+    const success = await SheetService.createUser({
+      email,
+      password: hashedPassword,
+      name,
+    });
+    if (!success) throw new Error("Failed to write to Google Sheets.");
+    await emailLogin(email, pass);
   };
 
   const logout = () => {
-    // 1. Clear GAPI session
     SheetService.clearGapiAccessToken();
-
-    // 2. Clear profile, but DON'T clear Google session purely if we want to allow 'Switch Account'
     const emptyProfile: UserProfile = {
       name: "",
       email: "",
       isLoggedIn: false,
-      id: undefined,
     };
     setProfile(emptyProfile);
     StorageService.saveProfile(emptyProfile);
-
-    // 3. Force reload to reset all states and clear 'guest' data from memory
     window.location.reload();
   };
 
@@ -205,9 +157,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     <AuthContext.Provider
       value={{
         profile,
-        login: loginFlow,
+        loginWithGoogle,
+        emailLogin,
+        emailSignup,
         logout,
-        updateProfile,
+        updateProfile: (u) => {
+          const p = { ...profile, ...u };
+          setProfile(p);
+          StorageService.saveProfile(p);
+        },
         isInitialized,
       }}
     >
@@ -218,8 +176,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 };

@@ -53,6 +53,14 @@ export const setGapiAccessToken = (accessToken: string) => {
   }
 };
 
+export const clearGapiAccessToken = () => {
+  if (window.gapi && window.gapi.client) {
+    window.gapi.client.setToken(null);
+  }
+  hasAccessToken = false;
+  localStorage.removeItem("google_access_token");
+};
+
 export const isClientReady = () => gapiInited && hasAccessToken;
 
 let currentSheetTitle = "ZenFinance Data";
@@ -411,10 +419,12 @@ export const loadFromGoogleSheets = async (): Promise<{
       } else {
         result[sheet.toLowerCase()] = [];
       }
-    } catch (err) {
-      console.warn(`Could not read ${sheet} as grid`, err);
-      // Fallback: Try reading as JSON blob in A1 just in case?
-      // User requested grid, we assume migration is one-way.
+    } catch (err: any) {
+      if (err?.status === 401) {
+        console.warn("Google Access Token expired, clearing session.");
+        clearGapiAccessToken();
+      }
+      console.warn(`Could not read ${sheet} from cloud`, err);
       result[sheet.toLowerCase()] = [];
     }
   }

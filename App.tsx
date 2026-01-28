@@ -239,10 +239,19 @@ const App: React.FC = () => {
   }, [profile.isLoggedIn, isInitialized]);
 
   const syncData = async () => {
+    if (isSyncing) return;
     setIsSyncing(true);
     try {
       const cloudData = await SheetService.loadFromGoogleSheets();
       if (cloudData) {
+        // Pull current local data from Storage to ensure we aren't using stale state
+        const localAccounts = StorageService.getStoredAccounts();
+        const localTransactions = StorageService.getStoredTransactions();
+        const localCategories = StorageService.getStoredCategories();
+        const localGoals = StorageService.getStoredGoals();
+        const localSubs = StorageService.getStoredSubscriptions();
+        const localPots = StorageService.getStoredPots();
+
         // Merge Logic: Conflict resolution based on updatedAt timestamp
         const merge = <T extends { id: string; updatedAt?: number }>(
           local: T[],
@@ -256,8 +265,6 @@ const App: React.FC = () => {
           local.forEach((i) => {
             if (map.has(i.id)) {
               const cloudItem = map.get(i.id)!;
-              // If local is explicitly newer, overwrite cloud item
-              // If timestamps are equal or missing, we default to maintaining the Cloud version (Server Authority) unless Local has a timestamp and Cloud doesn't.
               const localTime = i.updatedAt || 0;
               const cloudTime = cloudItem.updatedAt || 0;
 
@@ -265,54 +272,62 @@ const App: React.FC = () => {
                 map.set(i.id, i);
               }
             } else {
-              // If not in cloud, it's a new local item (or deleted from cloud? We assume add-only/sync strategy for now, deletions propagate via save)
               map.set(i.id, i);
             }
           });
           return Array.from(map.values());
         };
 
-        const mergedAccounts = merge(accounts, cloudData.accounts);
-        if (mergedAccounts.length > 0 || accounts.length > 0) {
+        const mergedAccounts = merge(localAccounts, cloudData.accounts);
+        if (mergedAccounts.length > 0 || localAccounts.length > 0) {
           setAccounts(mergedAccounts);
           StorageService.saveAccounts(mergedAccounts);
         }
 
-        const mergedTransactions = merge(transactions, cloudData.transactions);
-        if (mergedTransactions.length > 0 || transactions.length > 0) {
+        const mergedTransactions = merge(
+          localTransactions,
+          cloudData.transactions,
+        );
+        if (mergedTransactions.length > 0 || localTransactions.length > 0) {
           setTransactions(mergedTransactions);
           StorageService.saveTransactions(mergedTransactions);
         }
 
-        const mergedCategories = merge(categories, cloudData.categories);
-        if (mergedCategories.length > 0 || categories.length > 0) {
+        const mergedCategories = merge(localCategories, cloudData.categories);
+        if (mergedCategories.length > 0 || localCategories.length > 0) {
           setCategories(mergedCategories);
           StorageService.saveCategories(mergedCategories);
         }
 
-        const mergedGoals = merge(goals, cloudData.goals);
-        if (mergedGoals.length > 0 || goals.length > 0) {
+        const mergedGoals = merge(localGoals, cloudData.goals);
+        if (mergedGoals.length > 0 || localGoals.length > 0) {
           setGoals(mergedGoals);
           StorageService.saveGoals(mergedGoals);
         }
 
-        const mergedSubs = merge(subscriptions, cloudData.subscriptions || []);
-        if (mergedSubs.length > 0 || subscriptions.length > 0) {
+        const mergedSubs = merge(localSubs, cloudData.subscriptions || []);
+        if (mergedSubs.length > 0 || localSubs.length > 0) {
           setSubscriptions(mergedSubs);
           StorageService.saveSubscriptions(mergedSubs);
         }
 
-        const mergedPots = merge(pots, cloudData.pots || []);
-        if (mergedPots.length > 0 || pots.length > 0) {
+        const mergedPots = merge(localPots, cloudData.pots || []);
+        if (mergedPots.length > 0 || localPots.length > 0) {
           setPots(mergedPots);
           StorageService.savePots(mergedPots);
         }
 
-        showToast("Data synced with Google Sheets", "success");
+        // Post-Sync processing
+        processSubscriptions(mergedSubs, mergedTransactions);
+
+        showToast("Cloud sync complete", "success");
+      } else {
+        // If cloudData is null, it could be that auth expired or Sheets API is not ready
+        console.warn("Sync returned no data from cloud.");
       }
     } catch (e) {
       console.error("Sync failed", e);
-      showToast("Sync failed", "alert");
+      showToast("Cloud sync failed", "alert");
     }
     setIsSyncing(false);
   };
@@ -1257,6 +1272,8 @@ const App: React.FC = () => {
               onManageSubscriptions={() => setShowSubscriptionManager(true)}
               onExport={handleExportData}
               onMigrate={handleMigrateData}
+              onSync={syncData}
+              isSyncing={isSyncing}
             />
           )}
         </main>

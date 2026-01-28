@@ -11,6 +11,8 @@ interface Props {
   onManageSubscriptions?: () => void;
   onExport?: () => void;
   onMigrate?: () => void;
+  onSync?: () => void;
+  isSyncing?: boolean;
 }
 
 const Profile: React.FC<Props> = ({
@@ -22,6 +24,8 @@ const Profile: React.FC<Props> = ({
   onManageSubscriptions,
   onExport,
   onMigrate,
+  onSync,
+  isSyncing = false,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(profile.name);
@@ -94,6 +98,16 @@ const Profile: React.FC<Props> = ({
           )}
 
           <div className="space-y-3">
+            {onSync && (
+              <button
+                onClick={onSync}
+                disabled={isSyncing}
+                className={`w-full py-3 ${isSyncing ? "bg-primary/20 text-primary animate-pulse" : "bg-primary/20 hover:bg-primary/30 text-primary"} rounded-xl font-bold transition-all flex items-center justify-center gap-3 border border-primary/30`}
+              >
+                {isSyncing ? "Synchronizing..." : "Sync with Google Sheets"}
+                <span className={isSyncing ? "animate-spin" : ""}>🔄</span>
+              </button>
+            )}
             {onManageCategories && (
               <button
                 onClick={onManageCategories}

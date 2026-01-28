@@ -26,14 +26,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (profile.id) {
       SheetService.setSheetUser(profile.id);
+    }
 
+    SheetService.initGapiClient().then(() => {
       // Attempt to restore token from localStorage for auto-sync
+      // Must be done AFTER initGapiClient so window.gapi.client is available
       const savedToken = localStorage.getItem("google_access_token");
       if (savedToken) {
         SheetService.setGapiAccessToken(savedToken);
       }
-    }
-    SheetService.initGapiClient().then(() => setIsInitialized(true));
+      setIsInitialized(true);
+    });
   }, []);
 
   const loginFlow = useGoogleLogin({

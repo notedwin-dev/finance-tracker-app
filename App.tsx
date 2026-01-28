@@ -280,14 +280,18 @@ const App: React.FC = () => {
         console.log("GAPI Client not ready, attempting late initialization...");
         await SheetService.initGapiClient();
         const savedToken = localStorage.getItem("google_access_token");
+        const savedExpiry = localStorage.getItem("google_token_expiry");
         if (savedToken) {
-          SheetService.setGapiAccessToken(savedToken);
+          const expiresIn = savedExpiry ? (parseInt(savedExpiry) - Date.now()) / 1000 : undefined;
+          SheetService.setGapiAccessToken(savedToken, expiresIn);
         }
       }
 
       if (!SheetService.isClientReady()) {
         console.warn("Sync skipped: GAPI client still not ready");
-        showToast("Please sign in to Google to sync", "info");
+        // If the user manually clicked sync, we should prompt login
+        showToast("Session expired. Please sign in again.", "info");
+        login(); // Trigger the Google Login popup
         setIsSyncing(false);
         return;
       }

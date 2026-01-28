@@ -29,11 +29,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     SheetService.initGapiClient().then(() => {
-      // Attempt to restore token from localStorage for auto-sync
-      // Must be done AFTER initGapiClient so window.gapi.client is available
       const savedToken = localStorage.getItem("google_access_token");
+      const savedExpiry = localStorage.getItem("google_token_expiry");
       if (savedToken) {
-        SheetService.setGapiAccessToken(savedToken);
+        const expiresIn = savedExpiry ? (parseInt(savedExpiry) - Date.now()) / 1000 : undefined;
+        SheetService.setGapiAccessToken(savedToken, expiresIn);
       }
       setIsInitialized(true);
     });
@@ -42,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const loginFlow = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       // 1. Set Access Token for Sheets API
-      SheetService.setGapiAccessToken(tokenResponse.access_token);
+      SheetService.setGapiAccessToken(tokenResponse.access_token, tokenResponse.expires_in);
       localStorage.setItem("google_access_token", tokenResponse.access_token);
 
       // 2. Fetch User Profile Info (optional, using standard Google UserInfo endpoint)
@@ -149,10 +149,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("Failed to fetch user info", error);
       }
     },
+    // Adding prompt: 'consent' is usually what causes frequent re-logins. 
+    // If we remove it or use default, it might be smoother. 
+    // But to truly "Stay Signed In", we should occasionally try a silent re-auth.
     scope:
       "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
     onError: (errorResponse) => console.error(errorResponse),
   });
+
+  // Watch for token expiry and potentially warn or refresh
+  useEffect(() => {
+    if (!profile.isLoggedIn) return;
+
+    const checkToken = () => {
+      if (!SheetService.isClientReady()) {
+        console.warn("Session token expired, needs refresh.");
+        // We don't force logout, we just let the UI handle the 'Not Synced' state
+      }
+    };
+
+    const interval = setInterval(checkToken, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [profile.isLoggedIn]);
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     const newProfile = { ...profile, ...updates };

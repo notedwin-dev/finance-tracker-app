@@ -23,6 +23,7 @@ const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
 
 let gapiInited = false;
 let hasAccessToken = false;
+let tokenExpiryTime = 0;
 
 export const initGapiClient = async (): Promise<void> => {
   if (!API_KEY) {
@@ -57,6 +58,16 @@ export const initGapiClient = async (): Promise<void> => {
     return;
   }
 
+  // Attempt to restore token from localStorage for auto-sync
+  const savedToken = localStorage.getItem("google_access_token");
+  const savedExpiry = localStorage.getItem("google_token_expiry");
+  if (savedToken) {
+    hasAccessToken = true;
+    if (savedExpiry) {
+      tokenExpiryTime = parseInt(savedExpiry);
+    }
+  }
+
   return new Promise<void>((resolve) => {
     window.gapi.load("client", async () => {
       try {
@@ -85,10 +96,14 @@ export const initGapiClient = async (): Promise<void> => {
   });
 };
 
-export const setGapiAccessToken = (accessToken: string) => {
+export const setGapiAccessToken = (accessToken: string, expiresIn?: number) => {
   if (window.gapi && window.gapi.client) {
     window.gapi.client.setToken({ access_token: accessToken });
     hasAccessToken = true;
+    if (expiresIn) {
+      tokenExpiryTime = Date.now() + expiresIn * 1000;
+      localStorage.setItem("google_token_expiry", tokenExpiryTime.toString());
+    }
   }
 };
 
@@ -97,10 +112,19 @@ export const clearGapiAccessToken = () => {
     window.gapi.client.setToken(null);
   }
   hasAccessToken = false;
+  tokenExpiryTime = 0;
   localStorage.removeItem("google_access_token");
+  localStorage.removeItem("google_token_expiry");
 };
 
-export const isClientReady = () => gapiInited && hasAccessToken;
+export const isClientReady = () => {
+  if (!gapiInited || !hasAccessToken) return false;
+  // Check if token is expired (with 1 minute buffer)
+  if (tokenExpiryTime > 0 && Date.now() > tokenExpiryTime - 60000) {
+    return false;
+  }
+  return true;
+};
 
 let currentSheetTitle = "ZenFinance Data";
 let currentUserId: string | null = null;

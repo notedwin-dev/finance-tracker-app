@@ -269,7 +269,7 @@ const AccountDetailModal: React.FC<Props> = ({
               </p>
               <h3 className="text-3xl sm:text-4xl font-black text-white">
                 <span className="text-gray-500 text-sm sm:text-base mr-1 font-medium">
-                  {account.currency === "MYR" ? "RM" : "£"}
+                  {account.currency === "MYR" ? "RM" : "$"}
                 </span>
                 {account.balance.toLocaleString("en-US", {
                   minimumFractionDigits: 2,
@@ -283,7 +283,7 @@ const AccountDetailModal: React.FC<Props> = ({
                 </p>
                 <h3 className="text-2xl sm:text-3xl font-black text-success">
                   <span className="text-success/50 text-sm sm:text-base mr-1 font-medium">
-                    {account.currency === "MYR" ? "RM" : "£"}
+                    {account.currency === "MYR" ? "RM" : "$"}
                   </span>
                   {availableBalance.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
@@ -318,7 +318,7 @@ const AccountDetailModal: React.FC<Props> = ({
                           {pot.name}
                         </span>
                         <span className="text-xs text-primary font-bold">
-                          {account.currency === "MYR" ? "RM" : "£"}
+                          {account.currency === "MYR" ? "RM" : "$"}
                           {pot.currentAmount.toLocaleString()}
                         </span>
                       </div>

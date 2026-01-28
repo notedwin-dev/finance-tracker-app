@@ -80,7 +80,7 @@ const AccountCard: React.FC<Props> = ({ account, pots, onClick }) => {
                 Current Balance
               </p>
               <p className="text-2xl font-bold text-white tracking-tight group-hover:text-primary transition-colors">
-                {account.currency === "MYR" ? "RM" : "£"}{" "}
+                {account.currency === "MYR" ? "RM" : "$"}{" "}
                 {account.balance.toLocaleString()}
               </p>
             </div>
@@ -90,7 +90,7 @@ const AccountCard: React.FC<Props> = ({ account, pots, onClick }) => {
                   <WalletIcon className="w-3 h-3" /> Available
                 </p>
                 <p className="text-lg font-bold text-success leading-tight">
-                  {account.currency === "MYR" ? "RM" : "£"}{" "}
+                  {account.currency === "MYR" ? "RM" : "$"}{" "}
                   {availableBalance.toLocaleString()}
                 </p>
               </div>

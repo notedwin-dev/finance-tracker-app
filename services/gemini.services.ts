@@ -1,5 +1,12 @@
 import { GoogleGenerativeAI, Content } from "@google/generative-ai";
-import { Account, Transaction, Category, ChatMessage } from "../types";
+import {
+  Account,
+  Transaction,
+  Category,
+  ChatMessage,
+  Pot,
+  Goal,
+} from "../types";
 
 const getModel = (apiKey?: string) => {
   const finalKey = apiKey || import.meta.env.VITE_GOOGLE_API_KEY;
@@ -50,6 +57,8 @@ const prepareContext = (
   accounts: Account[],
   transactions: Transaction[],
   categories: Category[],
+  pots: Pot[],
+  goals: Goal[],
 ) => {
   return {
     accounts: accounts.map((a) => ({
@@ -71,6 +80,20 @@ const prepareContext = (
       category:
         categories.find((c) => c.id === t.categoryId)?.name || "Uncategorized",
     })),
+    savingPots: pots.map((p) => ({
+      name: p.name,
+      targetAmount: p.targetAmount,
+      currentAmount: p.currentAmount,
+      linkedAccount: p.accountId,
+    })),
+    goals: goals.map((g) => ({
+      name: g.name,
+      targetAmount: g.targetAmount,
+      currentAmount: g.currentAmount,
+      deadline: g.deadline,
+      type: g.type,
+      linkedAccount: g.linkedAccountId,
+    })),
   };
 };
 
@@ -79,12 +102,20 @@ export const streamFinancialAdvice = async (
   accounts: Account[],
   transactions: Transaction[],
   categories: Category[],
+  pots: Pot[],
+  goals: Goal[],
   history: ChatMessage[],
   onChunk: (chunk: string) => void,
 ): Promise<string> => {
   try {
     const model = getModel(apiKey);
-    const contextData = prepareContext(accounts, transactions, categories);
+    const contextData = prepareContext(
+      accounts,
+      transactions,
+      categories,
+      pots,
+      goals,
+    );
 
     const systemInstruction = `
       You are ZenFinance AI, a helpful and minimalist financial assistant. 

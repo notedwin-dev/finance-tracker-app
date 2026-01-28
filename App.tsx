@@ -1749,6 +1749,8 @@ const App: React.FC = () => {
           accounts={accounts}
           transactions={transactions}
           categories={categories}
+          pots={pots}
+          goals={goals}
           onClose={() => setShowAIChat(false)}
           onSaveSession={handleSaveChatSession}
           onDeleteSession={handleDeleteChatSession}

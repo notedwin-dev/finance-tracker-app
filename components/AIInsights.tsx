@@ -5,6 +5,8 @@ import {
   Category,
   ChatSession,
   ChatMessage,
+  Pot,
+  Goal,
 } from "../types";
 import {
   streamFinancialAdvice,
@@ -24,6 +26,8 @@ interface Props {
   accounts: Account[];
   transactions: Transaction[];
   categories: Category[];
+  pots: Pot[];
+  goals: Goal[];
   sessions: ChatSession[];
   activeSessionId: string | null;
   onClose: () => void;
@@ -38,6 +42,8 @@ const AIInsights: React.FC<Props> = ({
   accounts,
   transactions,
   categories,
+  pots,
+  goals,
   sessions,
   activeSessionId,
   onClose,
@@ -104,6 +110,8 @@ const AIInsights: React.FC<Props> = ({
         accounts,
         transactions,
         categories,
+        pots,
+        goals,
         history,
         (chunk) => {
           setStreamingText((prev) => prev + chunk);

@@ -111,7 +111,7 @@ export const streamFinancialAdvice = async (
     const chat = model.startChat({
       history: [
         {
-          role: "system",
+          role: "user",
           parts: [{ text: systemInstruction }],
         },
         {

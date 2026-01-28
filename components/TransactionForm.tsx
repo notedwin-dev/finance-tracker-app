@@ -76,28 +76,25 @@ const TransactionForm: React.FC<Props> = ({
       return;
     }
 
-    // 1. Handle Dot "Promotion" (e.g., 0.11 + "." -> 11.00)
+    // 1. Handle Dot Promotion (e.g., "4.50" + "." -> "450.")
     if (val.endsWith(".") && !amount.endsWith(".")) {
       const d = amount.replace(/\D/g, "");
-      setAmount(parseInt(d || "0", 10).toFixed(2));
+      setAmount(parseInt(d || "0", 10).toString() + ".");
       return;
     }
 
-    // 2. Manual Decimal Entry (e.g., 11.00 + "2" -> 11.20)
-    // If we were at a clean dollar or had a placeholder 0, replace it
-    if (val.length > amount.length) {
-      const newChar = val.slice(-1);
+    // 2. Manual Decimal Entry (e.g., "450." + "2" -> "450.2")
+    if (amount.endsWith(".") || amount.match(/\.\d$/)) {
+      const parts = amount.split(".");
+      const newChar = val.length > amount.length ? val.slice(-1) : "";
+
       if (/\d/.test(newChar)) {
-        // From ".00" -> ".X0"
-        if (amount.endsWith(".00")) {
-          const whole = amount.split(".")[0];
-          setAmount(whole + "." + newChar + "0");
+        if (parts[1] === "") {
+          setAmount(parts[0] + "." + newChar);
           return;
         }
-        // From ".X0" -> ".XY"
-        if (amount.match(/\.\d0$/)) {
-          const parts = amount.split(".");
-          setAmount(parts[0] + "." + parts[1][0] + newChar);
+        if (parts[1].length === 1) {
+          setAmount(parts[0] + "." + parts[1] + newChar);
           return;
         }
       }

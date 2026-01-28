@@ -47,21 +47,20 @@ const AccountForm: React.FC<Props> = ({
 
     if (val.endsWith(".") && !balance.endsWith(".")) {
       const d = balance.replace(/\D/g, "");
-      setBalance(parseInt(d || "0", 10).toFixed(2));
+      setBalance(parseInt(d || "0", 10).toString() + ".");
       return;
     }
 
-    if (val.length > balance.length) {
-      const newChar = val.slice(-1);
+    if (balance.endsWith(".") || balance.match(/\.\d$/)) {
+      const parts = balance.split(".");
+      const newChar = val.length > balance.length ? val.slice(-1) : "";
       if (/\d/.test(newChar)) {
-        if (balance.endsWith(".00")) {
-          const whole = balance.split(".")[0];
-          setBalance(whole + "." + newChar + "0");
+        if (parts[1] === "") {
+          setBalance(parts[0] + "." + newChar);
           return;
         }
-        if (balance.match(/\.\d0$/)) {
-          const parts = balance.split(".");
-          setBalance(parts[0] + "." + parts[1][0] + newChar);
+        if (parts[1].length === 1) {
+          setBalance(parts[0] + "." + parts[1] + newChar);
           return;
         }
       }

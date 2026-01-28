@@ -58,21 +58,20 @@ const Goals: React.FC<Props> = ({
 
     if (val.endsWith(".") && !currentVal.endsWith(".")) {
       const d = currentVal.replace(/\D/g, "");
-      setter(parseInt(d || "0", 10).toFixed(2));
+      setter(parseInt(d || "0", 10).toString() + ".");
       return;
     }
 
-    if (val.length > currentVal.length) {
-      const newChar = val.slice(-1);
+    if (currentVal.endsWith(".") || currentVal.match(/\.\d$/)) {
+      const parts = currentVal.split(".");
+      const newChar = val.length > currentVal.length ? val.slice(-1) : "";
       if (/\d/.test(newChar)) {
-        if (currentVal.endsWith(".00")) {
-          const whole = currentVal.split(".")[0];
-          setter(whole + "." + newChar + "0");
+        if (parts[1] === "") {
+          setter(parts[0] + "." + newChar);
           return;
         }
-        if (currentVal.match(/\.\d0$/)) {
-          const parts = currentVal.split(".");
-          setter(parts[0] + "." + parts[1][0] + newChar);
+        if (parts[1].length === 1) {
+          setter(parts[0] + "." + parts[1] + newChar);
           return;
         }
       }

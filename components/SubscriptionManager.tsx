@@ -47,25 +47,22 @@ const SubscriptionManager: React.FC<Props> = ({
       return;
     }
 
-    // Capture Dot "Promotion"
     if (val.endsWith(".") && !amount.endsWith(".")) {
       const d = amount.replace(/\D/g, "");
-      setAmount(parseInt(d || "0", 10).toFixed(2));
+      setAmount(parseInt(d || "0", 10).toString() + ".");
       return;
     }
 
-    // Manual Decimal Entry
-    if (val.length > amount.length) {
-      const newChar = val.slice(-1);
+    if (amount.endsWith(".") || amount.match(/\.\d$/)) {
+      const parts = amount.split(".");
+      const newChar = val.length > amount.length ? val.slice(-1) : "";
       if (/\d/.test(newChar)) {
-        if (amount.endsWith(".00")) {
-          const whole = amount.split(".")[0];
-          setAmount(whole + "." + newChar + "0");
+        if (parts[1] === "") {
+          setAmount(parts[0] + "." + newChar);
           return;
         }
-        if (amount.match(/\.\d0$/)) {
-          const parts = amount.split(".");
-          setAmount(parts[0] + "." + parts[1][0] + newChar);
+        if (parts[1].length === 1) {
+          setAmount(parts[0] + "." + parts[1] + newChar);
           return;
         }
       }

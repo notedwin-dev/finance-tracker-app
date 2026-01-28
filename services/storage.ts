@@ -127,10 +127,14 @@ export const rescueScatteredData = (): {
 }[] => {
   const found: { type: string; count: number; key: string }[] = [];
   const basePatterns = Object.values(KEYS).filter((k) => k !== KEYS.PROFILE);
+  const activeKeys = new Set(basePatterns.map((p) => getKey(p)));
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key) continue;
+
+    // Skip keys that are currently active/loaded to avoid confusing the user
+    if (activeKeys.has(key)) continue;
 
     // Is it one of our keys?
     const match = basePatterns.find((p) => key.startsWith(p));
@@ -334,11 +338,16 @@ export const getStoredCategories = (): Category[] => {
   const userId = profile.id || "guest";
   const stored = localStorage.getItem(getKey(KEYS.CATEGORIES));
 
-  const categories = stored
-    ? (JSON.parse(stored) as Category[])
-    : DEFAULT_CATEGORIES;
+  const savedCategories: Category[] = stored ? JSON.parse(stored) : [];
 
-  return categories.map((c) => {
+  // Merge: Start with Default Categories
+  const categoryMap = new Map<string, Category>();
+  DEFAULT_CATEGORIES.forEach((c) => categoryMap.set(c.id, c));
+
+  // Overwrite with saved ones (preserves custom modifications and new ones)
+  savedCategories.forEach((c) => categoryMap.set(c.id, c));
+
+  return Array.from(categoryMap.values()).map((c) => {
     const isDefault = /^c\d+$/.test(c.id);
     return {
       ...c,

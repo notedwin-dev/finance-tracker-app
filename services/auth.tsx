@@ -98,12 +98,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
           const cloudData = await SheetService.loadFromGoogleSheets();
           if (cloudData) {
-            // This will now save to `${key}_${userInfo.sub}` because profile.id is set
-            StorageService.saveLocalData(cloudData);
-            console.log(
-              "Synced data from cloud on login for user:",
-              newProfile.id,
-            );
+            // MERGE instead of REPLACE to prevent data loss if cloud is empty
+            const local = {
+              accounts: StorageService.getStoredAccounts(),
+              transactions: StorageService.getStoredTransactions(),
+              categories: StorageService.getStoredCategories(),
+              goals: StorageService.getStoredGoals(),
+              subscriptions: StorageService.getStoredSubscriptions(),
+              pots: StorageService.getStoredPots(),
+            };
+
+            const merge = <T extends { id: string; updatedAt?: number }>(
+              l: T[],
+              c: T[],
+            ): T[] => {
+              const map = new Map<string, T>();
+              c.forEach((i) => map.set(i.id, i));
+              l.forEach((i) => {
+                const cloudItem = map.get(i.id);
+                if (
+                  !cloudItem ||
+                  (i.updatedAt || 0) > (cloudItem.updatedAt || 0)
+                ) {
+                  map.set(i.id, i);
+                }
+              });
+              return Array.from(map.values());
+            };
+
+            StorageService.saveLocalData({
+              accounts: merge(local.accounts, cloudData.accounts),
+              transactions: merge(local.transactions, cloudData.transactions),
+              categories: merge(local.categories, cloudData.categories),
+              goals: merge(local.goals, cloudData.goals),
+              subscriptions: merge(
+                local.subscriptions,
+                cloudData.subscriptions,
+              ),
+              pots: merge(local.pots, cloudData.pots),
+            });
+            console.log("Merged cloud data with local data on login");
           }
         } catch (e) {
           console.warn("Failed to sync data on login", e);

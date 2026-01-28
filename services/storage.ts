@@ -9,7 +9,7 @@ import {
 } from "../types";
 import * as SheetService from "./sheets";
 
-const KEYS = {
+export const KEYS = {
   ACCOUNTS: "zenfinance_accounts_v2",
   TRANSACTIONS: "zenfinance_transactions_v2",
   CATEGORIES: "zenfinance_categories_v2",
@@ -75,7 +75,7 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
 
   const migrateCollection = (key: string, sheetName: string) => {
     try {
-      // 1. Read Legacy Data (Raw Key)
+      // 1. Read Legacy Data (Raw Key / Guest Key)
       const legacyRaw = localStorage.getItem(key);
       if (!legacyRaw) return;
 
@@ -97,10 +97,12 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
         targetData = [...targetData, ...itemsToMigrate];
         localStorage.setItem(targetKey, JSON.stringify(targetData));
         hasChanges = true;
-        console.log(`Migrated ${itemsToMigrate.length} items for ${sheetName}`);
+        console.log(
+          `Migrated ${itemsToMigrate.length} items from guest into account`,
+        );
       }
 
-      // Clear legacy key to prevent repeated migration prompts/logic
+      // Clear legacy key ONLY if migration succeeded or it was effectively merged
       localStorage.removeItem(key);
     } catch (e) {
       console.error(`Error migrating ${sheetName}`, e);
@@ -115,6 +117,68 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
   migrateCollection(KEYS.POTS, "Pots");
 
   return hasChanges;
+};
+
+// Emergency Recovery: Scan for ANY key that looks like it belongs to our app
+export const rescueScatteredData = (): {
+  type: string;
+  count: number;
+  key: string;
+}[] => {
+  const found: { type: string; count: number; key: string }[] = [];
+  const basePatterns = Object.values(KEYS).filter((k) => k !== KEYS.PROFILE);
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+
+    // Is it one of our keys?
+    const match = basePatterns.find((p) => key.startsWith(p));
+    if (match) {
+      try {
+        const data = JSON.parse(localStorage.getItem(key) || "[]");
+        if (Array.isArray(data) && data.length > 0) {
+          found.push({
+            type: match.replace("zenfinance_", "").replace("_v2", ""),
+            count: data.length,
+            key: key,
+          });
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+  return found;
+};
+
+export const importFromKey = (sourceKey: string, targetBaseKey: string) => {
+  const userId = getStoredProfile().id;
+  if (!userId) return;
+
+  const targetKey = getKey(targetBaseKey);
+  if (sourceKey === targetKey) return; // Already there
+
+  try {
+    const sourceData = JSON.parse(localStorage.getItem(sourceKey) || "[]");
+    const targetRaw = localStorage.getItem(targetKey);
+    let targetData = targetRaw ? JSON.parse(targetRaw) : [];
+
+    const existingIds = new Set(targetData.map((d: any) => d.id));
+    const toImport = sourceData
+      .filter((d: any) => !existingIds.has(d.id))
+      .map((d: any) => ({ ...d, userId }));
+
+    if (toImport.length > 0) {
+      const merged = [...targetData, ...toImport];
+      localStorage.setItem(targetKey, JSON.stringify(merged));
+      console.log(`Rescued ${toImport.length} items from ${sourceKey}`);
+      return true;
+    }
+  } catch (e) {
+    console.error("Rescue failed for key", sourceKey, e);
+  }
+  return false;
 };
 
 export const saveLocalData = (data: {

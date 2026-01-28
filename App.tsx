@@ -974,19 +974,47 @@ const App: React.FC = () => {
 
   const handleMigrateData = async () => {
     if (!profile.id) return;
+
+    // Check for any orphaned data first
+    const findings = StorageService.rescueScatteredData();
+    if (findings.length === 0) {
+      showToast("No orphaned data found in this browser", "info");
+      return;
+    }
+
+    const totalCount = findings.reduce((sum, f) => sum + f.count, 0);
     if (
       !confirm(
-        "Import legacy data? This will copy data from the old storage to your current user profile. Duplicates will be skipped.",
+        `Found ${totalCount} records in ${findings.length} categories from other sessions/users. Merge them into your current account?`,
       )
     )
       return;
 
-    const changed = await StorageService.migrateLegacyData(profile.id);
-    if (changed) {
-      await loadData();
-      showToast("Legacy data imported successfully", "success");
+    let success = false;
+    for (const item of findings) {
+      // Find matching base key
+      const baseKeyMatch = Object.values(StorageService.KEYS).find((k) =>
+        item.key.startsWith(k),
+      );
+      if (baseKeyMatch) {
+        const migrated = StorageService.importFromKey(
+          item.key,
+          baseKeyMatch as string,
+        );
+        if (migrated) {
+          success = true;
+          // Clear the source key to prevent garbage piling up
+          localStorage.removeItem(item.key);
+        }
+      }
+    }
+
+    if (success) {
+      showToast("Data recovered! Reloading app...", "success");
+      // Short delay so they see the toast
+      setTimeout(() => window.location.reload(), 1500);
     } else {
-      showToast("No new legacy data found to import", "info");
+      showToast("Selected data was already in your account", "info");
     }
   };
 

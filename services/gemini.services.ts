@@ -8,49 +8,17 @@ import {
   Goal,
 } from "../types";
 
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
+
 const getModel = (apiKey?: string) => {
   const finalKey = apiKey || import.meta.env.VITE_GOOGLE_API_KEY;
   if (!finalKey) {
     throw new Error("No Gemini API key provided.");
   }
 
-  // If using the developer's key (fallback), check daily limits
-  if (!apiKey && finalKey === import.meta.env.VITE_GOOGLE_API_KEY) {
-    checkDailyLimit();
-  }
-
   const genAI = new GoogleGenerativeAI(finalKey);
-  return genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-};
-
-const checkDailyLimit = () => {
-  const LIMIT = 30; // 30 requests per day for the public key
-  const now = new Date();
-  const today = now.toISOString().split("T")[0]; // YYYY-MM-DD
-
-  const usageData = localStorage.getItem("zenfinance_ai_usage");
-  let usage = { date: today, count: 0 };
-
-  if (usageData) {
-    try {
-      const parsed = JSON.parse(usageData);
-      if (parsed.date === today) {
-        usage = parsed;
-      }
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  if (usage.count >= LIMIT) {
-    throw new Error(
-      "Daily limit reached for the public AI assistant. Please provide your own Gemini API key in Profile settings to continue indefinitely.",
-    );
-  }
-
-  // Increment usage
-  usage.count++;
-  localStorage.setItem("zenfinance_ai_usage", JSON.stringify(usage));
+  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 };
 
 const prepareContext = (
@@ -107,15 +75,39 @@ export const streamFinancialAdvice = async (
   history: ChatMessage[],
   onChunk: (chunk: string) => void,
 ): Promise<string> => {
+  const contextData = prepareContext(
+    accounts,
+    transactions,
+    categories,
+    pots,
+    goals,
+  );
+
+  // IF NO API KEY PROVIDED, USE BACKEND PROXY
+  if (!apiKey) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/ai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ history, context: contextData }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to get AI advice");
+      }
+
+      const data = await response.json();
+      onChunk(data.text);
+      return data.text;
+    } catch (error) {
+      console.error("Proxy AI Error:", error);
+      throw error;
+    }
+  }
+
   try {
     const model = getModel(apiKey);
-    const contextData = prepareContext(
-      accounts,
-      transactions,
-      categories,
-      pots,
-      goals,
-    );
 
     const systemInstruction = `
       You are ZenFinance AI, a helpful and minimalist financial assistant. 
@@ -175,6 +167,12 @@ export const generateChatTitle = async (
   firstQuestion: string,
   firstAnswer: string,
 ): Promise<string> => {
+  if (!apiKey) {
+    // For simplicity, we can just return a generic title or reuse the proxy
+    // but a generic one is safer and faster for free tier
+    return "New Financial Chat";
+  }
+
   try {
     const model = getModel(apiKey);
     const prompt = `

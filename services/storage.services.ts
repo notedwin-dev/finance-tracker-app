@@ -427,9 +427,19 @@ export const saveChatSessions = (sessions: ChatSession[]) => {
 
 export const getStoredProfile = (): UserProfile => {
   const stored = localStorage.getItem(KEYS.PROFILE);
-  return stored
+  const profile = stored
     ? JSON.parse(stored)
     : { name: "", email: "", isLoggedIn: false };
+
+  // Set defaults for newly added fields
+  if (profile.syncChatToSheets === undefined) {
+    profile.syncChatToSheets = true;
+  }
+  if (profile.showAIAssistant === undefined) {
+    profile.showAIAssistant = true;
+  }
+
+  return profile;
 };
 
 export const saveProfile = (profile: UserProfile) => {
@@ -444,6 +454,8 @@ export const syncAllData = async (
   goals: Goal[],
   subscriptions: Subscription[],
   pots: Pot[],
+  chatSessions: ChatSession[],
+  profile: UserProfile,
 ) => {
   if (isLoggedIn()) {
     await SheetService.syncWithGoogleSheets(
@@ -453,6 +465,7 @@ export const syncAllData = async (
       goals,
       subscriptions,
       pots,
+      profile.syncChatToSheets ? chatSessions : undefined,
     );
   }
 };

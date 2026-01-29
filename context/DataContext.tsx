@@ -265,6 +265,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setPots(mergedPots);
         StorageService.savePots(mergedPots);
 
+        const mergedChatSessions = merge(
+          StorageService.getStoredChatSessions(),
+          cloudData.chatSessions || [],
+        );
+        setChatSessions(mergedChatSessions);
+        StorageService.saveChatSessions(mergedChatSessions);
+
         await SheetService.syncWithGoogleSheets(
           mergedAccounts,
           mergedTransactions,
@@ -272,6 +279,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           mergedGoals,
           mergedSubs,
           mergedPots,
+          profile.syncChatToSheets ? mergedChatSessions : undefined,
         );
         processSubscriptions(mergedSubs, mergedTransactions);
         showToast("Cloud sync complete", "success");
@@ -488,18 +496,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       await SheetService.deleteOne("Subscriptions", id);
   };
 
-  const handleSaveChatSession = (session: ChatSession) => {
-    const updated = chatSessions.some((s) => s.id === session.id)
+  const handleSaveChatSession = async (session: ChatSession) => {
+    const isEdit = chatSessions.some((s) => s.id === session.id);
+    const updated = isEdit
       ? chatSessions.map((s) => (s.id === session.id ? session : s))
       : [...chatSessions, session];
     setChatSessions(updated);
     StorageService.saveChatSessions(updated);
+    if (SheetService.isClientReady() && profile.syncChatToSheets) {
+      if (isEdit)
+        await SheetService.updateOne("ChatSessions", session.id, session);
+      else await SheetService.insertOne("ChatSessions", session);
+    }
   };
 
-  const handleDeleteChatSession = (id: string) => {
+  const handleDeleteChatSession = async (id: string) => {
     const updated = chatSessions.filter((s) => s.id !== id);
     setChatSessions(updated);
     StorageService.saveChatSessions(updated);
+    if (SheetService.isClientReady() && profile.syncChatToSheets) {
+      await SheetService.deleteOne("ChatSessions", id);
+    }
   };
 
   const handleMigrateData = async () => {
@@ -543,6 +560,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       StorageService.saveGoals(cloudData.goals);
       StorageService.saveSubscriptions(cloudData.subscriptions || []);
       StorageService.savePots(cloudData.pots || []);
+      StorageService.saveChatSessions(cloudData.chatSessions || []);
       loadData();
       showToast("Sync reset complete", "success");
     }

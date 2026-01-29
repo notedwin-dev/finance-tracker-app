@@ -72,6 +72,7 @@ export interface UserProfile {
   updatedAt?: number;
   showAIAssistant?: boolean;
   geminiApiKey?: string;
+  syncChatToSheets?: boolean;
 }
 
 export interface Goal {

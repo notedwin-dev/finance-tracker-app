@@ -616,6 +616,7 @@ export const syncWithGoogleSheets = async (
   goals?: Goal[],
   subscriptions?: Subscription[],
   pots?: Pot[],
+  chatSessions?: ChatSession[],
 ) => {
   const tasks = [];
   if (accounts) tasks.push(saveToSheet("Accounts", accounts));
@@ -624,6 +625,7 @@ export const syncWithGoogleSheets = async (
   if (goals) tasks.push(saveToSheet("Goals", goals));
   if (subscriptions) tasks.push(saveToSheet("Subscriptions", subscriptions));
   if (pots) tasks.push(saveToSheet("Pots", pots));
+  if (chatSessions) tasks.push(saveToSheet("ChatSessions", chatSessions));
 
   await Promise.all(tasks);
 };
@@ -635,6 +637,7 @@ export const loadFromGoogleSheets = async (): Promise<{
   goals: Goal[];
   subscriptions: Subscription[];
   pots: Pot[];
+  chatSessions: ChatSession[];
 } | null> => {
   if (!gapiInited) {
     console.error("GAPI not initialized");
@@ -659,6 +662,7 @@ export const loadFromGoogleSheets = async (): Promise<{
     "Goals",
     "Subscriptions",
     "Pots",
+    "ChatSessions",
   ];
 
   // Check which sheets exist to avoid 400 errors for missing sheets
@@ -755,5 +759,6 @@ export const loadFromGoogleSheets = async (): Promise<{
     goals: result.goals || [],
     subscriptions: result.subscriptions || [],
     pots: result.pots || [],
+    chatSessions: result.chatsessions || [],
   };
 };

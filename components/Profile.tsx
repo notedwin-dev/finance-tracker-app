@@ -260,6 +260,28 @@ const Profile: React.FC<Props> = ({
                 </button>
               }
             />
+            <SettingItem
+              icon={CloudArrowUpIcon}
+              label="Sync Chats to Cloud"
+              description="Backup conversations to Google Sheets"
+              color="text-indigo-400"
+              action={
+                <button
+                  onClick={() =>
+                    onUpdate({ syncChatToSheets: !profile.syncChatToSheets })
+                  }
+                  className={`w-11 h-6 rounded-full transition-colors relative ${
+                    profile.syncChatToSheets ? "bg-primary" : "bg-gray-800"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                      profile.syncChatToSheets ? "left-6" : "left-1"
+                    }`}
+                  />
+                </button>
+              }
+            />
             <div className="p-4 space-y-3">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-primary">

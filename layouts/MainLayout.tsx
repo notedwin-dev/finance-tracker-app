@@ -6,6 +6,7 @@ import {
   ChartBarIcon,
   PlusIcon,
   UserIcon,
+  SparklesIcon,
   ChatBubbleBottomCenterIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -13,6 +14,7 @@ import {
   ClockIcon as ClockIconSolid,
   ChartBarIcon as ChartBarIconSolid,
   UserIcon as UserIconSolid,
+  SparklesIcon as SparklesIconSolid,
 } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
@@ -59,7 +61,6 @@ const MainLayout: React.FC = () => {
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showSubscriptionManager, setShowSubscriptionManager] = useState(false);
-  const [showAIChat, setShowAIChat] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<
     Transaction | undefined
@@ -208,16 +209,16 @@ const MainLayout: React.FC = () => {
       </div>
 
       {/* Global Comps */}
-      {profile.showAIAssistant && (
-        <button
-          onClick={() => setShowAIChat(true)}
-          className="fixed bottom-8 right-8 w-14 h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex lg:flex items-center justify-center shadow-2xl z-40 transition-all hover:scale-110 group mb-[env(safe-area-inset-bottom)] lg:mb-0 mr-[env(safe-area-inset-right)] lg:mr-0"
+      {profile.showAIAssistant && location.pathname !== "/app/ai" && (
+        <Link
+          to="/app/ai"
+          className="fixed bottom-24 right-6 lg:bottom-8 lg:right-8 w-14 h-14 bg-primary hover:bg-primary-hover text-white rounded-full flex items-center justify-center shadow-2xl z-40 transition-all hover:scale-110 group mb-[env(safe-area-inset-bottom)] lg:mb-0"
         >
           <ChatBubbleBottomCenterIcon className="w-7 h-7" />
-        </button>
+        </Link>
       )}
 
-      {showAIChat && (
+      {location.pathname === "/app/ai" && (
         <AIInsights
           apiKey={profile.geminiApiKey}
           sessions={chatSessions}
@@ -227,7 +228,7 @@ const MainLayout: React.FC = () => {
           categories={categories}
           pots={pots}
           goals={goals}
-          onClose={() => setShowAIChat(false)}
+          onClose={() => navigate(-1)}
           onSaveSession={handleSaveChatSession}
           onDeleteSession={handleDeleteChatSession}
           onSelectSession={setActiveChatId}

@@ -59,6 +59,7 @@ const App: React.FC = () => {
               <Route index element={<DashboardPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="goals" element={<GoalsPage />} />
+              <Route path="ai" element={<div />} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>
 

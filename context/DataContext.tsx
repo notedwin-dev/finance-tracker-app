@@ -106,7 +106,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     subs: Subscription[],
     currentTxs: Transaction[],
   ) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString("en-CA");
     let newTxs: Transaction[] = [];
     let updatedSubs = [...subs];
     let processedCount = 0;

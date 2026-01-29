@@ -64,9 +64,17 @@ export const normalizeDate = (date: string | number): string => {
     const serial = Number(date);
     const base = Date.UTC(1899, 11, 30);
     const d = new Date(base + serial * 86400000);
-    return d.toISOString().split("T")[0];
+    return d.toLocaleDateString("en-CA");
   }
 
-  // If it's already YYYY-MM-DD or contains time, just take the date part
-  return s.split("T")[0];
+  // If it contains time, parse and return local date
+  if (s.includes("T")) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-CA");
+    }
+  }
+
+  // If it's already YYYY-MM-DD, just take the date part
+  return s.split(" ")[0].split("T")[0];
 };

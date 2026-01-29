@@ -93,22 +93,19 @@ const History: React.FC<Props> = ({
     const date = new Date(finalDateStr);
 
     const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
+    const todayStr = now.toLocaleDateString("en-CA");
 
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    const yesterdayStr = yesterday.toLocaleDateString("en-CA");
 
-    // dateStr is already in YYYY-MM-DD format (UTC based from TransactionForm)
     if (finalDateStr === todayStr) return "Today";
     if (finalDateStr === yesterdayStr) return "Yesterday";
 
-    // Force UTC timezone for consistent formatting since inputs are UTC-based date strings
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
-      timeZone: "UTC",
     });
   };
 

@@ -49,27 +49,6 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="animate-fadeIn space-y-6">
-      {/* Data Recovery Banner */}
-      {profile.isLoggedIn && (
-        <div className="bg-slate-800/50 border border-slate-700 p-3 rounded-xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xl">📥</span>
-            <div>
-              <h4 className="text-xs font-bold text-white">Data Recovery</h4>
-              <p className="text-[10px] text-gray-400">
-                Records found from previous sessions.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleMigrateData}
-            className="bg-primary hover:bg-primary-dark text-white text-[10px] px-3 py-1.5 rounded-lg font-bold transition-all"
-          >
-            Recover Now
-          </button>
-        </div>
-      )}
-
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white">

@@ -39,7 +39,7 @@ const SubscriptionManager: React.FC<Props> = ({
   const [categoryId, setCategoryId] = useState(categories[0]?.id || "");
   const [frequency, setFrequency] = useState<SubscriptionFrequency>("MONTHLY");
   const [nextPaymentDate, setNextPaymentDate] = useState(
-    new Date().toISOString().split("T")[0],
+    new Date().toLocaleDateString("en-CA"),
   );
 
   const handleAmountFormat = (val: string) => {
@@ -109,7 +109,7 @@ const SubscriptionManager: React.FC<Props> = ({
   const resetForm = () => {
     setName("");
     setAmount("");
-    setNextPaymentDate(new Date().toISOString().split("T")[0]);
+    setNextPaymentDate(new Date().toLocaleDateString("en-CA"));
   };
 
   return (
@@ -307,7 +307,15 @@ const SubscriptionManager: React.FC<Props> = ({
                           {sub.name}
                         </h3>
                         <p className="text-[10px] sm:text-xs text-gray-500 font-medium truncate mt-0.5">
-                          {sub.frequency} • Next: {sub.nextPaymentDate}
+                          {sub.frequency} • Next:{" "}
+                          {new Date(sub.nextPaymentDate).toLocaleDateString(
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            },
+                          )}
                         </p>
                         <p className="text-[10px] text-primary/80 font-bold uppercase tracking-tighter mt-1">
                           FROM {accountName}

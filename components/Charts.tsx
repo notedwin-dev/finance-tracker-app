@@ -37,7 +37,7 @@ const toYMD = (dateInput: string | number | undefined): string => {
     const serial = Number(dateInput);
     const base = Date.UTC(1899, 11, 30);
     const d = new Date(base + serial * 86400000);
-    return d.toISOString().split("T")[0];
+    return d.toLocaleDateString("en-CA");
   }
 
   // If it's already a simple YYYY-MM-DD string, trust it (avoid timezone shifts)
@@ -49,9 +49,9 @@ const toYMD = (dateInput: string | number | undefined): string => {
   try {
     const d = new Date(s);
     if (!isNaN(d.getTime())) {
-      // Use UTC to avoid local timezone shifts which might flip the date
+      // Use local timezone as requested
       if (s.includes("T")) {
-        return d.toISOString().split("T")[0];
+        return d.toLocaleDateString("en-CA");
       }
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, "0");

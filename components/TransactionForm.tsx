@@ -65,7 +65,7 @@ const TransactionForm: React.FC<Props> = ({
   const [date, setDate] = useState(
     initialTransaction
       ? initialTransaction.date
-      : new Date().toISOString().split("T")[0],
+      : new Date().toLocaleDateString("en-CA"),
   );
   const [time, setTime] = useState(
     initialTransaction ? initialTransaction.time || "" : "",

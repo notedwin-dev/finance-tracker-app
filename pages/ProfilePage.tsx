@@ -28,6 +28,8 @@ const ProfilePage: React.FC = () => {
       transactions,
       categories,
       goals,
+      subscriptions,
+      pots,
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -36,7 +38,7 @@ const ProfilePage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `zenfinance_backup_${new Date().toISOString().split("T")[0]}.json`;
+    a.download = `zenfinance_backup_${new Date().toLocaleDateString("en-CA")}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

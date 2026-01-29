@@ -11,6 +11,7 @@ import {
   groupTransactions,
   GroupedTransaction,
   normalizeDate,
+  parseDateSafe,
 } from "../helpers/transactions.helper";
 
 interface Props {
@@ -90,7 +91,7 @@ const History: React.FC<Props> = ({
 
   const formatDateHeader = (dateStr: string | number) => {
     const finalDateStr = normalizeDate(dateStr);
-    const date = new Date(finalDateStr);
+    const date = parseDateSafe(finalDateStr);
 
     const now = new Date();
     const todayStr = now.toLocaleDateString("en-CA");
@@ -102,7 +103,7 @@ const History: React.FC<Props> = ({
     if (finalDateStr === todayStr) return "Today";
     if (finalDateStr === yesterdayStr) return "Yesterday";
 
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
       year: "numeric",

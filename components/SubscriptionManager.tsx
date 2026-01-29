@@ -11,6 +11,7 @@ import {
   XMarkIcon,
   CalendarDaysIcon,
 } from "@heroicons/react/24/outline";
+import { parseDateSafe } from "../helpers/transactions.helper";
 
 interface Props {
   subscriptions: Subscription[];
@@ -308,14 +309,13 @@ const SubscriptionManager: React.FC<Props> = ({
                         </h3>
                         <p className="text-[10px] sm:text-xs text-gray-500 font-medium truncate mt-0.5">
                           {sub.frequency} • Next:{" "}
-                          {new Date(sub.nextPaymentDate).toLocaleDateString(
-                            "en-US",
-                            {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            },
-                          )}
+                          {parseDateSafe(
+                            sub.nextPaymentDate,
+                          ).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
                         </p>
                         <p className="text-[10px] text-primary/80 font-bold uppercase tracking-tighter mt-1">
                           FROM {accountName}

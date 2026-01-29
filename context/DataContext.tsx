@@ -3,6 +3,7 @@ import * as StorageService from "../services/storage.services";
 import * as SheetService from "../services/sheets.services";
 import { useAuth } from "../services/auth.services";
 import { getUSDToMYRRate } from "../services/exchange.services";
+import { normalizeDate, parseDateSafe } from "../helpers/transactions.helper";
 import {
   Account,
   Category,
@@ -114,9 +115,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     updatedSubs = updatedSubs.map((sub) => {
       if (!sub.active) return sub;
-      let nextDate = sub.nextPaymentDate;
+      // Use normalizeDate to ensure internal nextPaymentDate is always YYYY-MM-DD local
+      let nextDateStr = normalizeDate(sub.nextPaymentDate);
       let hasProcessed = false;
-      while (nextDate <= today) {
+      while (nextDateStr <= today) {
         hasProcessed = true;
         const newTx: Transaction = {
           id: crypto.randomUUID(),
@@ -127,23 +129,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           type: TransactionType.EXPENSE,
           categoryId: sub.categoryId,
           shopName: sub.name + " (Subscription)",
-          date: nextDate,
+          date: nextDateStr,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
         newTxs.push(newTx);
-        const d = new Date(nextDate);
+        const d = parseDateSafe(nextDateStr);
         if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
         else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
         else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
         else d.setDate(d.getDate() + 1);
-        nextDate = d.toISOString().split("T")[0];
+        nextDateStr = d.toLocaleDateString("en-CA");
       }
       if (hasProcessed) {
         processedCount++;
-        return { ...sub, nextPaymentDate: nextDate };
+        return { ...sub, nextPaymentDate: nextDateStr };
       }
-      return sub;
+      return { ...sub, nextPaymentDate: nextDateStr }; // Always normalize
     });
 
     if (newTxs.length > 0) {

@@ -53,28 +53,35 @@ export const groupTransactions = (
 };
 
 /**
- * Normalizes a date string or serial number to YYYY-MM-DD
+ * Safely parses a date from various formats (Serial, ISO, etc.) into a Date object
  */
-export const normalizeDate = (date: string | number): string => {
-  if (!date) return "";
+export const parseDateSafe = (date: string | number | undefined): Date => {
+  if (!date) return new Date();
   const s = String(date);
 
-  // Check if it's a numeric serial date (usually 5 digits for current decade)
+  // Serial date (Google Sheets)
   if (typeof date === "number" || /^\d{5}$/.test(s)) {
     const serial = Number(date);
     const base = Date.UTC(1899, 11, 30);
-    const d = new Date(base + serial * 86400000);
-    return d.toLocaleDateString("en-CA");
+    return new Date(base + serial * 86400000);
   }
 
-  // If it contains time, parse and return local date
-  if (s.includes("T")) {
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString("en-CA");
-    }
+  // If it's YYYY-MM-DD, append a time to force local parsing if it doesn't have one
+  // or handle it specifically. new Date("YYYY-MM-DD") is UTC, which we want to avoid
+  // if we want to stay in local time.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
   }
 
-  // If it's already YYYY-MM-DD, just take the date part
-  return s.split(" ")[0].split("T")[0];
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? new Date() : d;
+};
+
+/**
+ * Normalizes a date string or serial number to YYYY-MM-DD in local time
+ */
+export const normalizeDate = (date: string | number): string => {
+  const d = parseDateSafe(date);
+  return d.toLocaleDateString("en-CA");
 };

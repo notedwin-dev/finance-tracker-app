@@ -93,13 +93,25 @@ export const streamFinancialAdvice = async (
       });
 
       if (!response.ok) {
-        const err = await response.json();
+        const err = await response.json().catch(() => ({}));
         throw new Error(err.error || "Failed to get AI advice");
       }
 
-      const data = await response.json();
-      onChunk(data.text);
-      return data.text;
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      if (!reader) throw new Error("Failed to read response stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        onChunk(chunk);
+      }
+
+      return fullText;
     } catch (error) {
       console.error("Proxy AI Error:", error);
       throw error;
@@ -168,9 +180,26 @@ export const generateChatTitle = async (
   firstAnswer: string,
 ): Promise<string> => {
   if (!apiKey) {
-    // For simplicity, we can just return a generic title or reuse the proxy
-    // but a generic one is safer and faster for free tier
-    return "New Financial Chat";
+    try {
+      const response = await fetch(`${BACKEND_URL}/ai/title`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: firstQuestion,
+          answer: firstAnswer,
+        }),
+      });
+
+      if (!response.ok) {
+        return "New Financial Chat";
+      }
+
+      const data = await response.json();
+      return data.title || "New Financial Chat";
+    } catch (e) {
+      console.error("Proxy Title Error:", e);
+      return "New Financial Chat";
+    }
   }
 
   try {

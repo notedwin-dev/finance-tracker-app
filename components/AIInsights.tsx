@@ -282,7 +282,7 @@ const AIInsights: React.FC<Props> = ({
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">
-                  Gemini 2.5 Flash
+                  Gemini Flash
                 </span>
               </div>
             </div>
@@ -455,15 +455,13 @@ const AIInsights: React.FC<Props> = ({
                   handleAsk();
                 }
               }}
-              placeholder={
-                apiKey ? "Type your message..." : "Setup API Key in Profile"
-              }
-              disabled={loading || !apiKey}
+              placeholder="Type your message..."
+              disabled={loading}
               className="w-full bg-surface border border-gray-800 focus:border-primary rounded-2xl py-4 pl-5 pr-14 text-white focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all resize-none max-h-48 custom-scrollbar shadow-2xl"
             />
             <button
               type="submit"
-              disabled={loading || !query.trim() || !apiKey}
+              disabled={loading || !query.trim()}
               className="absolute right-3 bottom-3 p-2.5 bg-primary text-white rounded-xl hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 flex items-center justify-center min-w-[40px] min-h-[40px]"
             >
               {loading ? (

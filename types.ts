@@ -9,6 +9,17 @@ export enum TransactionType {
 
 export type Currency = "MYR" | "USD";
 
+export interface ExchangeRateData {
+  rate: number;
+  date: string;
+  source: string;
+  lastUpdated?: string;
+  history?: {
+    date: string;
+    rate: number;
+  }[];
+}
+
 export interface Account {
   id: string;
   name: string;

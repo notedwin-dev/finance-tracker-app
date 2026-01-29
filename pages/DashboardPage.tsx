@@ -15,7 +15,7 @@ import { TransactionType, Account } from "../types";
 
 const DashboardPage: React.FC = () => {
   const { profile } = useAuth();
-  const { accounts, transactions, pots, goals, usdRate, handleMigrateData } =
+  const { accounts, transactions, pots, goals, usdRate, exchangeRate } =
     useData();
   const { setShowAddModal, setShowAccountForm, setEditingAccount } =
     useOutletContext<any>();
@@ -65,7 +65,7 @@ const DashboardPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        <CurrencyRateCard usdRate={usdRate} />
+        <CurrencyRateCard exchangeRate={exchangeRate} usdRate={usdRate} />
 
         <div className="col-span-1 md:col-span-2 lg:col-span-1 bg-gradient-to-br from-primary to-purple-800 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between h-64 border border-white/10">
           <div className="relative z-10">

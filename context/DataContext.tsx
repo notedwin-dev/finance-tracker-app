@@ -13,6 +13,7 @@ import {
   Pot,
   ChatSession,
   TransactionType,
+  ExchangeRateData,
 } from "../types";
 
 interface DataContextType {
@@ -24,6 +25,7 @@ interface DataContextType {
   pots: Pot[];
   chatSessions: ChatSession[];
   usdRate: number;
+  exchangeRate: ExchangeRateData | null;
   isSyncing: boolean;
   toast: { message: string; type: "success" | "alert" | "info" } | null;
   showToast: (message: string, type: "success" | "alert" | "info") => void;
@@ -56,9 +58,7 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
-export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export function DataProvider({ children }: { children: React.ReactNode }) {
   const { profile, loginWithGoogle, isInitialized } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -67,7 +67,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [pots, setPots] = useState<Pot[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-  const [usdRate, setUsdRate] = useState<number>(4.5);
+  const [usdRate, setUsdRate] = useState<number>(4.45);
+  const [exchangeRate, setExchangeRate] = useState<ExchangeRateData | null>(
+    null,
+  );
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -94,7 +97,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     loadData();
-    getUSDToMYRRate().then(setUsdRate);
+    getUSDToMYRRate().then((data) => {
+      setExchangeRate(data);
+      setUsdRate(data.rate);
+    });
   }, [profile.id]);
 
   useEffect(() => {
@@ -578,6 +584,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         pots,
         chatSessions,
         usdRate,
+        exchangeRate,
         isSyncing,
         toast,
         showToast,
@@ -611,10 +618,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       {children}
     </DataContext.Provider>
   );
-};
+}
 
-export const useData = () => {
+export function useData() {
   const context = useContext(DataContext);
   if (!context) throw new Error("useData must be used within a DataProvider");
   return context;
-};
+}

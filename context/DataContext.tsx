@@ -328,8 +328,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleTransactionSubmit = async (tx: Omit<Transaction, "userId">) => {
-    const isEdit = transactions.some((t) => t.id === tx.id);
+    const oldTx = transactions.find((t) => t.id === tx.id);
+    const isEdit = !!oldTx;
     const txWithUser = { ...tx, userId: profile.id || "local" } as Transaction;
+
+    // 1. Update Transactions State & Storage
     let updatedTransactions;
     if (isEdit) {
       updatedTransactions = transactions.map((t) =>
@@ -345,44 +348,68 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTransactions(updatedTransactions);
     StorageService.saveTransactions(updatedTransactions);
 
-    // Update account balance
+    // 2. Update Accounts Balance
     const updatedAccounts = accounts.map((a) => {
-      if (a.id === tx.accountId) {
-        const oldTx = transactions.find((t) => t.id === tx.id);
-        const amountDiff = isEdit
-          ? tx.amount - (oldTx?.amount || 0)
-          : tx.amount;
+      let balance = a.balance;
 
-        let balanceChange = 0;
-        if (tx.type === TransactionType.INCOME) {
-          balanceChange = amountDiff;
-        } else if (
-          tx.type === TransactionType.EXPENSE ||
-          tx.type === TransactionType.ADJUSTMENT
+      // Revert old transaction impacts
+      if (isEdit && oldTx) {
+        if (a.id === oldTx.accountId) {
+          if (oldTx.type === TransactionType.INCOME) balance -= oldTx.amount;
+          else balance += oldTx.amount; // Expense, Transfer, Adjustment
+        }
+        if (
+          oldTx.type === TransactionType.TRANSFER &&
+          a.id === oldTx.toAccountId
         ) {
-          balanceChange = -amountDiff;
+          balance -= oldTx.amount;
         }
-        // Transfers are handled as two transactions usually, but here we just update the source
-        // If it's a transfer, we might need more logic or just handle it as expense for source
-        if (tx.type === TransactionType.TRANSFER) {
-          balanceChange = -amountDiff;
-        }
-
-        return { ...a, balance: a.balance + balanceChange };
       }
 
+      // Apply new transaction impacts
+      if (a.id === tx.accountId) {
+        if (tx.type === TransactionType.INCOME) balance += tx.amount;
+        else balance -= tx.amount;
+      }
       if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
-        const oldTx = transactions.find((t) => t.id === tx.id);
-        const amountDiff = isEdit
-          ? tx.amount - (oldTx?.amount || 0)
-          : tx.amount;
-        return { ...a, balance: a.balance + amountDiff };
+        balance += tx.amount;
       }
 
-      return a;
+      return balance !== a.balance ? { ...a, balance } : a;
     });
+
     setAccounts(updatedAccounts);
     StorageService.saveAccounts(updatedAccounts);
+
+    // 3. Update Pot balance if linked
+    if (tx.potId || (isEdit && oldTx?.potId)) {
+      const updatedPots = pots.map((p) => {
+        let newAmount = p.currentAmount;
+
+        // Revert old Pot impact
+        if (isEdit && oldTx?.potId === p.id) {
+          if (oldTx.type === TransactionType.INCOME) newAmount -= oldTx.amount;
+          else newAmount += oldTx.amount;
+        }
+
+        // Apply new Pot impact
+        if (tx.potId === p.id) {
+          if (tx.type === TransactionType.INCOME) newAmount += tx.amount;
+          else newAmount -= tx.amount;
+        }
+
+        if (newAmount !== p.currentAmount) {
+          const updated = { ...p, currentAmount: newAmount };
+          if (SheetService.isClientReady())
+            SheetService.updateOne("Pots", p.id, updated);
+          return updated;
+        }
+        return p;
+      });
+      setPots(updatedPots);
+      StorageService.savePots(updatedPots);
+    }
+
     showToast("Transaction saved", "success");
   };
 
@@ -403,6 +430,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
       setAccounts(updatedAccounts);
       StorageService.saveAccounts(updatedAccounts);
+
+      // Restore Pot balance if linked
+      if (tx.potId) {
+        const updatedPots = pots.map((p) => {
+          if (p.id === tx.potId) {
+            let balanceRestore = 0;
+            if (tx.type === TransactionType.INCOME) balanceRestore = -tx.amount;
+            else balanceRestore = tx.amount;
+            const updatedPot = {
+              ...p,
+              currentAmount: p.currentAmount + balanceRestore,
+            };
+            if (SheetService.isClientReady())
+              SheetService.updateOne("Pots", p.id, updatedPot);
+            return updatedPot;
+          }
+          return p;
+        });
+        setPots(updatedPots);
+        StorageService.savePots(updatedPots);
+      }
     }
     const updated = transactions.filter((t) => t.id !== id);
     setTransactions(updated);

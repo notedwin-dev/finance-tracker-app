@@ -46,7 +46,13 @@ const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="animate-fadeIn max-w-2xl mx-auto">
+    <div className="animate-fadeIn max-w-2xl mx-auto w-full">
+      <div className="mb-8 px-4 sm:px-0">
+        <h1 className="text-2xl sm:text-3xl font-black text-white">Settings</h1>
+        <p className="text-gray-500 text-sm font-medium mt-1">
+          Manage your account, data, and preferences
+        </p>
+      </div>
       <Profile
         profile={profile}
         onLogin={loginWithGoogle}

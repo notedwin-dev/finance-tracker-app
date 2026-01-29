@@ -1,6 +1,21 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
-import { UserCircleIcon, PencilIcon } from "@heroicons/react/24/solid";
+import {
+  UserCircleIcon,
+  PencilIcon,
+  ChevronRightIcon,
+  ArrowRightOnRectangleIcon,
+  CloudArrowUpIcon,
+  ArrowPathIcon,
+  TrashIcon,
+  InboxArrowDownIcon,
+  AdjustmentsHorizontalIcon,
+  KeyIcon,
+  TagIcon,
+  CalendarDaysIcon,
+  DocumentArrowDownIcon,
+  SparklesIcon,
+} from "@heroicons/react/24/outline";
 
 interface Props {
   profile: UserProfile;
@@ -37,171 +52,255 @@ const Profile: React.FC<Props> = ({
     setIsEditing(false);
   };
 
-  return (
-    <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto p-6 animate-fadeIn">
-      {profile.isLoggedIn ? (
-        <div className="w-full bg-surface rounded-3xl p-8 border border-gray-800 shadow-2xl text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-secondary to-purple-600"></div>
-
-          <div className="relative mt-12 mb-4">
-            {profile.photoUrl ? (
-              <img
-                src={profile.photoUrl}
-                alt="Profile"
-                className="w-24 h-24 rounded-full border-4 border-surface mx-auto"
-              />
-            ) : (
-              <div className="w-24 h-24 rounded-full border-4 border-surface bg-slate-700 flex items-center justify-center mx-auto text-4xl">
-                🧑‍💻
-              </div>
-            )}
-          </div>
-
-          {isEditing ? (
-            <div className="mb-8 space-y-4">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="bg-card w-full text-center text-xl font-bold text-white border-b-2 border-primary focus:outline-none py-1"
-                autoFocus
-              />
-              <div className="flex gap-2 justify-center">
-                <button
-                  onClick={handleSave}
-                  className="bg-primary text-white text-xs px-4 py-2 rounded-lg font-bold"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="bg-gray-700 text-gray-300 text-xs px-4 py-2 rounded-lg font-bold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="group relative inline-block mb-8">
-              <h2 className="text-2xl font-bold text-white pr-6">
-                {profile.name}
-              </h2>
-              <button
-                onClick={() => {
-                  setName(profile.name);
-                  setIsEditing(true);
-                }}
-                className="absolute right-0 top-1 text-gray-500 hover:text-white transition-colors"
-              >
-                <PencilIcon className="w-5 h-5" />
-              </button>
-              <p className="text-gray-400 text-sm mt-1">{profile.email}</p>
-            </div>
+  const SettingItem = ({
+    icon: Icon,
+    label,
+    description,
+    onClick,
+    action,
+    color = "text-gray-400",
+  }: {
+    icon: any;
+    label: string;
+    description?: string;
+    onClick?: () => void;
+    action?: React.ReactNode;
+    color?: string;
+  }) => (
+    <div
+      onClick={onClick}
+      className={`flex items-center justify-between p-4 hover:bg-white/5 active:bg-white/10 transition-colors cursor-pointer ${
+        onClick ? "" : "cursor-default"
+      }`}
+    >
+      <div className="flex items-center gap-4">
+        <div
+          className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center ${color}`}
+        >
+          <Icon className="w-5 h-5" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-white">{label}</p>
+          {description && (
+            <p className="text-[11px] text-gray-400">{description}</p>
           )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {action}
+        {onClick && !action && (
+          <ChevronRightIcon className="w-4 h-4 text-gray-600" />
+        )}
+      </div>
+    </div>
+  );
 
-          <div className="space-y-3">
-            {onSync && (
-              <button
-                onClick={onSync}
-                disabled={isSyncing}
-                className={`w-full py-3 ${isSyncing ? "bg-primary/20 text-primary animate-pulse" : "bg-primary/20 hover:bg-primary/30 text-primary"} rounded-xl font-bold transition-all flex items-center justify-center gap-3 border border-primary/30`}
-              >
-                {isSyncing ? "Synchronizing..." : "Sync with Google Sheets"}
-                <span className={isSyncing ? "animate-spin" : ""}>🔄</span>
-              </button>
-            )}
-            {onResetSync && (
-              <button
-                onClick={onResetSync}
-                className="w-full py-3 bg-red-600/10 border border-red-500/30 text-red-100 hover:bg-red-600/20 rounded-xl text-xs font-medium transition-colors"
-                title="Clears local cache and re-downloads everything from Cloud"
-              >
-                Force Cloud Restore (Clear Cache)
-              </button>
-            )}
-            {onManageCategories && (
-              <button
-                onClick={onManageCategories}
-                className="w-full py-3 bg-slate-700/50 hover:bg-slate-700 rounded-xl text-white font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <span>🏷️</span> Manage Categories
-              </button>
-            )}{" "}
-            {onManageSubscriptions && (
-              <button
-                onClick={onManageSubscriptions}
-                className="w-full py-3 bg-surface border border-gray-700 hover:border-primary rounded-xl text-gray-300 hover:text-white font-medium transition-all flex items-center justify-center gap-2"
-              >
-                <span>📅</span> Manage Subscriptions
-              </button>
-            )}{" "}
-            <button
-              onClick={onExport}
-              className="w-full py-3 bg-slate-700/50 hover:bg-slate-700 rounded-xl text-white font-medium transition-colors"
-            >
-              Export Data (JSON)
-            </button>
-            {/* AI Assistant Settings */}
-            <div className="mt-8 pt-6 border-t border-gray-800 text-left">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
-                AI Assistant Settings
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-white">
-                      Show Assistant
-                    </p>
-                    <p className="text-[10px] text-gray-500">
-                      Enable floating AI toggle
-                    </p>
+  const SectionHeader = ({ title }: { title: string }) => (
+    <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] px-4 pt-6 pb-2">
+      {title}
+    </h3>
+  );
+
+  return (
+    <div className="flex flex-col h-full max-w-2xl mx-auto animate-fadeIn pb-20">
+      {profile.isLoggedIn ? (
+        <div className="w-full space-y-2">
+          {/* Profile Header */}
+          <div className="bg-surface sm:rounded-3xl border border-gray-800 overflow-hidden mb-6">
+            <div className="h-24 bg-gradient-to-r from-primary/20 to-secondary/20 relative">
+              <div className="absolute -bottom-12 left-6">
+                {profile.photoUrl ? (
+                  <img
+                    src={profile.photoUrl}
+                    alt="Profile"
+                    className="w-24 h-24 rounded-2xl border-4 border-surface shadow-xl"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-2xl border-4 border-surface bg-slate-800 flex items-center justify-center text-4xl shadow-xl">
+                    👤
                   </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-16 pb-6 px-6">
+              {isEditing ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="bg-card text-xl font-bold text-white border-b-2 border-primary focus:outline-none py-1 flex-1"
+                    autoFocus
+                  />
                   <button
-                    onClick={() =>
-                      onUpdate({ showAIAssistant: !profile.showAIAssistant })
-                    }
-                    className={`w-12 h-6 rounded-full transition-colors relative ${
-                      profile.showAIAssistant ? "bg-primary" : "bg-gray-700"
-                    }`}
+                    onClick={handleSave}
+                    className="bg-primary text-white text-xs px-3 py-1.5 rounded-lg font-bold"
                   >
-                    <div
-                      className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                        profile.showAIAssistant ? "left-7" : "left-1"
-                      }`}
-                    />
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="bg-gray-800 text-gray-300 text-xs px-3 py-1.5 rounded-lg font-bold"
+                  >
+                    Cancel
                   </button>
                 </div>
-                <div>
-                  <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">
-                    Gemini API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={profile.geminiApiKey || ""}
-                    onChange={(e) => onUpdate({ geminiApiKey: e.target.value })}
-                    placeholder="Enter your API Key"
-                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary"
+              ) : (
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-black text-white flex items-center gap-2">
+                      {profile.name}
+                      <button
+                        onClick={() => {
+                          setName(profile.name);
+                          setIsEditing(true);
+                        }}
+                        className="text-gray-500 hover:text-primary transition-colors"
+                      >
+                        <PencilIcon className="w-4 h-4" />
+                      </button>
+                    </h2>
+                    <p className="text-gray-500 text-sm font-medium">
+                      {profile.email}
+                    </p>
+                  </div>
+                  <div className="bg-primary/10 text-primary text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider border border-primary/20">
+                    Free Plan
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-surface sm:rounded-3xl border border-gray-800 divide-y divide-gray-800/50 overflow-hidden">
+            <SectionHeader title="App Preferences" />
+            {onManageCategories && (
+              <SettingItem
+                icon={TagIcon}
+                label="Categories"
+                description="Custom labels for your money flow"
+                onClick={onManageCategories}
+                color="text-indigo-400"
+              />
+            )}
+            {onManageSubscriptions && (
+              <SettingItem
+                icon={CalendarDaysIcon}
+                label="Subscriptions"
+                description="Track and manage recurring payments"
+                onClick={onManageSubscriptions}
+                color="text-emerald-400"
+              />
+            )}
+
+            <SectionHeader title="Cloud & Data" />
+            {onSync && (
+              <SettingItem
+                icon={CloudArrowUpIcon}
+                label="Cloud Synchronization"
+                description={
+                  isSyncing ? "Syncing now..." : "Backup to Google Sheets"
+                }
+                onClick={onSync}
+                color="text-sky-400"
+                action={
+                  isSyncing ? (
+                    <ArrowPathIcon className="w-4 h-4 text-sky-400 animate-spin" />
+                  ) : null
+                }
+              />
+            )}
+            {onResetSync && (
+              <SettingItem
+                icon={ArrowPathIcon}
+                label="Force Cloud Restore"
+                description="Clear cache and re-download data"
+                onClick={onResetSync}
+                color="text-amber-400"
+              />
+            )}
+            {onMigrate && (
+              <SettingItem
+                icon={InboxArrowDownIcon}
+                label="Import Data"
+                description="Recover data from browser storage"
+                onClick={onMigrate}
+                color="text-purple-400"
+              />
+            )}
+            <SettingItem
+              icon={DocumentArrowDownIcon}
+              label="Export Backup"
+              description="Download all data as JSON"
+              onClick={onExport}
+              color="text-gray-400"
+            />
+
+            <SectionHeader title="AI Assistant" />
+            <SettingItem
+              icon={SparklesIcon}
+              label="Show Assistant"
+              description="Enable floating AI toggle"
+              color="text-fuchsia-400"
+              action={
+                <button
+                  onClick={() =>
+                    onUpdate({ showAIAssistant: !profile.showAIAssistant })
+                  }
+                  className={`w-11 h-6 rounded-full transition-colors relative ${
+                    profile.showAIAssistant ? "bg-primary" : "bg-gray-800"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                      profile.showAIAssistant ? "left-6" : "left-1"
+                    }`}
                   />
-                  <p className="text-[9px] text-gray-600 mt-1 italic">
-                    Your key is stored locally and never shared.
+                </button>
+              }
+            />
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-primary">
+                  <KeyIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Gemini API Key
+                  </p>
+                  <p className="text-[11px] text-gray-400">
+                    Required for AI financial insights
                   </p>
                 </div>
               </div>
+              <input
+                type="password"
+                value={profile.geminiApiKey || ""}
+                onChange={(e) => onUpdate({ geminiApiKey: e.target.value })}
+                placeholder="Enter your API Key"
+                className="w-full bg-background border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary transition-colors"
+              />
+              <p className="text-[10px] text-gray-600 px-1">
+                Your key is encrypted and stored locally on this device.
+              </p>
             </div>
-            {onMigrate && (
-              <button
-                onClick={onMigrate}
-                className="w-full py-3 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 hover:bg-indigo-600/30 rounded-xl font-medium transition-colors"
-              >
-                Import Legacy Data
-              </button>
-            )}
-            <button
+
+            <SectionHeader title="Danger Zone" />
+            <div
               onClick={onLogout}
-              className="w-full py-3 border border-red-500/50 text-red-400 rounded-xl font-medium hover:bg-red-500/10 transition-colors mt-4"
+              className="flex items-center gap-4 p-4 hover:bg-red-500/5 active:bg-red-500/10 transition-colors cursor-pointer group"
             >
-              Sign Out
-            </button>
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500/20">
+                <ArrowRightOnRectangleIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-red-500">Sign Out</p>
+                <p className="text-[11px] text-red-500/60 font-medium">
+                  End your current session
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       ) : (

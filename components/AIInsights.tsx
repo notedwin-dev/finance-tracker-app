@@ -171,9 +171,9 @@ const AIInsights: React.FC<Props> = ({
       console.error(err);
       const errorMessage: ChatMessage = {
         role: "model",
-        content:
-          err?.message ||
-          "Sorry, I encountered an error. Please check your API key or try again later.",
+        content: `🚨 **AI Error**\n\n${
+          err?.message || "I encountered an unexpected issue."
+        }\n\n*Please ensure your API Key is correct or try again in a few moments.*`,
         timestamp: Date.now(),
       };
       onSaveSession({
@@ -340,6 +340,9 @@ const AIInsights: React.FC<Props> = ({
             const { cleanText, suggestions: aiSuggestions } = parseMessage(
               m.content,
             );
+            const isError =
+              m.role === "model" && m.content.includes("🚨 **AI Error**");
+
             return (
               <div
                 key={i}
@@ -351,7 +354,9 @@ const AIInsights: React.FC<Props> = ({
                   className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 sm:p-5 ${
                     m.role === "user"
                       ? "bg-primary text-white rounded-tr-none shadow-lg shadow-primary/10"
-                      : "bg-surface border border-gray-800 text-gray-200 rounded-tl-none"
+                      : isError
+                        ? "bg-red-500/10 border border-red-500/30 text-gray-200 rounded-tl-none"
+                        : "bg-surface border border-gray-800 text-gray-200 rounded-tl-none"
                   }`}
                 >
                   {m.role === "user" ? (
@@ -359,7 +364,13 @@ const AIInsights: React.FC<Props> = ({
                       {m.content}
                     </div>
                   ) : (
-                    <div className="prose prose-invert prose-sm max-w-none break-words prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black prose-strong:text-primary prose-strong:font-bold prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
+                    <div
+                      className={`prose prose-invert prose-sm max-w-none break-words prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black ${
+                        isError
+                          ? "prose-strong:text-red-400"
+                          : "prose-strong:text-primary"
+                      } prose-strong:font-bold prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}
+                    >
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {cleanText}
                       </ReactMarkdown>
@@ -367,7 +378,11 @@ const AIInsights: React.FC<Props> = ({
                   )}
                   <p
                     className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${
-                      m.role === "user" ? "text-white/50" : "text-gray-600"
+                      m.role === "user"
+                        ? "text-white/50"
+                        : isError
+                          ? "text-red-500/50"
+                          : "text-gray-600"
                     }`}
                   >
                     {new Date(m.timestamp).toLocaleTimeString([], {
@@ -378,7 +393,7 @@ const AIInsights: React.FC<Props> = ({
                 </div>
 
                 {/* AI Suggestions */}
-                {m.role === "model" && aiSuggestions.length > 0 && (
+                {m.role === "model" && !isError && aiSuggestions.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2 max-w-[85%] sm:max-w-[75%]">
                     {aiSuggestions.map((suggestion, idx) => (
                       <button

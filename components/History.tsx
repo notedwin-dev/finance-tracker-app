@@ -147,8 +147,17 @@ const History: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-white text-[15px] leading-tight truncate">
-                        {t.shopName ||
-                          (t.linkedTransaction ? "Transfer" : "Untitled")}
+                        {t.linkedTransaction
+                          ? t.shopName || (
+                              <>
+                                {accounts.find((a) => a.id === t.accountId)
+                                  ?.name || "Unknown"}{" "}
+                                ➔{" "}
+                                {accounts.find((a) => a.id === t.toAccountId)
+                                  ?.name || "Unknown"}
+                              </>
+                            )
+                          : t.shopName || "Untitled"}
                       </p>
                       {t.time && (
                         <span className="text-[10px] text-gray-500 font-medium bg-white/5 px-1.5 py-0.5 rounded">
@@ -189,6 +198,8 @@ const History: React.FC<Props> = ({
                           ? "text-indigo-400"
                           : t.type === TransactionType.INCOME ||
                               t.type === TransactionType.ACCOUNT_OPENING ||
+                              (t.type === TransactionType.TRANSFER &&
+                                t.transferDirection === "IN") ||
                               (t.type === TransactionType.ADJUSTMENT &&
                                 t.amount >= 0)
                             ? "text-emerald-400"
@@ -199,12 +210,17 @@ const History: React.FC<Props> = ({
                         ? ""
                         : t.type === TransactionType.INCOME ||
                             t.type === TransactionType.ACCOUNT_OPENING ||
+                            (t.type === TransactionType.TRANSFER &&
+                              t.transferDirection === "IN") ||
                             (t.type === TransactionType.ADJUSTMENT &&
                               t.amount >= 0)
                           ? "+"
                           : "-"}
                       {Math.abs(t.amount).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
+                        minimumFractionDigits:
+                          t.currency === "BTC" || t.currency === "ETH" ? 8 : 2,
+                        maximumFractionDigits:
+                          t.currency === "BTC" || t.currency === "ETH" ? 8 : 2,
                       })}
                     </span>
                     <span className="text-[9px] text-gray-600 font-bold uppercase mt-0.5">

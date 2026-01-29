@@ -75,7 +75,12 @@ const CurrencyRateCard: React.FC<Props> = ({ usdRate, exchangeRate }) => {
           </div>
         </div>
 
-        <h3 className="text-3xl font-black text-white">{usdRate.toFixed(2)}</h3>
+        <h3 className="text-3xl font-black text-white">
+          {usdRate.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 6,
+          })}
+        </h3>
 
         <div className="flex items-center gap-1.5 mt-2">
           <div

@@ -3,6 +3,7 @@ import * as StorageService from "../services/storage.services";
 import * as SheetService from "../services/sheets.services";
 import { useAuth } from "../services/auth.services";
 import { getUSDToMYRRate } from "../services/exchange.services";
+import { getCryptoPrices, CryptoPrices } from "../services/coin.services";
 import { normalizeDate, parseDateSafe } from "../helpers/transactions.helper";
 import {
   Account,
@@ -25,6 +26,9 @@ interface DataContextType {
   pots: Pot[];
   chatSessions: ChatSession[];
   usdRate: number;
+  cryptoPrices: CryptoPrices;
+  displayCurrency: "MYR" | "USD";
+  setDisplayCurrency: (currency: "MYR" | "USD") => void;
   exchangeRate: ExchangeRateData | null;
   isSyncing: boolean;
   toast: { message: string; type: "success" | "alert" | "info" } | null;
@@ -68,6 +72,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [pots, setPots] = useState<Pot[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [usdRate, setUsdRate] = useState<number>(4.45);
+  const [cryptoPrices, setCryptoPrices] = useState<CryptoPrices>({
+    BTC: 65000,
+    ETH: 3500,
+  });
+  const [displayCurrency, setDisplayCurrency] = useState<"MYR" | "USD">("MYR");
   const [exchangeRate, setExchangeRate] = useState<ExchangeRateData | null>(
     null,
   );
@@ -100,6 +109,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     getUSDToMYRRate().then((data) => {
       setExchangeRate(data);
       setUsdRate(data.rate);
+    });
+    getCryptoPrices().then((prices) => {
+      setCryptoPrices(prices);
     });
   }, [profile.id]);
 
@@ -632,6 +644,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         pots,
         chatSessions,
         usdRate,
+        cryptoPrices,
+        displayCurrency,
+        setDisplayCurrency,
         exchangeRate,
         isSyncing,
         toast,

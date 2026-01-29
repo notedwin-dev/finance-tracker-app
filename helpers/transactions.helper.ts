@@ -26,19 +26,50 @@ export const groupTransactions = (
   for (const t of sorted) {
     if (processedIds.has(t.id)) continue;
 
-    if (t.linkedTransactionId && t.type === TransactionType.TRANSFER) {
+    // 1. Explicit Linkage (linkedTransactionId)
+    if (t.linkedTransactionId) {
       const partner = transactions.find((p) => p.id === t.linkedTransactionId);
-      if (partner) {
-        // We found the pair.
-        // We prefer to use the 'OUT' transaction as the main one to represent the Transfer
-        // because it represents the source of funds.
-        const main = t.transferDirection === "OUT" ? t : partner;
-        const linked = t.transferDirection === "OUT" ? partner : t;
+      if (partner && !processedIds.has(partner.id)) {
+        const main =
+          t.transferDirection === "OUT" || t.type === TransactionType.EXPENSE
+            ? t
+            : partner;
+        const linked = main === t ? partner : t;
 
-        grouped.push({
-          ...main,
-          linkedTransaction: linked,
-        });
+        grouped.push({ ...main, linkedTransaction: linked });
+        processedIds.add(main.id);
+        processedIds.add(linked.id);
+        continue;
+      }
+    }
+
+    // 2. Fuzzy Merge for Symmetric Transfers (Unlinked legs)
+    if (t.type === TransactionType.TRANSFER) {
+      const partner = transactions.find(
+        (p) =>
+          !processedIds.has(p.id) &&
+          p.id !== t.id &&
+          p.type === TransactionType.TRANSFER &&
+          normalizeDate(p.date) === normalizeDate(t.date) &&
+          p.time === t.time &&
+          p.amount === t.amount &&
+          ((p.accountId === t.toAccountId && p.toAccountId === t.accountId) || // Symmetric
+            (p.accountId === t.accountId &&
+              p.toAccountId === t.toAccountId &&
+              p.shopName === t.shopName)), // exact logical duplicate
+      );
+
+      if (partner) {
+        // If it's a symmetric pair, we merge. If it's a duplicate, we still merge to deduplicate.
+        const isSymmetric = partner.accountId === t.toAccountId;
+        const main = isSymmetric
+          ? t.transferDirection === "OUT" || !t.transferDirection
+            ? t
+            : partner
+          : t;
+        const linked = main === t ? partner : t;
+
+        grouped.push({ ...main, linkedTransaction: linked });
         processedIds.add(main.id);
         processedIds.add(linked.id);
         continue;

@@ -1,152 +1,210 @@
 import React from "react";
-import { Account, Pot } from "../types";
-import { CreditCardIcon, WalletIcon } from "@heroicons/react/24/outline";
+import { Account, Pot, Transaction, TransactionType } from "../types";
+import { CryptoPrices } from "../services/coin.services";
+import {
+  WalletIcon,
+  StarIcon,
+  ArrowUpRightIcon,
+  ArrowDownRightIcon,
+} from "@heroicons/react/24/solid";
+import { SparklineChart } from "./Charts";
 
 interface Props {
   account: Account;
   pots: Pot[];
+  transactions: Transaction[];
   onClick: (account: Account) => void;
+  usdRate?: number;
+  cryptoPrices?: CryptoPrices;
+  displayCurrency?: "MYR" | "USD";
+  hideBalance?: boolean;
 }
 
-const AccountCard: React.FC<Props> = ({ account, pots, onClick }) => {
+const AccountCard: React.FC<Props> = ({
+  account,
+  pots,
+  transactions,
+  onClick,
+  usdRate = 1,
+  cryptoPrices = { BTC: 65000, ETH: 3500 },
+  displayCurrency = "MYR",
+  hideBalance = false,
+}) => {
   const accountPots = pots.filter((p) => p.accountId === account.id);
-  const totalInPots = accountPots.reduce((sum, p) => sum + p.currentAmount, 0);
+  const totalInPots = accountPots.reduce(
+    (sum, p) => sum + (p.currentAmount || 0),
+    0,
+  );
   const availableBalance = account.balance - totalInPots;
 
-  // Dynamic border color based on account type
-  const getBorderColor = () => {
-    switch (account.type) {
-      case "CRYPTO":
-        return "border-orange-500/20 hover:border-orange-500/50";
-      case "INVESTMENT":
-        return "border-purple-500/20 hover:border-purple-500/50";
-      default:
-        return "border-gray-800 hover:border-gray-600";
+  // Convert balance for display
+  const displayBalance = React.useMemo(() => {
+    if (account.currency === "MYR") {
+      return displayCurrency === "MYR"
+        ? account.balance
+        : account.balance / usdRate;
     }
-  };
 
-  const hasAccountNum = !!account.details?.accountNumber;
-  const hasCardNum = !!account.details?.cardNumber;
+    let valInUSD = account.balance;
+    if (account.currency === "BTC")
+      valInUSD = account.balance * cryptoPrices.BTC;
+    else if (account.currency === "ETH")
+      valInUSD = account.balance * cryptoPrices.ETH;
 
-  // Mask card number: Show only last 4 digits
-  const getMaskedCardNumber = (num: string) => {
-    // Remove spaces first
-    const clean = num.replace(/\s/g, "");
-    if (clean.length < 4) return clean;
-    return `**** **** **** ${clean.slice(-4)}`;
-  };
+    return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
+  }, [
+    account.balance,
+    account.currency,
+    usdRate,
+    displayCurrency,
+    cryptoPrices,
+  ]);
+
+  const displayPotsBalance = React.useMemo(() => {
+    if (account.currency === "MYR") {
+      return displayCurrency === "MYR"
+        ? availableBalance
+        : availableBalance / usdRate;
+    }
+
+    let valInUSD = availableBalance;
+    if (account.currency === "BTC")
+      valInUSD = availableBalance * cryptoPrices.BTC;
+    else if (account.currency === "ETH")
+      valInUSD = availableBalance * cryptoPrices.ETH;
+
+    return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
+  }, [
+    availableBalance,
+    account.currency,
+    usdRate,
+    displayCurrency,
+    cryptoPrices,
+  ]);
+
+  // Real trend data for the account
+  const trendData = React.useMemo(() => {
+    const accountTxs = transactions
+      .filter((t) => t.accountId === account.id || t.toAccountId === account.id)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    if (accountTxs.length === 0) return [account.balance, account.balance];
+
+    const balancePoints: number[] = [];
+    let runningBalance = account.balance;
+
+    // Work backwards from current balance
+    const reversedTxs = [...accountTxs].reverse();
+    balancePoints.push(runningBalance);
+
+    for (const tx of reversedTxs) {
+      if (tx.type === TransactionType.INCOME) {
+        if (tx.accountId === account.id) runningBalance -= tx.amount;
+      } else if (tx.type === TransactionType.EXPENSE) {
+        if (tx.accountId === account.id) runningBalance += tx.amount;
+      } else if (tx.type === TransactionType.TRANSFER) {
+        if (tx.accountId === account.id) runningBalance += tx.amount;
+        if (tx.toAccountId === account.id) runningBalance -= tx.amount;
+      }
+      balancePoints.push(runningBalance);
+      if (balancePoints.length >= 15) break; // Limit to last 15 points
+    }
+
+    return balancePoints.reverse();
+  }, [account.id, account.balance, transactions]);
+
+  const lastPoint = trendData[trendData.length - 1];
+  const prevPoint = trendData[0];
+  const diff = lastPoint - prevPoint;
+  const isPositive = diff >= 0;
+  const percentChange =
+    prevPoint !== 0 ? (diff / Math.abs(prevPoint)) * 100 : 0;
 
   return (
     <div
-      className={`relative rounded-2xl bg-card border ${getBorderColor()} shadow-sm transition-all duration-200 hover:bg-surface hover:shadow-lg cursor-pointer p-5 group flex flex-col justify-between h-full`}
+      className="relative rounded-[2.5rem] bg-gradient-to-br from-surface/80 to-surface/40 border border-gray-800/50 backdrop-blur-xl shadow-2xl transition-all duration-300 hover:scale-[1.02] active:scale-95 cursor-pointer p-7 group h-[280px] flex flex-col justify-between overflow-hidden"
       onClick={() => onClick(account)}
     >
-      <div>
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex items-center gap-3">
+      {/* Glossy Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+
+      {/* Background radial glow */}
+      <div
+        className={`absolute -right-20 -top-20 w-48 h-48 rounded-full blur-[80px] transition-opacity duration-500 opacity-20 group-hover:opacity-40 ${isPositive ? "bg-emerald-500/30" : "bg-rose-500/30"}`}
+      />
+
+      <div className="relative z-10 flex justify-between items-start">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-14 h-14 shrink-0 rounded-[1.25rem] bg-white/5 border border-white/10 flex items-center justify-center text-3xl shadow-2xl group-hover:border-emerald-500/30 transition-colors">
             {account.iconType === "IMAGE" ? (
               <img
                 src={account.iconValue}
-                alt={account.name}
-                className="w-10 h-10 object-contain bg-white/5 rounded-full p-0.5"
+                className="w-9 h-9 object-contain"
+                alt=""
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-surface flex items-center justify-center text-xl border border-gray-700">
-                {account.iconValue}
-              </div>
-            )}
-            <div>
-              <h4 className="font-bold text-sm text-gray-100 leading-tight">
-                {account.name}
-              </h4>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] text-gray-500 uppercase font-medium tracking-wide bg-white/5 px-1.5 py-0.5 rounded inline-block">
-                  {account.type}
-                </span>
-                {hasAccountNum && (
-                  <span className="font-mono text-[10px] text-gray-400 tracking-wider">
-                    • {account.details?.accountNumber}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex justify-between items-end">
-            <div>
-              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">
-                Current Balance
-              </p>
-              <p className="text-2xl font-bold text-white tracking-tight group-hover:text-primary transition-colors">
-                {account.currency === "MYR" ? "RM" : "$"}{" "}
-                {account.balance.toLocaleString()}
-              </p>
-            </div>
-            {totalInPots > 0 && (
-              <div className="text-right">
-                <p className="text-[10px] text-primary uppercase tracking-widest font-bold mb-0.5 flex items-center justify-end gap-1">
-                  <WalletIcon className="w-3 h-3" /> Available
-                </p>
-                <p className="text-lg font-bold text-success leading-tight">
-                  {account.currency === "MYR" ? "RM" : "$"}{" "}
-                  {availableBalance.toLocaleString()}
-                </p>
-              </div>
+              <span className="scale-110">{account.iconValue}</span>
             )}
           </div>
-
-          {accountPots.length > 0 && (
-            <div className="pt-2 border-t border-gray-800 flex gap-2 overflow-hidden">
-              {accountPots.map((p) => (
-                <div
-                  key={p.id}
-                  className="w-1.5 h-1.5 rounded-full bg-primary/40"
-                  title={p.name}
-                />
-              ))}
-              <span className="text-[10px] text-gray-500">
-                {accountPots.length} Active Pots
-              </span>
-            </div>
-          )}
+          <div className="space-y-0.5 min-w-0">
+            <h4 className="font-bold text-lg text-white tracking-tight truncate">
+              {account.name}
+            </h4>
+            <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest truncate">
+              {account.type} • {account.currency}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Details Footer */}
-      {hasCardNum && (
-        <div className="mt-2 space-y-2 pt-3 border-t border-gray-800/50">
-          <div className="flex justify-between items-center text-xs">
-            <div className="flex items-center gap-1.5 text-gray-500">
-              <CreditCardIcon className="w-3.5 h-3.5" />
-              <span>Card</span>
-            </div>
-            <div className="text-right flex items-center gap-2">
-              <p className="font-mono text-gray-400 text-[10px]">
-                {getMaskedCardNumber(account.details!.cardNumber!)}
-              </p>
-            </div>
+      <div className="relative z-10">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-black text-gray-500">
+            {displayCurrency === "MYR" ? "RM" : "$"}
+          </span>
+          <span className="text-4xl font-black text-white tracking-tighter">
+            {hideBalance
+              ? "****"
+              : displayBalance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+          </span>
+        </div>
+        {totalInPots > 0 && (
+          <div className="mt-1">
+            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
+              {displayCurrency === "MYR" ? "RM" : "$"}{" "}
+              {hideBalance ? "****" : displayPotsBalance.toLocaleString()}{" "}
+              Available
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="relative z-10 flex justify-between items-end pt-4 border-t border-gray-800/30">
+        <div className="space-y-1">
+          <p className="text-[9px] text-gray-500 uppercase font-black tracking-widest opacity-60">
+            Trend {trendData.length > 1 ? "Activity" : "Static"}
+          </p>
+          <div
+            className={`flex items-center gap-1 text-[11px] font-black tracking-tight ${isPositive ? "text-emerald-400" : "text-rose-400"}`}
+          >
+            {isPositive ? (
+              <ArrowUpRightIcon className="w-3 h-3 stroke-[3]" />
+            ) : (
+              <ArrowDownRightIcon className="w-3 h-3 stroke-[3]" />
+            )}
+            {Math.abs(percentChange).toFixed(1)}%
           </div>
         </div>
-      )}
-
-      {/* Detail Hint */}
-      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className="w-5 h-5 text-gray-400"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M8.25 4.5l7.5 7.5-7.5 7.5"
+        <div className="w-28 h-10 opacity-60 group-hover:opacity-100 transition-opacity">
+          <SparklineChart
+            data={trendData}
+            color={isPositive ? "#10b981" : "#f43f5e"}
+            height={40}
           />
-        </svg>
+        </div>
       </div>
     </div>
   );

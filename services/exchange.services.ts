@@ -29,7 +29,9 @@ const getHistoricalRates = async (
   const startDate = `${getSPart("year")}-${getSPart("month").padStart(2, "0")}-${getSPart("day").padStart(2, "0")}`;
 
   try {
-    const url = `${BASE_URL}?id=${dataId}&meta=true&include=usd,rate_type,date&filter=middle@rate_type&date_start=${startDate}@date&date_end=${endDate}@date`;
+    // Increase limit to accommodate a full year of data if needed (approx 365 days)
+    const limit = Math.max(days + 10, 400);
+    const url = `${BASE_URL}?id=${dataId}&meta=true&limit=${limit}&include=usd,rate_type,date&filter=middle@rate_type&date_start=${startDate}@date&date_end=${endDate}@date`;
     const response = await fetch(url);
     const result = await response.json();
     const data = result.data || result; // Handle both meta=true and meta=false
@@ -110,7 +112,7 @@ export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
 
     const [liveRes, history] = await Promise.all([
       fetch(liveUrl).then((r) => r.json()),
-      getHistoricalRates(dataId, 30),
+      getHistoricalRates(dataId, 450), // Fetch enough history to support YTD/ALL views (Dashboard uses up to 400)
     ]);
 
     let liveMeta = liveRes.meta;

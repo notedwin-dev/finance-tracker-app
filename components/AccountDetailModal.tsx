@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { Account, Transaction, TransactionType, Pot } from "../types";
+import { useData } from "../context/DataContext";
 import {
   XMarkIcon,
   CreditCardIcon,
@@ -49,9 +50,49 @@ const AccountDetailModal: React.FC<Props> = ({
   onClose,
   onEdit,
 }) => {
+  const { usdRate, cryptoPrices, displayCurrency } = useData();
+
+  const getCurrencySymbol = (currency: string) => {
+    switch (currency) {
+      case "MYR":
+        return "RM";
+      case "USD":
+        return "$";
+      case "BTC":
+        return "₿";
+      case "ETH":
+        return "Ξ";
+      default:
+        return currency;
+    }
+  };
+
   const accountPots = pots.filter((p) => p.accountId === account.id);
   const totalInPots = accountPots.reduce((sum, p) => sum + p.currentAmount, 0);
   const availableBalance = account.balance - totalInPots;
+
+  // Conversion value if different from display currency
+  const convertedBalance = useMemo(() => {
+    if (account.currency === displayCurrency) return null;
+
+    if (account.currency === "MYR") {
+      return displayCurrency === "USD" ? account.balance / usdRate : null;
+    }
+
+    let valInUSD = account.balance;
+    if (account.currency === "BTC")
+      valInUSD = account.balance * cryptoPrices.BTC;
+    else if (account.currency === "ETH")
+      valInUSD = account.balance * cryptoPrices.ETH;
+
+    return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
+  }, [
+    account.balance,
+    account.currency,
+    displayCurrency,
+    usdRate,
+    cryptoPrices,
+  ]);
 
   // Generate and process data for ChartJS
   const chartData = useMemo(() => {
@@ -165,9 +206,13 @@ const AccountDetailModal: React.FC<Props> = ({
             }
             if (context.parsed.y !== null) {
               label +=
-                (account.currency === "MYR" ? "RM " : "$") +
+                getCurrencySymbol(account.currency) +
+                " " +
                 context.parsed.y.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
+                  minimumFractionDigits:
+                    account.currency === "BTC" || account.currency === "ETH"
+                      ? 8
+                      : 2,
                 });
             }
             return label;
@@ -269,24 +314,40 @@ const AccountDetailModal: React.FC<Props> = ({
               </p>
               <h3 className="text-3xl sm:text-4xl font-black text-white">
                 <span className="text-gray-500 text-sm sm:text-base mr-1 font-medium">
-                  {account.currency === "MYR" ? "RM" : "$"}
+                  {getCurrencySymbol(account.currency)}
                 </span>
                 {account.balance.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
+                  minimumFractionDigits:
+                    account.currency === "BTC" || account.currency === "ETH"
+                      ? 8
+                      : 2,
                 })}
               </h3>
+              {convertedBalance !== null && (
+                <p className="text-gray-500 text-sm font-bold mt-1">
+                  ≈ {getCurrencySymbol(displayCurrency)}{" "}
+                  {convertedBalance.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 6,
+                  })}
+                </p>
+              )}
             </div>
             {totalInPots > 0 && (
               <div className="sm:text-right bg-primary/5 sm:bg-transparent p-3 sm:p-0 rounded-2xl border border-primary/10 sm:border-none">
                 <p className="text-primary text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold flex items-center sm:justify-end gap-1">
-                  <WalletIcon className="w-3 h-3 sm:w-4 h-4" /> Available
+                  <WalletIcon className="w-3 h-3 sm:w-4 h-4" /> Available •{" "}
+                  {accountPots.length} Active Pots
                 </p>
                 <h3 className="text-2xl sm:text-3xl font-black text-success">
                   <span className="text-success/50 text-sm sm:text-base mr-1 font-medium">
-                    {account.currency === "MYR" ? "RM" : "$"}
+                    {getCurrencySymbol(account.currency)}
                   </span>
                   {availableBalance.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
+                    minimumFractionDigits:
+                      account.currency === "BTC" || account.currency === "ETH"
+                        ? 8
+                        : 2,
                   })}
                 </h3>
               </div>
@@ -318,8 +379,14 @@ const AccountDetailModal: React.FC<Props> = ({
                           {pot.name}
                         </span>
                         <span className="text-xs text-primary font-bold">
-                          {account.currency === "MYR" ? "RM" : "$"}
-                          {pot.currentAmount.toLocaleString()}
+                          {getCurrencySymbol(account.currency)}
+                          {pot.currentAmount.toLocaleString(undefined, {
+                            minimumFractionDigits:
+                              account.currency === "BTC" ||
+                              account.currency === "ETH"
+                                ? 8
+                                : 2,
+                          })}
                         </span>
                       </div>
                       <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">

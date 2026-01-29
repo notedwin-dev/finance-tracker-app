@@ -5,13 +5,14 @@ import {
   LinearScale,
   PointElement,
   LineElement,
+  ArcElement,
   Title,
   Tooltip,
   Filler,
   Legend,
   ScriptableContext,
 } from "chart.js";
-import { Line } from "react-chartjs-2";
+import { Line, Pie } from "react-chartjs-2";
 import { Transaction, TransactionType } from "../types";
 
 // Register ChartJS components
@@ -20,6 +21,7 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
+  ArcElement,
   Title,
   Tooltip,
   Filler,
@@ -70,21 +72,16 @@ interface Props {
   transactions: Transaction[];
   currentTotal?: number;
   usdRate?: number;
+  displayCurrency?: "MYR" | "USD";
 }
 
 export const NetWorthChart: React.FC<Props> = ({
   transactions,
   currentTotal = 0,
   usdRate = 4.5,
+  displayCurrency = "MYR",
 }) => {
   const chartData = useMemo(() => {
-    if (transactions.length === 0) return { labels: [], datasets: [] };
-
-    // 1. Sort transactions by date (Newest to Oldest) using Date objects
-    const sortedDetails = [...transactions].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-
     const points: { date: string; balance: number }[] = [];
     let runningBalance = currentTotal;
 
@@ -97,57 +94,75 @@ export const NetWorthChart: React.FC<Props> = ({
       balance: runningBalance,
     });
 
-    const dailyEffects = new Map<string, number>();
-
-    sortedDetails.forEach((t) => {
-      // Use helper to ensure format is always YYYY-MM-DD
-      const date = toYMD(t.date);
-      let effect = 0;
-      const absAmount = Math.abs(t.amount);
-
-      if (t.type === TransactionType.INCOME) {
-        effect = absAmount;
-      } else if (t.type === TransactionType.EXPENSE) {
-        effect = -absAmount;
-      } else if (
-        t.type === TransactionType.ADJUSTMENT ||
-        t.type === TransactionType.ACCOUNT_OPENING
-      ) {
-        effect = t.amount;
-      } else if (t.type === TransactionType.ACCOUNT_DELETE) {
-        effect = -t.amount;
-      }
-
-      if (t.currency === "USD") effect *= usdRate;
-      dailyEffects.set(date, (dailyEffects.get(date) || 0) + effect);
-    });
-
-    const dates = Array.from(dailyEffects.keys()).sort((a, b) =>
-      b.localeCompare(a),
-    );
-
-    dates.forEach((date) => {
-      if (date !== todayStr) {
-        points.push({ date, balance: runningBalance });
-      }
-      const effect = dailyEffects.get(date) || 0;
-      runningBalance -= effect;
-    });
-
-    // Add start point
-    if (dates.length > 0 && dates[dates.length - 1]) {
-      const oldestStr = dates[dates.length - 1];
-      const [y, m, d] = oldestStr.split("-").map(Number);
-      const firstDate = new Date(y, m - 1, d);
-      firstDate.setDate(firstDate.getDate() - 1);
-      const fy = firstDate.getFullYear();
-      const fm = String(firstDate.getMonth() + 1).padStart(2, "0");
-      const fd = String(firstDate.getDate()).padStart(2, "0");
-
+    if (transactions.length === 0) {
+      // flat line
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
       points.push({
-        date: `${fy}-${fm}-${fd}`,
+        date: toYMD(yesterday.toISOString()),
         balance: runningBalance,
       });
+    } else {
+      const sortedDetails = [...transactions].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
+
+      const dailyEffects = new Map<string, number>();
+
+      sortedDetails.forEach((t) => {
+        const date = toYMD(t.date);
+        let effect = 0;
+        const absAmount = Math.abs(t.amount);
+
+        if (t.type === TransactionType.INCOME) effect = absAmount;
+        else if (t.type === TransactionType.EXPENSE) effect = -absAmount;
+        else if (
+          t.type === TransactionType.ADJUSTMENT ||
+          t.type === TransactionType.ACCOUNT_OPENING
+        )
+          effect = t.amount;
+        else if (t.type === TransactionType.ACCOUNT_DELETE) effect = -t.amount;
+
+        // Convert the transaction amount to the DISPLAY currency for backtracking
+        // 1. If we are displaying MYR, all USD/Crypto txs must be converted to MYR
+        // 2. If we are displaying USD, all MYR txs must be converted to USD
+        if (displayCurrency === "MYR") {
+          if (t.currency !== "MYR") effect *= usdRate;
+        } else {
+          if (t.currency === "MYR") effect /= usdRate;
+          // non-MYR are already USD-equivalent in our logic
+        }
+
+        dailyEffects.set(date, (dailyEffects.get(date) || 0) + effect);
+      });
+
+      const dates = Array.from(dailyEffects.keys()).sort((a, b) =>
+        b.localeCompare(a),
+      );
+
+      dates.forEach((date) => {
+        if (date !== todayStr) {
+          points.push({ date, balance: runningBalance });
+        }
+        const effect = dailyEffects.get(date) || 0;
+        runningBalance -= effect;
+      });
+
+      // Add start point
+      if (dates.length > 0 && dates[dates.length - 1]) {
+        const oldestStr = dates[dates.length - 1];
+        const [y, m, d] = oldestStr.split("-").map(Number);
+        const firstDate = new Date(y, m - 1, d);
+        firstDate.setDate(firstDate.getDate() - 1);
+        const fy = firstDate.getFullYear();
+        const fm = String(firstDate.getMonth() + 1).padStart(2, "0");
+        const fd = String(firstDate.getDate()).padStart(2, "0");
+
+        points.push({
+          date: `${fy}-${fm}-${fd}`,
+          balance: runningBalance,
+        });
+      }
     }
 
     const dataPoints = points.reverse();
@@ -540,6 +555,149 @@ export const GoalProgressCard: React.FC<{
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// --- SPARKLINE CHART (MINI CHART) ---
+
+export const SparklineChart: React.FC<{
+  data: number[];
+  labels?: string[];
+  color?: string;
+  height?: number;
+  interactive?: boolean;
+}> = ({ data, labels, color = "#6366f1", height = 40, interactive = false }) => {
+  const chartData = {
+    labels: (labels || data.map((_, i) => i)) as string[],
+    datasets: [
+      {
+        data: data,
+        borderColor: color,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: interactive ? 4 : 0,
+        tension: 0.4,
+        fill: true,
+        backgroundColor: (context: ScriptableContext<"line">) => {
+          const ctx = context.chart.ctx;
+          const gradient = ctx.createLinearGradient(0, 0, 0, height);
+          gradient.addColorStop(0, `${color}44`);
+          gradient.addColorStop(1, `${color}00`);
+          return gradient;
+        },
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        enabled: interactive,
+        mode: "index" as const,
+        intersect: false,
+        backgroundColor: "#18181b",
+        titleColor: "#9ca3af",
+        bodyFont: { weight: "bold" as const },
+        displayColors: false,
+        callbacks: {
+          label: (context: any) => {
+            return (
+              (context.dataset.label || "") +
+              " " +
+              context.parsed.y.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+              })
+            );
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        display: interactive,
+        grid: { display: false },
+        ticks: {
+          display: interactive,
+          color: "#4b5563",
+          font: { size: 9, weight: "bold" as const },
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 5,
+        },
+      },
+      y: { display: false },
+    },
+    interaction: {
+      mode: "nearest" as const,
+      axis: "x" as const,
+      intersect: false,
+    },
+  };
+
+  return (
+    <div style={{ height }}>
+      <Line data={chartData} options={options} />
+    </div>
+  );
+};
+
+export const CategoryPieChart: React.FC<{
+  data: { label: string; value: number; color: string }[];
+  height?: number;
+}> = ({ data, height = 300 }) => {
+  const chartData = {
+    labels: data.map((d) => d.label),
+    datasets: [
+      {
+        data: data.map((d) => d.value),
+        backgroundColor: data.map((d) => d.color),
+        borderColor: "#18181b",
+        borderWidth: 4,
+        hoverOffset: 20,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "bottom" as const,
+        labels: {
+          color: "#9ca3af",
+          padding: 20,
+          usePointStyle: true,
+          pointStyle: "circle",
+          font: { size: 11, weight: "bold" as const },
+        },
+      },
+      tooltip: {
+        backgroundColor: "#18181b",
+        padding: 12,
+        titleFont: { size: 14, weight: "bold" as const },
+        bodyFont: { size: 13 },
+        callbacks: {
+          label: (context: any) => {
+            const label = context.label || "";
+            const value = context.parsed || 0;
+            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+            const percentage = ((value / total) * 100).toFixed(1);
+            return ` ${label}: ${value.toLocaleString()} (${percentage}%)`;
+          },
+        },
+      },
+    },
+    cutout: "70%",
+  };
+
+  return (
+    <div style={{ height }}>
+      <Pie data={chartData} options={options} />
     </div>
   );
 };

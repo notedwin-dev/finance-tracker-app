@@ -39,6 +39,7 @@ interface Props {
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   apiKey?: string;
+  isInline?: boolean;
 }
 
 const AIInsights: React.FC<Props> = ({
@@ -55,6 +56,7 @@ const AIInsights: React.FC<Props> = ({
   onSelectSession,
   onNewChat,
   apiKey,
+  isInline = false,
 }) => {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -194,12 +196,18 @@ const AIInsights: React.FC<Props> = ({
   ];
 
   return (
-    <div className="fixed inset-0 bg-background z-[100] flex animate-fadeIn">
+    <div
+      className={
+        isInline
+          ? "flex w-full h-full bg-transparent relative overflow-hidden"
+          : "fixed inset-0 bg-background z-[100] flex animate-fadeIn"
+      }
+    >
       {/* Sidebar - Desktop */}
       <div
         className={`${
           showSidebar ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 w-72 bg-surface border-r border-gray-800 z-50 transition-transform duration-300 flex flex-col`}
+        } ${isInline ? "lg:hidden" : "lg:translate-x-0"} ${isInline ? "absolute inset-y-0 left-0" : "fixed lg:static inset-y-0 left-0"} w-72 bg-surface border-r border-gray-800 z-50 transition-transform duration-300 flex flex-col`}
       >
         <div className="p-4 flex items-center justify-between border-b border-gray-800">
           <div className="flex items-center gap-2">
@@ -267,11 +275,13 @@ const AIInsights: React.FC<Props> = ({
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden">
         {/* Header */}
-        <header className="h-16 border-b border-gray-800 flex items-center justify-between px-4 sm:px-6 bg-background/50 backdrop-blur-xl shrink-0">
+        <header
+          className={`${isInline ? "h-12" : "h-16"} border-b border-gray-800 flex items-center justify-between px-4 sm:px-6 bg-background/50 backdrop-blur-xl shrink-0`}
+        >
           <div className="flex items-center gap-4">
             <button
               onClick={() => setShowSidebar(true)}
-              className="lg:hidden p-2 text-gray-400"
+              className={`${isInline ? "" : "lg:hidden"} p-2 text-gray-400`}
             >
               <Bars3Icon className="w-6 h-6" />
             </button>
@@ -279,20 +289,24 @@ const AIInsights: React.FC<Props> = ({
               <h2 className="text-sm font-bold text-white truncate max-w-[150px] sm:max-w-xs">
                 {activeSession?.title || "AI Assistant"}
               </h2>
-              <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">
-                  Gemini Flash
-                </span>
-              </div>
+              {!isInline && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">
+                    Gemini Flash
+                  </span>
+                </div>
+              )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-500 hover:text-white transition-colors"
-          >
-            <XMarkIcon className="w-6 h-6" />
-          </button>
+          {!isInline && (
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-500 hover:text-white transition-colors"
+            >
+              <XMarkIcon className="w-6 h-6" />
+            </button>
+          )}
         </header>
 
         {/* Content */}

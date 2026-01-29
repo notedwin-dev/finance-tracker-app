@@ -46,6 +46,14 @@ const AccountForm: React.FC<Props> = ({
       return;
     }
 
+    if (currency === "BTC" || currency === "ETH") {
+      // For crypto, allow free-form decimal input
+      if (/^\d*\.?\d*$/.test(val)) {
+        setBalance(val);
+      }
+      return;
+    }
+
     if (val.endsWith(".") && !balance.endsWith(".")) {
       const d = balance.replace(/\D/g, "");
       setBalance(parseInt(d || "0", 10).toString() + ".");
@@ -141,7 +149,11 @@ const AccountForm: React.FC<Props> = ({
     setType(provider.type as any);
     setIconType("IMAGE");
     setIconValue(provider.icon);
-    if (provider.type === "CRYPTO") setCurrency("USD");
+    if ((provider as any).currency) {
+      setCurrency((provider as any).currency);
+    } else if (provider.type === "CRYPTO") {
+      setCurrency("USD");
+    }
   };
 
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -326,16 +338,29 @@ const AccountForm: React.FC<Props> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">
-                  Currency
+                  Currency / Symbol
                 </label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value as any)}
-                  className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white focus:border-primary focus:outline-none appearance-none"
-                >
-                  <option value="MYR">MYR (RM)</option>
-                  <option value="USD">USD ($)</option>
-                </select>
+                <div className="relative group">
+                  <input
+                    type="text"
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                    className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white focus:border-primary focus:outline-none pr-12 font-bold uppercase"
+                    placeholder="MYR"
+                    list="currency-options"
+                  />
+                  <datalist id="currency-options">
+                    <option value="MYR" />
+                    <option value="USD" />
+                    <option value="BTC" />
+                    <option value="ETH" />
+                    <option value="USDT" />
+                    <option value="TRX" />
+                  </datalist>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-[10px] font-bold">
+                    SYMBOL
+                  </div>
+                </div>
               </div>
             </div>
 

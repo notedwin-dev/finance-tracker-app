@@ -60,10 +60,10 @@ const DashboardPage: React.FC = () => {
 
   const [viewAccount, setViewAccount] = useState<Account | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [hideBalance, setHideBalance] = useState(false);
   const [timeframe, setTimeframe] = useState<TimeFrame | "CUSTOM">("1M");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTransactionPie, setShowTransactionPie] = useState(false);
+  const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
   const [customRange, setCustomRange] = useState({
     start: new Date(new Date().setDate(new Date().getDate() - 30))
       .toISOString()
@@ -77,7 +77,7 @@ const DashboardPage: React.FC = () => {
     let start = new Date();
 
     if (timeframe === "1D") {
-      // Just today
+      start.setHours(end.getHours() - 24);
     } else if (timeframe === "1W") {
       start.setDate(end.getDate() - 7);
     } else if (timeframe === "1M") {
@@ -115,13 +115,18 @@ const DashboardPage: React.FC = () => {
   // Filter transactions based on timeframe
   const filteredTransactions = useMemo(() => {
     const now = new Date();
-    now.setHours(23, 59, 59, 999);
+    const isOneDay = timeframe === "1D";
+
+    if (!isOneDay && timeframe !== "CUSTOM") {
+      now.setHours(23, 59, 59, 999);
+    }
 
     let startLimit = new Date();
     startLimit.setHours(0, 0, 0, 0);
 
-    if (timeframe === "1D") {
-      // already set to start of today
+    if (isOneDay) {
+      startLimit = new Date();
+      startLimit.setHours(startLimit.getHours() - 24);
     } else if (timeframe === "1W") {
       startLimit.setDate(now.getDate() - 7);
     } else if (timeframe === "1M") {
@@ -390,15 +395,16 @@ const DashboardPage: React.FC = () => {
   }, [exchangeRate, timeframe, customRange]);
 
   const sortedRecentTransactions = useMemo(() => {
-    return groupTransactions(filteredTransactions);
-  }, [filteredTransactions]);
+    // Show most recent 10 transactions regardless of timeframe
+    return groupTransactions(transactions).slice(0, 10);
+  }, [transactions]);
 
   return (
-    <div className="animate-fadeIn space-y-8 pb-10 max-w-7xl mx-auto px-4 lg:px-8">
-      {/* Laptop Style Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 py-6 pt-10">
+    <div className="animate-fadeIn space-y-6 pb-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* App-Style Header */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-1 sm:gap-6 py-4 sm:py-6 sm:pt-10">
         <div>
-          <div className="flex items-center gap-3 text-gray-400 mb-1">
+          <div className="hidden sm:flex items-center gap-3 text-gray-400 mb-1">
             <CalendarIcon className="w-5 h-5" />
             <span className="text-sm font-medium">
               {new Date().toLocaleDateString("en-US", {
@@ -408,24 +414,31 @@ const DashboardPage: React.FC = () => {
               })}
             </span>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tight">
+          <span className="text-[10px] sm:hidden font-black text-indigo-400 uppercase tracking-[0.2em] mb-1 block">
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              day: "numeric",
+              month: "short",
+            })}
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Welcome back, {profile?.name?.split(" ")[0]}!
           </h1>
         </div>
       </div>
 
       {/* Primary Grid Layout */}
-      <div className="space-y-8">
-        {/* Top Controls Bar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 bg-surface/50 border border-gray-800/50 p-1.5 rounded-2xl">
+      <div className="space-y-6 sm:space-y-8">
+        {/* Quick controls - Native Segmented Control Style */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 flex items-center bg-surface/50 border border-gray-800/50 p-1 rounded-2xl overflow-x-auto no-scrollbar">
             {["1D", "1W", "1M", "YTD", "ALL"].map((tf) => (
               <button
                 key={tf}
                 onClick={() => setTimeframe(tf as TimeFrame)}
-                className={`px-5 py-2 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap ${
+                className={`flex-1 min-w-12.5 px-2 py-2.5 rounded-xl text-[10px] font-black tracking-widest uppercase transition-all whitespace-nowrap ${
                   timeframe === tf
-                    ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.1)]"
+                    ? "bg-white text-black shadow-lg"
                     : "text-gray-500 hover:text-gray-300"
                 }`}
               >
@@ -436,187 +449,140 @@ const DashboardPage: React.FC = () => {
 
           <button
             onClick={() => setShowDatePicker(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface/50 border border-gray-800/50 rounded-2xl text-[11px] font-black uppercase tracking-widest text-white transition-all shadow-lg active:scale-95 hover:bg-surface hover:border-indigo-500/30"
+            className="flex shrink-0 items-center justify-center w-11 h-11 bg-surface/50 border border-gray-800/50 rounded-2xl text-white transition-all shadow-lg active:scale-95 hover:bg-surface hover:border-indigo-500/30"
           >
-            <CalendarIcon className="w-4 h-4 text-indigo-400" />
-            <span>{timeframe === "1D" ? "Today" : displayRange}</span>
-            <ChevronUpDownIcon className="w-4 h-4 text-gray-600" />
+            <CalendarIcon className="w-5 h-5 text-indigo-400" />
           </button>
         </div>
 
-        {/* Top Row: AI, Balance, Currency */}
-        <div className="grid lg:grid-cols-12 gap-8">
-          {/* Balance Overview Card */}
-          <div className="lg:col-span-6 bg-surface/40 backdrop-blur-md border border-gray-800/60 p-8 rounded-[2rem] flex flex-col group relative overflow-hidden min-h-[320px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-[60px] -mr-16 -mt-16"></div>
+        {/* Balance Section - Native Card Style */}
+        <div className="bg-surface/40 backdrop-blur-md border border-gray-800/60 p-6 sm:p-8 rounded-4xl flex flex-col group relative overflow-hidden shadow-2xl">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 blur-[80px] -mr-32 -mt-32"></div>
 
-            <div className="relative z-10 flex justify-between items-start mb-6">
-              <div>
-                <span className="text-[11px] font-black text-gray-500 uppercase tracking-[0.2em] mb-3 block">
-                  Balance Overview
-                </span>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-4xl font-black text-white tracking-tighter">
-                    {hideBalance
-                      ? "••••••"
-                      : `${displayCurrency === "MYR" ? "RM" : "$"}${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}`}
-                  </h3>
-                  <button
-                    onClick={() => setHideBalance(!hideBalance)}
-                    className="text-gray-600 hover:text-gray-400"
-                  >
-                    {hideBalance ? (
-                      <EyeSlashIcon className="w-4 h-4" />
-                    ) : (
-                      <EyeIcon className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform cursor-pointer">
-                <ArrowUpRightIcon className="w-5 h-5 text-gray-400" />
-              </div>
-            </div>
+          <div className="relative z-10 flex flex-col mb-8 sm:mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-[10px] sm:text-[11px] font-black text-gray-500 uppercase tracking-[0.2em] block">
+                Total Balance
+              </span>
 
-            <div className="relative z-10 flex-1 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex items-center gap-1 font-black text-sm ${timeframeStats.isPositive ? "text-emerald-400" : "text-rose-400"}`}
-                  >
-                    {timeframeStats.isPositive ? "↑" : "↓"}{" "}
-                    {Math.abs(timeframeStats.percentChange).toFixed(1)}%
-                  </div>
-                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                    from{" "}
-                    {timeframe === "1D"
-                      ? "yesterday"
-                      : timeframe === "1W"
-                        ? "last week"
-                        : timeframe === "1M"
-                          ? "last month"
-                          : timeframe === "YTD"
-                            ? "start of year"
-                            : timeframe === "CUSTOM"
-                              ? "prev point"
-                              : "all time"}
-                  </span>
-                </div>
-              </div>
+              {/* Currency Selector Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
+                  className="flex items-center gap-2 bg-gray-900/60 border border-gray-800 rounded-xl px-3 py-1.5 text-[10px] font-black tracking-widest text-indigo-400 hover:text-white transition-all focus:outline-none"
+                >
+                  {displayCurrency}
+                  <ChevronUpDownIcon className="w-3.5 h-3.5" />
+                </button>
 
-              {!hideBalance && (
-                <div className="h-24 w-full mt-4">
-                  <SparklineChart
-                    data={trendPoints.data}
-                    labels={trendPoints.labels}
-                    color={timeframeStats.isPositive ? "#10b981" : "#f43f5e"}
-                    height={96}
-                    interactive={true}
-                  />
-                </div>
-              )}
-
-              <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between items-center">
-                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                  Selected Date
-                </span>
-                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1">
-                  <CalendarIcon className="w-3 h-3" />
-                  {displayRange}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* USD/MYR Card (Market Rates + Display Settings) */}
-          <div className="lg:col-span-6 bg-surface/40 backdrop-blur-md border border-gray-800/60 p-8 rounded-[2rem] flex flex-col group relative overflow-hidden min-h-[320px]">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-[60px] -mr-16 -mt-16"></div>
-
-            <div className="relative z-10 flex justify-between items-start mb-6">
-              <div>
-                <span className="text-[11px] font-black text-gray-500 uppercase tracking-[0.2em] mb-3 block">
-                  Market Rates & Settings
-                </span>
-                <div className="flex bg-gray-900 border border-gray-800 rounded-xl p-1 gap-1 w-fit">
-                  {["MYR", "USD"].map((curr) => (
-                    <button
-                      key={curr}
-                      onClick={() => setDisplayCurrency(curr as "MYR" | "USD")}
-                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest transition-all ${
-                        displayCurrency === curr
-                          ? "bg-white text-black shadow-lg"
-                          : "text-gray-500 hover:text-gray-300"
-                      }`}
-                    >
-                      {curr}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <ArrowsRightLeftIcon className="w-5 h-5 text-indigo-400" />
-              </div>
-            </div>
-
-            <div className="relative z-10 flex-1 flex flex-col justify-between">
-              <div className="h-24 w-full mt-2">
-                {usdRateTrend.data.length > 0 ? (
-                  <SparklineChart
-                    data={usdRateTrend.data}
-                    labels={usdRateTrend.labels}
-                    color={currencyStats.isStronger ? "#10b981" : "#f43f5e"}
-                    height={96}
-                    interactive={true}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center bg-gray-900/50 rounded-2xl border border-gray-800/50 border-dashed">
-                    <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
-                      No history data
-                    </p>
-                  </div>
+                {showCurrencyDropdown && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowCurrencyDropdown(false);
+                      }}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-24 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
+                      {["MYR", "USD"].map((curr) => (
+                        <button
+                          key={curr}
+                          onClick={() => {
+                            setDisplayCurrency(curr as "MYR" | "USD");
+                            setShowCurrencyDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-3 text-[10px] font-black tracking-widest transition-colors ${
+                            displayCurrency === curr
+                              ? "bg-indigo-600 text-white"
+                              : "text-gray-400 hover:bg-white/5 hover:text-white"
+                          }`}
+                        >
+                          {curr}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
+            </div>
 
-              <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between items-end">
-                <div>
-                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 block">
-                    Live Rate
-                  </span>
-                  <span className="text-2xl font-black text-white">
-                    1 USD = {usdRate.toFixed(4)}{" "}
-                    <span className="text-sm text-gray-500">MYR</span>
-                  </span>
+            <h3 className="text-4xl sm:text-6xl font-black text-white tracking-tighter break-all">
+              {displayCurrency === "MYR" ? "RM" : "$"}
+              {totalBalance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+              })}
+            </h3>
+          </div>
+
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex items-center gap-1 font-black text-xs sm:text-sm px-2 py-0.5 rounded-full ${
+                    timeframeStats.isPositive
+                      ? "bg-emerald-400/20 text-emerald-400"
+                      : "bg-rose-400/20 text-rose-400"
+                  }`}
+                >
+                  {timeframeStats.isPositive ? "↑" : "↓"}{" "}
+                  {Math.abs(timeframeStats.percentChange).toFixed(1)}%
                 </div>
-                <div className="text-right">
-                  <span
-                    className={`text-[10px] font-black uppercase tracking-widest mb-1 block ${currencyStats.isStronger ? "text-emerald-500" : "text-rose-500"}`}
-                  >
-                    {currencyStats.label} ({currencyStats.change.toFixed(2)}%)
-                  </span>
-                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                    vs {timeframe}
-                  </span>
+                <div className="flex sm:hidden items-center gap-1 text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                  <span className="w-1 h-1 rounded-full bg-gray-800"></span>
+                  {timeframe} Comparison
                 </div>
               </div>
+
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-0.5">
+                    Live Market
+                  </span>
+                  <p className="text-sm font-bold text-white">
+                    1 USD = {usdRate.toFixed(4)}{" "}
+                    <span className="text-[10px] opacity-50">MYR</span>
+                  </p>
+                </div>
+                <div className="w-px h-8 bg-gray-800"></div>
+                <div className="flex flex-col text-right">
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-0.5">
+                    Selected Date
+                  </span>
+                  <p className="text-sm font-bold text-white uppercase">
+                    {displayRange}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-16 sm:h-24 w-full sm:w-64">
+              <SparklineChart
+                data={trendPoints.data}
+                labels={trendPoints.labels}
+                color={timeframeStats.isPositive ? "#10b981" : "#f43f5e"}
+                height={64}
+                interactive={true}
+              />
             </div>
           </div>
         </div>
 
-        {/* Bottom Row: Transactions */}
-        <div className="grid lg:grid-cols-12 gap-8">
-          {/* Transactions List */}
-          <div className="lg:col-span-12 bg-surface/40 border border-gray-800/60 rounded-[2rem] overflow-hidden flex flex-col h-[450px]">
-            <div className="p-8 pb-4 flex justify-between items-center sticky top-0 bg-surface/20 backdrop-blur-md z-10">
-              <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
-                Recent Transactions
-                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest bg-gray-800/50 px-2 py-1 rounded-md">
+        {/* Content Section */}
+        <div className="grid lg:grid-cols-12 gap-6 sm:gap-8">
+          {/* Transactions List - Native List Style */}
+          <div className="lg:col-span-12 bg-surface/40 sm:border border-gray-800/60 rounded-[2.5rem] overflow-hidden flex flex-col h-auto max-h-125 sm:max-h-150 shadow-xl">
+            <div className="px-6 py-6 sm:px-8 border-b border-gray-800/40 flex justify-between items-center bg-surface/20 backdrop-blur-md z-10">
+              <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-3">
+                Transactions
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest bg-gray-800/50 px-2.5 py-1 rounded-lg">
                   {filteredTransactions.length}
                 </span>
               </h3>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowTransactionPie(!showTransactionPie)}
-                  className={`p-2.5 border rounded-xl transition-all ${
+                  className={`p-2 sm:p-2.5 border rounded-xl transition-all ${
                     showTransactionPie
                       ? "bg-indigo-500 border-indigo-400 text-white shadow-lg shadow-indigo-500/20"
                       : "bg-gray-900 border-gray-800 text-gray-400 hover:text-white"
@@ -630,38 +596,44 @@ const DashboardPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="p-2.5 bg-indigo-500 text-white rounded-xl hover:bg-indigo-400 transition-all shadow-lg shadow-indigo-500/10"
+                  className="p-2 sm:p-2.5 bg-indigo-500 text-white rounded-xl hover:bg-indigo-400 transition-all shadow-lg shadow-indigo-500/10"
                 >
-                  <PlusIcon className="w-5 h-5 stroke-[3]" />
+                  <PlusIcon className="w-5 h-5 stroke-3" />
                 </button>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto no-scrollbar px-2 pb-6">
               {showTransactionPie ? (
-                <div className="h-full flex items-center justify-center p-8 animate-fadeIn">
+                <div className="h-full flex items-center justify-center p-6 sm:p-8 animate-fadeIn">
                   {pieChartData.length > 0 ? (
-                    <CategoryPieChart data={pieChartData} height={350} />
+                    <CategoryPieChart data={pieChartData} height={300} />
                   ) : (
                     <div className="text-center opacity-30">
-                      <ChartPieIcon className="w-16 h-16 mx-auto mb-4" />
-                      <p className="font-black uppercase tracking-widest text-xs">
+                      <ChartPieIcon className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4" />
+                      <p className="font-black uppercase tracking-widest text-[10px]">
                         No spending data
                       </p>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="space-y-0.5">
+                <div className="divide-y divide-gray-800/30 px-3">
                   {sortedRecentTransactions
                     .slice(0, 15)
                     .map((t: GroupedTransaction) => (
                       <div
                         key={t.id}
-                        className="flex justify-between items-center px-4 py-3 hover:bg-white/5 transition-all rounded-2xl group cursor-pointer border-b border-gray-800/20 last:border-0"
+                        className="flex justify-between items-center px-4 py-2.5 sm:py-3 hover:bg-white/5 transition-all rounded-2xl group cursor-pointer border-b border-gray-800/20 last:border-0"
                       >
                         <div className="flex items-center gap-4 min-w-0">
-                          <div className="w-10 h-10 shrink-0 bg-gray-900 rounded-xl flex items-center justify-center text-lg border border-gray-800 group-hover:bg-gray-800 transition-colors">
+                          <div
+                            className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-2xl transition-all duration-500 shadow-sm ${
+                              t.linkedTransaction
+                                ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                                : "bg-gray-900 border border-gray-800"
+                            }`}
+                          >
                             {t.linkedTransaction
                               ? "↔️"
                               : categories.find((c) => c.id === t.categoryId)
@@ -670,32 +642,32 @@ const DashboardPage: React.FC = () => {
                                 "💰"}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-gray-100 group-hover:text-indigo-400 transition-colors truncate">
+                            <p className="text-[17px] font-black text-gray-100 group-hover:text-indigo-400 transition-colors truncate tracking-tight">
                               {t.linkedTransaction
                                 ? t.shopName || (
                                     <>
                                       {accounts.find(
                                         (a) => a.id === t.accountId,
-                                      )?.name || "Unknown"}{" "}
-                                      ➔{" "}
+                                      )?.name || "???"}{" "}
+                                      →{" "}
                                       {accounts.find(
                                         (a) => a.id === t.toAccountId,
-                                      )?.name || "Unknown"}
+                                      )?.name || "???"}
                                     </>
                                   )
                                 : t.shopName ||
                                   categories.find((c) => c.id === t.categoryId)
                                     ?.name ||
-                                  "Untitled"}
+                                  "UNTITLED"}
                             </p>
-                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest truncate">
-                              {normalizeDate(t.date)} • {t.time || "No Time"}
+                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mt-1">
+                              {t.time || "??:??"} • {normalizeDate(t.date)}
                             </p>
                           </div>
                         </div>
                         <div className="text-right shrink-0 ml-4">
                           <p
-                            className={`font-black text-xl tracking-tighter whitespace-nowrap ${
+                            className={`font-black text-xl tracking-tighter ${
                               t.linkedTransaction
                                 ? "text-indigo-400"
                                 : t.type === TransactionType.INCOME ||
@@ -705,36 +677,36 @@ const DashboardPage: React.FC = () => {
                                   : "text-rose-400"
                             }`}
                           >
-                            <span className="opacity-70 mr-1.5">
-                              {t.linkedTransaction
-                                ? ""
-                                : t.type === TransactionType.INCOME ||
-                                    (t.type === TransactionType.TRANSFER &&
-                                      t.transferDirection === "IN")
-                                  ? "+"
-                                  : "-"}
-                              {displayCurrency === "MYR" ? "RM" : "$"}
-                            </span>
-                            {(displayCurrency === "MYR"
-                              ? t.currency === "USD"
-                                ? t.amount * usdRate
-                                : t.amount
-                              : t.currency === "MYR"
-                                ? t.amount / usdRate
-                                : t.amount
+                            {t.linkedTransaction
+                              ? ""
+                              : t.type === TransactionType.INCOME ||
+                                  (t.type === TransactionType.TRANSFER &&
+                                    t.transferDirection === "IN")
+                                ? "+"
+                                : "-"}
+                            {Math.abs(
+                              displayCurrency === "MYR"
+                                ? t.currency === "USD"
+                                  ? t.amount * usdRate
+                                  : t.amount
+                                : t.currency === "MYR"
+                                  ? t.amount / usdRate
+                                  : t.amount,
                             ).toLocaleString(undefined, {
                               minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
                             })}
                           </p>
+                          <span className="text-[10px] text-gray-600 font-black tracking-widest uppercase">
+                            {displayCurrency}
+                          </span>
                         </div>
                       </div>
                     ))}
-                  {filteredTransactions.length === 0 && (
-                    <div className="h-full flex flex-col items-center justify-center py-16 text-gray-500 opacity-40">
-                      <CalendarDaysIcon className="w-16 h-16 mb-4" />
-                      <p className="font-black uppercase tracking-[0.2em] text-xs">
-                        No transactions in this period
+                  {sortedRecentTransactions.length === 0 && (
+                    <div className="h-full flex flex-col items-center justify-center py-12 sm:py-16 text-gray-500 opacity-40">
+                      <CalendarDaysIcon className="w-12 h-12 sm:w-16 sm:h-16 mb-4" />
+                      <p className="font-black uppercase tracking-[0.2em] text-[10px]">
+                        No recent transactions
                       </p>
                     </div>
                   )}
@@ -746,28 +718,27 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* Account List - Gallery View */}
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-black tracking-tight text-white uppercase tracking-[0.1em]">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex justify-between items-center px-1">
+          <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest">
             My Assets
           </h2>
           <Link
-            to="/profile"
-            className="text-indigo-400 text-xs font-black uppercase tracking-widest hover:text-indigo-300"
+            to="/app/assets"
+            className="text-indigo-400 text-[10px] sm:text-xs font-black uppercase tracking-widest hover:text-indigo-300 transition-all"
           >
-            Manage Accounts
+            Manage All →
           </Link>
         </div>
 
-        <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 lg:-mx-8 lg:px-8 snap-x">
+        <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 snap-x">
           {accounts.map((acc) => (
-            <div key={acc.id} className="flex-shrink-0 w-[320px] snap-start">
+            <div key={acc.id} className="shrink-0 w-70 sm:w-[320px] snap-start">
               <AccountCard
                 account={acc}
                 pots={pots}
                 transactions={transactions}
                 onClick={(a) => setViewAccount(a)}
-                hideBalance={hideBalance}
                 displayCurrency={displayCurrency}
                 usdRate={usdRate}
                 cryptoPrices={cryptoPrices}
@@ -778,12 +749,12 @@ const DashboardPage: React.FC = () => {
           {/* Add Asset Card */}
           <button
             onClick={() => setShowAccountForm(true)}
-            className="flex-shrink-0 w-[280px] h-[280px] rounded-[2.5rem] bg-indigo-500/5 border-2 border-dashed border-indigo-500/20 flex flex-col items-center justify-center gap-4 hover:bg-indigo-500/10 hover:border-indigo-500/40 transition-all group snap-start"
+            className="shrink-0 w-60 sm:w-70 h-60 sm:h-70 rounded-[2.5rem] bg-indigo-500/5 border-2 border-dashed border-indigo-500/20 flex flex-col items-center justify-center gap-4 hover:bg-indigo-500/10 hover:border-indigo-500/40 transition-all group snap-start"
           >
-            <div className="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <PlusIcon className="w-8 h-8 text-indigo-400 stroke-[3]" />
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <PlusIcon className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-400 stroke-3" />
             </div>
-            <span className="text-xs font-black uppercase tracking-[0.2em] text-indigo-400">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">
               Add New Asset
             </span>
           </button>
@@ -805,12 +776,12 @@ const DashboardPage: React.FC = () => {
       )}
 
       {showDatePicker && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-100 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setShowDatePicker(false)}
           />
-          <div className="relative w-full max-w-sm bg-surface border border-gray-800 rounded-[2.5rem] p-8 shadow-2xl animate-fadeIn">
+          <div className="relative w-full max-w-sm bg-surface border-t sm:border border-gray-800 rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl animate-slideUp sm:animate-fadeIn">
             <h3 className="text-xl font-black text-white tracking-tight mb-6">
               Select Date Range
             </h3>

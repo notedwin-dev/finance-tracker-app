@@ -292,7 +292,7 @@ export const NetWorthChart: React.FC<Props> = ({
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-bold text-lg text-white">Net Worth Trend</h3>
       </div>
-      <div className="w-full h-[300px]">
+      <div className="w-full h-75">
         {hasData ? (
           <Line data={chartData} options={options} />
         ) : (
@@ -475,7 +475,7 @@ export const RevenueChart: React.FC<Props> = ({ transactions }) => {
           <option>Last 6 Months</option>
         </select>
       </div>
-      <div className="w-full h-[300px]">
+      <div className="w-full h-75">
         {hasData ? (
           <Line data={chartData} options={options} />
         ) : (
@@ -510,7 +510,7 @@ export const GoalProgressCard: React.FC<{
 
   return (
     <div className="bg-surface rounded-2xl p-6 border border-gray-800 shadow-lg h-full flex flex-col justify-center relative overflow-hidden group">
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+      <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 
       <div className="flex justify-between items-end mb-4 relative z-10">
         <div>
@@ -521,7 +521,7 @@ export const GoalProgressCard: React.FC<{
             Overall savings across all goals
           </p>
         </div>
-        <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
+        <span className="text-4xl font-black text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
           {percentage.toFixed(0)}%
         </span>
       </div>
@@ -529,10 +529,10 @@ export const GoalProgressCard: React.FC<{
       <div className="relative z-10">
         <div className="h-4 w-full bg-black/40 rounded-full overflow-hidden border border-gray-700/50 backdrop-blur-sm">
           <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000 ease-out"
+            className="h-full bg-linear-to-r from-indigo-500 to-purple-500 shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000 ease-out"
             style={{ width: `${percentage}%` }}
           >
-            <div className="w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.1)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[spin_1s_linear_infinite] opacity-30"></div>
+            <div className="w-full h-full bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.1)_75%,transparent_75%,transparent)] bg-size-[1rem_1rem] animate-spin opacity-30"></div>
           </div>
         </div>
 
@@ -567,7 +567,13 @@ export const SparklineChart: React.FC<{
   color?: string;
   height?: number;
   interactive?: boolean;
-}> = ({ data, labels, color = "#6366f1", height = 40, interactive = false }) => {
+}> = ({
+  data,
+  labels,
+  color = "#6366f1",
+  height = 40,
+  interactive = false,
+}) => {
   const chartData = {
     labels: (labels || data.map((_, i) => i)) as string[],
     datasets: [
@@ -685,7 +691,10 @@ export const CategoryPieChart: React.FC<{
           label: (context: any) => {
             const label = context.label || "";
             const value = context.parsed || 0;
-            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+            const total = context.dataset.data.reduce(
+              (a: number, b: number) => a + b,
+              0,
+            );
             const percentage = ((value / total) * 100).toFixed(1);
             return ` ${label}: ${value.toLocaleString()} (${percentage}%)`;
           },

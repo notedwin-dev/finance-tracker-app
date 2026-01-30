@@ -114,7 +114,7 @@ const SubscriptionManager: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+    <div className="fixed inset-0 z-80 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
       <div className="w-full max-w-2xl bg-card rounded-t-3xl sm:rounded-2xl border-t sm:border border-gray-700 shadow-2xl flex flex-col h-[90vh] sm:h-auto max-h-[90vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-surface shrink-0">

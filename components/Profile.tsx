@@ -107,7 +107,7 @@ const Profile: React.FC<Props> = ({
         <div className="w-full space-y-2">
           {/* Profile Header */}
           <div className="bg-surface sm:rounded-3xl border border-gray-800 overflow-hidden mb-6">
-            <div className="h-24 bg-gradient-to-r from-primary/20 to-secondary/20 relative">
+            <div className="h-24 bg-linear-to-r from-primary/20 to-secondary/20 relative">
               <div className="absolute -bottom-12 left-6">
                 {profile.photoUrl ? (
                   <img

@@ -111,32 +111,37 @@ const History: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-8 pb-32">
       <div className="hidden lg:flex justify-end mb-4">
         <button
           onClick={onAddTransaction}
-          className="flex items-center gap-2 bg-primary hover:bg-primaryDark text-white px-4 py-2 rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-3xl font-black tracking-tight shadow-xl shadow-indigo-500/20 transition-all active:scale-95"
         >
           <PlusIcon className="w-5 h-5" />
-          Add Transaction
+          NEW TRANSACTION
         </button>
       </div>
 
       {sortedDates.map((dateStr) => (
         <div key={dateStr} className="animate-slideUp">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 pl-1">
+          <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4 pl-4 flex items-center gap-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/40"></span>
             {formatDateHeader(dateStr)}
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {grouped[dateStr].map((t) => (
               <div
                 key={t.id}
                 onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
-                className="group flex items-center p-4 bg-card rounded-2xl border border-gray-800 hover:bg-surface transition-colors cursor-pointer transition-all active:scale-[0.99] relative overflow-hidden"
+                className="group flex items-center p-5 bg-surface/40 backdrop-blur-md rounded-4xl border border-white/5 hover:border-indigo-500/30 transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden shadow-xl"
               >
-                <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="flex items-center gap-5 flex-1 min-w-0">
                   <div
-                    className={`flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xl bg-surface border border-gray-700 shadow-sm`}
+                    className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition-all duration-500 ${
+                      t.linkedTransaction
+                        ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                        : "bg-surface border border-white/5"
+                    }`}
                   >
                     {t.linkedTransaction
                       ? "↔️"
@@ -146,43 +151,37 @@ const History: React.FC<Props> = ({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="font-bold text-white text-[15px] leading-tight truncate">
+                      <p className="font-black text-white text-lg tracking-tight truncate">
                         {t.linkedTransaction
                           ? t.shopName || (
                               <>
                                 {accounts.find((a) => a.id === t.accountId)
-                                  ?.name || "Unknown"}{" "}
-                                ➔{" "}
+                                  ?.name || "???"}{" "}
+                                →{" "}
                                 {accounts.find((a) => a.id === t.toAccountId)
-                                  ?.name || "Unknown"}
+                                  ?.name || "???"}
                               </>
                             )
-                          : t.shopName || "Untitled"}
+                          : t.shopName || "UNTITLED"}
                       </p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
                       {t.time && (
-                        <span className="text-[10px] text-gray-500 font-medium bg-white/5 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
                           {t.time}
                         </span>
                       )}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                      <span className="flex-shrink-0 text-[9px] font-bold text-gray-500 uppercase bg-white/5 px-1.5 py-0.5 rounded">
-                        {t.currency}
-                      </span>
+                      <span className="w-1 h-1 rounded-full bg-gray-700"></span>
                       {t.linkedTransaction ? (
-                        <p className="text-[11px] text-gray-400 truncate">
-                          {accounts.find((a) => a.id === t.accountId)?.name ||
-                            "Unknown"}{" "}
-                          ➔{" "}
-                          {accounts.find((a) => a.id === t.toAccountId)?.name ||
-                            "Unknown"}
+                        <p className="text-[11px] font-bold text-indigo-400/70 truncate uppercase tracking-wider">
+                          INTERNAL TRANSFER
                         </p>
                       ) : (
-                        <p className="text-[11px] text-gray-400 truncate uppercase tracking-wider">
+                        <p className="text-[11px] font-bold text-gray-400/70 truncate uppercase tracking-[0.05em]">
                           {categories.find((c) => c.id === t.categoryId)
                             ?.name ||
                             (t.type === TransactionType.ACCOUNT_OPENING
-                              ? "Opening Balance"
+                              ? "OPENING BALANCE"
                               : t.type)}
                         </p>
                       )}
@@ -190,10 +189,10 @@ const History: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                <div className="flex items-center gap-4 shrink-0 ml-4">
                   <div className="flex flex-col items-end">
                     <span
-                      className={`font-mono font-bold text-[15px] ${
+                      className={`font-black text-xl tracking-tighter ${
                         t.linkedTransaction
                           ? "text-indigo-400"
                           : t.type === TransactionType.INCOME ||
@@ -203,7 +202,7 @@ const History: React.FC<Props> = ({
                               (t.type === TransactionType.ADJUSTMENT &&
                                 t.amount >= 0)
                             ? "text-emerald-400"
-                            : "text-red-400"
+                            : "text-rose-400"
                       }`}
                     >
                       {t.linkedTransaction
@@ -217,82 +216,55 @@ const History: React.FC<Props> = ({
                           ? "+"
                           : "-"}
                       {Math.abs(t.amount).toLocaleString(undefined, {
-                        minimumFractionDigits:
-                          t.currency === "BTC" || t.currency === "ETH" ? 8 : 2,
-                        maximumFractionDigits:
-                          t.currency === "BTC" || t.currency === "ETH" ? 8 : 2,
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
                       })}
                     </span>
-                    <span className="text-[9px] text-gray-600 font-bold uppercase mt-0.5">
+                    <span className="text-[10px] text-gray-600 font-black tracking-widest uppercase">
                       {t.currency}
                     </span>
                   </div>
-
-                  {/* Expandable Actions Menu */}
-                  <div
-                    className={`${
-                      openMenuId === t.id
-                        ? "flex"
-                        : "flex lg:hidden lg:group-hover:flex"
-                    } items-center relative z-10`}
-                  >
-                    {openMenuId === t.id ? (
-                      /* Expanded Actions */
-                      <div className="flex items-center gap-1 bg-gray-900 border border-gray-700 p-1 rounded-lg shadow-xl animate-in fade-in slide-in-from-right-2 duration-200">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditTransaction(
-                              t.linkedTransaction &&
-                                t.transferDirection === "IN" &&
-                                t.linkedTransaction
-                                ? t.linkedTransaction
-                                : t,
-                            );
-                            setOpenMenuId(null);
-                          }}
-                          className="p-1.5 hover:bg-white/10 rounded-md text-blue-400 hover:text-white transition-colors"
-                          title="Edit Details"
-                        >
-                          <PencilIcon className="w-4 h-4" />
-                        </button>
-                        <div className="w-px h-4 bg-gray-700 mx-0.5"></div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteTransaction(t.id);
-                          }}
-                          className="p-1.5 hover:bg-white/10 rounded-md text-gray-400 hover:text-red-500 transition-colors"
-                          title="Delete Record"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                        <div className="w-px h-4 bg-gray-700 mx-0.5"></div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenMenuId(null);
-                          }}
-                          className="p-1.5 hover:bg-white/10 rounded-md text-gray-400 hover:text-white transition-colors"
-                          title="Close"
-                        >
-                          <XMarkIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      /* Trigger Icon */
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenuId(t.id);
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                      >
-                        <EllipsisHorizontalIcon className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
                 </div>
+
+                {/* Simplified floating actions on expand */}
+                {openMenuId === t.id && (
+                  <div className="absolute inset-y-0 right-0 bg-indigo-600 flex items-center gap-4 px-6 animate-in slide-in-from-right duration-300">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditTransaction(
+                          t.linkedTransaction &&
+                            t.transferDirection === "IN" &&
+                            t.linkedTransaction
+                            ? t.linkedTransaction
+                            : t,
+                        );
+                        setOpenMenuId(null);
+                      }}
+                      className="p-3 bg-white/20 rounded-2xl text-white hover:scale-110 transition-transform"
+                    >
+                      <PencilIcon className="w-6 h-6" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteTransaction(t.id);
+                      }}
+                      className="p-3 bg-rose-500/40 rounded-2xl text-white hover:scale-110 transition-transform"
+                    >
+                      <TrashIcon className="w-6 h-6" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuId(null);
+                      }}
+                      className="p-3 bg-white/10 rounded-2xl text-white/50"
+                    >
+                      <XMarkIcon className="w-6 h-6" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

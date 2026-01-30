@@ -122,11 +122,11 @@ const AccountCard: React.FC<Props> = ({
 
   return (
     <div
-      className="relative rounded-[2.5rem] bg-gradient-to-br from-surface/80 to-surface/40 border border-gray-800/50 backdrop-blur-xl shadow-2xl transition-all duration-300 hover:scale-[1.02] active:scale-95 cursor-pointer p-7 group h-[280px] flex flex-col justify-between overflow-hidden"
+      className="relative rounded-[2.5rem] bg-linear-to-br from-surface/80 to-surface/40 border border-gray-800/50 backdrop-blur-xl shadow-2xl transition-all duration-300 hover:scale-[1.02] active:scale-95 cursor-pointer p-7 group h-70 flex flex-col justify-between overflow-hidden"
       onClick={() => onClick(account)}
     >
       {/* Glossy Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-linear-to-tr from-white/5 to-transparent pointer-events-none" />
 
       {/* Background radial glow */}
       <div
@@ -150,9 +150,19 @@ const AccountCard: React.FC<Props> = ({
             <h4 className="font-bold text-lg text-white tracking-tight truncate">
               {account.name}
             </h4>
-            <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest truncate">
-              {account.type} • {account.currency}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest truncate">
+                {account.type} • {account.currency}
+              </p>
+              {accountPots.length > 0 && (
+                <div className="flex items-center gap-1 bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded-md border border-indigo-500/20 animate-pulse">
+                  <StarIcon className="w-2.5 h-2.5" />
+                  <span className="text-[9px] font-black">
+                    {accountPots.length} LIMITS
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -175,8 +185,7 @@ const AccountCard: React.FC<Props> = ({
           <div className="mt-1">
             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
               {displayCurrency === "MYR" ? "RM" : "$"}{" "}
-              {hideBalance ? "****" : displayPotsBalance.toLocaleString()}{" "}
-              Available
+              {hideBalance ? "****" : displayPotsBalance.toLocaleString()} Available
             </span>
           </div>
         )}
@@ -191,9 +200,9 @@ const AccountCard: React.FC<Props> = ({
             className={`flex items-center gap-1 text-[11px] font-black tracking-tight ${isPositive ? "text-emerald-400" : "text-rose-400"}`}
           >
             {isPositive ? (
-              <ArrowUpRightIcon className="w-3 h-3 stroke-[3]" />
+              <ArrowUpRightIcon className="w-3 h-3 stroke-3" />
             ) : (
-              <ArrowDownRightIcon className="w-3 h-3 stroke-[3]" />
+              <ArrowDownRightIcon className="w-3 h-3 stroke-3" />
             )}
             {Math.abs(percentChange).toFixed(1)}%
           </div>

@@ -48,10 +48,10 @@ const prepareContext = (
       category:
         categories.find((c) => c.id === t.categoryId)?.name || "Uncategorized",
     })),
-    savingPots: pots.map((p) => ({
+    spendingLimits: pots.map((p) => ({
       name: p.name,
-      targetAmount: p.targetAmount,
-      currentAmount: p.currentAmount,
+      limitAmount: p.targetAmount,
+      spentAmount: p.currentAmount,
       linkedAccount: p.accountId,
     })),
     goals: goals.map((g) => ({
@@ -124,6 +124,9 @@ export const streamFinancialAdvice = async (
     const systemInstruction = `
       You are ZenFinance AI, a helpful and minimalist financial assistant. 
       Your goal is to provide clear, actionable financial advice based on the user's data.
+      
+      "Spending Limits" (formerly Pots) represent budget caps user set for themselves. 
+      "limitAmount" is the total budget, and "spentAmount" is how much they've used.
       
       Current Financial Context:
       ${JSON.stringify(contextData, null, 2)}

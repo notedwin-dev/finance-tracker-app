@@ -12,6 +12,7 @@ import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
 import GoalsPage from "./pages/GoalsPage";
+import AssetsPage from "./pages/AssetsPage";
 import ProfilePage from "./pages/ProfilePage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
@@ -59,6 +60,7 @@ const App: React.FC = () => {
               <Route index element={<DashboardPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="goals" element={<GoalsPage />} />
+              <Route path="assets" element={<AssetsPage />} />
               <Route path="ai" element={<div />} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>

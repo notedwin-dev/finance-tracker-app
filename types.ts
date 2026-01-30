@@ -71,7 +71,7 @@ export interface Transaction {
   updatedAt?: number;
   linkedTransactionId?: string; // For split transfers
   transferDirection?: "OUT" | "IN";
-  potId?: string; // Linked Saving Pot
+  potId?: string; // Linked Spending Pot / Limit
 }
 
 export interface UserProfile {

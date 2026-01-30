@@ -210,7 +210,7 @@ const AccountForm: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn">
+    <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn">
       <div className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-2xl border-t sm:border border-gray-800 shadow-2xl flex flex-col h-[90vh] sm:h-auto max-h-[95vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
         {/* Header with Asset Selector */}
         <div className="p-4 sm:p-5 border-b border-gray-800 space-y-3 shrink-0">
@@ -248,7 +248,7 @@ const AccountForm: React.FC<Props> = ({
                 )}
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                <ChevronUpDownIcon className="w-4 h-4 sm:w-5 h-5" />
+                <ChevronUpDownIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
             </div>
           </div>

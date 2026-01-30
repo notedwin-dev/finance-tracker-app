@@ -6,6 +6,7 @@ import {
   ChartBarIcon,
   PlusIcon,
   UserIcon,
+  Squares2X2Icon,
   SparklesIcon,
   ChatBubbleBottomCenterIcon,
 } from "@heroicons/react/24/outline";
@@ -111,6 +112,12 @@ const MainLayout: React.FC = () => {
             active={location.pathname === "/app/goals"}
           />
           <SidebarLink
+            to="/app/assets"
+            icon={Squares2X2Icon}
+            label="My Assets"
+            active={location.pathname === "/app/assets"}
+          />
+          <SidebarLink
             to="/app/profile"
             icon={UserIcon}
             label="Profile"
@@ -121,30 +128,33 @@ const MainLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl">
-        {/* Mobile Header */}
-        <header className="lg:hidden flex justify-between items-center px-6 py-6 bg-background/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+1rem)]">
+        <header className="lg:hidden flex justify-between items-center px-6 py-4 bg-background/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
           <div className="flex items-center gap-2">
             <img
               src={zenLogo}
               alt="ZenFinance Logo"
               className="w-7 h-7 object-contain"
             />
-            <h1 className="text-xl font-bold">
-              Zen<span className="text-primary">Finance</span>
+            <h1 className="text-xl font-black text-white tracking-tighter">
+              Zen<span className="text-indigo-400 font-black">Finance</span>
             </h1>
           </div>
-          <Link to="/app/profile">
+          <Link to="/app/profile" className="relative group">
             {profile.photoUrl ? (
-              <img
-                src={profile.photoUrl}
-                className="w-9 h-9 rounded-full border border-gray-700 shadow-md"
-                alt="Avatar"
-              />
+              <div className="w-10 h-10 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-surface shadow-lg group-active:scale-90 transition-transform">
+                <img
+                  src={profile.photoUrl}
+                  className="w-full h-full object-cover"
+                  alt="Avatar"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
             ) : (
-              <div className="w-9 h-9 rounded-full bg-surface border border-gray-700 flex items-center justify-center shadow-md">
-                <UserIcon className="w-5 h-5 text-gray-400" />
+              <div className="w-10 h-10 rounded-full bg-surface border-2 border-gray-800 flex items-center justify-center shadow-lg group-active:scale-90 transition-transform">
+                <UserIcon className="w-6 h-6 text-gray-400" />
               </div>
             )}
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-background rounded-full"></div>
           </Link>
         </header>
 
@@ -163,49 +173,58 @@ const MainLayout: React.FC = () => {
         </main>
       </div>
 
-      {/* Mobile Bottom Nav */}
-      <div className="lg:hidden fixed bottom-0 w-full z-20">
-        <div className="absolute -top-6 left-1/2 -translate-x-1/2 pointer-events-none z-50">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="pointer-events-auto w-14 h-14 bg-primary rounded-full shadow-lg shadow-indigo-500/50 flex items-center justify-center text-white border-[4px] border-background transform transition-transform active:scale-95"
-          >
-            <PlusIcon className="w-7 h-7" />
-          </button>
-        </div>
-        <nav className="bg-surface/90 backdrop-blur-xl border-t border-gray-800 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 px-6 h-auto shadow-2xl">
-          <div className="flex justify-between items-center h-full max-w-md mx-auto">
-            <MobileNavLink
-              to="/app"
-              icon={HomeIcon}
-              iconSolid={HomeIconSolid}
-              label="Home"
-              active={location.pathname === "/app"}
-            />
-            <MobileNavLink
-              to="/app/history"
-              icon={ClockIcon}
-              iconSolid={ClockIconSolid}
-              label="History"
-              active={location.pathname === "/app/history"}
-            />
-            <div className="w-16"></div>
-            <MobileNavLink
-              to="/app/goals"
-              icon={ChartBarIcon}
-              iconSolid={ChartBarIconSolid}
-              label="Goals"
-              active={location.pathname === "/app/goals"}
-            />
-            <MobileNavLink
-              to="/app/profile"
-              icon={UserIcon}
-              iconSolid={UserIconSolid}
-              label="Profile"
-              active={location.pathname === "/app/profile"}
-            />
+      {/* Mobile Bottom Nav - Floating Island Style */}
+      <div className="lg:hidden fixed bottom-6 left-0 w-full px-6 z-40">
+        <div className="relative bg-[#0A0A0A]/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] px-2 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+          {/* Centered Add Button */}
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="w-16 h-16 bg-indigo-600 rounded-full shadow-[0_8px_20px_rgba(79,70,229,0.4)] flex items-center justify-center text-white border-[6px] border-[#0A0A0A] transform transition-transform active:scale-90"
+            >
+              <PlusIcon className="w-8 h-8" />
+            </button>
           </div>
-        </nav>
+
+          <nav className="flex justify-between items-center h-16">
+            <div className="flex-1 flex justify-around items-center">
+              <MobileNavLink
+                to="/app"
+                icon={HomeIcon}
+                iconSolid={HomeIconSolid}
+                label="HOME"
+                active={location.pathname === "/app"}
+              />
+              <MobileNavLink
+                to="/app/history"
+                icon={ClockIcon}
+                iconSolid={ClockIconSolid}
+                label="HISTORY"
+                active={location.pathname === "/app/history"}
+              />
+            </div>
+
+            {/* Gap for Add Button */}
+            <div className="w-16"></div>
+
+            <div className="flex-1 flex justify-around items-center">
+              <MobileNavLink
+                to="/app/goals"
+                icon={ChartBarIcon}
+                iconSolid={ChartBarIconSolid}
+                label="GOALS"
+                active={location.pathname === "/app/goals"}
+              />
+              <MobileNavLink
+                to="/app/profile"
+                icon={UserIcon}
+                iconSolid={UserIconSolid}
+                label="PROFILE"
+                active={location.pathname === "/app/profile"}
+              />
+            </div>
+          </nav>
+        </div>
       </div>
 
       {/* Global Comps */}
@@ -286,7 +305,7 @@ const MainLayout: React.FC = () => {
 
       {toast && (
         <div
-          className={`fixed top-6 right-6 lg:left-auto lg:translate-x-0 left-1/2 -translate-x-1/2 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-[100] animate-fadeIn border border-white/10 backdrop-blur-md ${toast.type === "alert" ? "bg-red-500/90 text-white" : "bg-primary/90 text-white"}`}
+          className={`fixed top-6 right-6 lg:left-auto lg:translate-x-0 left-1/2 -translate-x-1/2 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-100 animate-fadeIn border border-white/10 backdrop-blur-md ${toast.type === "alert" ? "bg-red-500/90 text-white" : "bg-primary/90 text-white"}`}
         >
           <span className="font-bold tracking-wide">{toast.message}</span>
         </div>
@@ -314,10 +333,22 @@ const MobileNavLink = ({
 }: any) => (
   <Link
     to={to}
-    className={`flex flex-col items-center justify-center w-14 pt-1 transition-colors ${active ? "text-primary" : "text-gray-500"}`}
+    className={`flex flex-col items-center justify-center pt-1 transition-all ${active ? "text-indigo-400 scale-110" : "text-gray-600 hover:text-gray-400"}`}
   >
-    {active ? <IconSolid className="w-6 h-6" /> : <Icon className="w-6 h-6" />}
-    <span className="text-[10px] font-medium mt-1">{label}</span>
+    <div
+      className={`p-2 rounded-xl transition-all ${active ? "bg-indigo-500/10" : ""}`}
+    >
+      {active ? (
+        <IconSolid className="w-6 h-6" />
+      ) : (
+        <Icon className="w-6 h-6" />
+      )}
+    </div>
+    <span
+      className={`text-[8px] font-black mt-0.5 tracking-widest ${active ? "opacity-100" : "opacity-40"}`}
+    >
+      {label}
+    </span>
   </Link>
 );
 

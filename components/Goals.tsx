@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Goal, Account, Pot } from "../types";
+import { parseDateSafe, normalizeDate } from "../helpers/transactions.helper";
 import {
   PlusIcon,
   TrashIcon,
@@ -48,6 +49,47 @@ const Goals: React.FC<Props> = ({
   const [goalDeadline, setGoalDeadline] = useState("");
   const [goalCategory, setGoalCategory] = useState("");
   const [goalLinkedAccountId, setGoalLinkedAccountId] = useState("");
+
+  const formatTimeRemaining = (deadline: string) => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = parseDateSafe(deadline);
+    const totalDays = Math.ceil(
+      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (totalDays === 0) return "DUE TODAY";
+
+    const isPast = totalDays < 0;
+    const d1 = isPast ? end : start;
+    const d2 = isPast ? start : end;
+
+    let years = d2.getFullYear() - d1.getFullYear();
+    let months = d2.getMonth() - d1.getMonth();
+    let days = d2.getDate() - d1.getDate();
+
+    if (days < 0) {
+      months--;
+      const prevMonthLastDay = new Date(
+        d2.getFullYear(),
+        d2.getMonth(),
+        0,
+      ).getDate();
+      days += prevMonthLastDay;
+    }
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    const parts = [];
+    if (years > 0) parts.push(`${years}Y`);
+    if (months > 0) parts.push(`${months}M`);
+    if (days > 0) parts.push(`${days}D`);
+
+    const result = parts.length > 0 ? parts.join(" ") : "0D";
+    return isPast ? `PAST DUE BY ${result}` : `${result} LEFT`;
+  };
 
   const handleAmountFormat = (
     val: string,
@@ -103,7 +145,7 @@ const Goals: React.FC<Props> = ({
     setGoalName(goal.name);
     setGoalTarget(goal.targetAmount.toFixed(2));
     setGoalCurrent(goal.currentAmount.toFixed(2));
-    setGoalDeadline(goal.deadline || "");
+    setGoalDeadline(goal.deadline ? normalizeDate(goal.deadline) : "");
     setGoalCategory(goal.type);
     setGoalLinkedAccountId(goal.linkedAccountId || "");
     setShowGoalModal(true);
@@ -174,124 +216,150 @@ const Goals: React.FC<Props> = ({
     accounts.find((a) => a.id === id)?.name || "Unknown Account";
 
   return (
-    <div className="space-y-6">
-      <div className="flex bg-gray-900/50 p-1 rounded-xl">
-        <button
-          onClick={() => setActiveTab("POTS")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition-all ${
-            activeTab === "POTS"
-              ? "bg-primary text-white"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          <WalletIcon className="w-5 h-5" />
-          Saving Pots
-        </button>
-        <button
-          onClick={() => setActiveTab("GOALS")}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition-all ${
-            activeTab === "GOALS"
-              ? "bg-primary text-white"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          <ChartBarIcon className="w-5 h-5" />
-          Financial Goals
-        </button>
-      </div>
-
-      <div className="flex justify-between items-center px-2">
-        <h2 className="text-xl font-bold text-white">
-          {activeTab === "POTS" ? "Saving Pots" : "Financial Goals"}
-        </h2>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Header Section */}
+      <div className="flex justify-between items-center px-1 pt-6">
+        <h1 className="text-3xl font-black text-white tracking-tighter">
+          LIMITS & GOALS
+        </h1>
         <button
           onClick={() =>
             activeTab === "POTS"
               ? setShowPotModal(true)
               : setShowGoalModal(true)
           }
-          className="p-2 bg-primary/20 text-primary rounded-full hover:bg-primary/30 transition-colors"
+          className="w-10 h-10 bg-white text-black hover:bg-indigo-400 hover:text-white transition-all rounded-full flex items-center justify-center shadow-lg active:scale-95 group"
         >
-          <PlusIcon className="w-6 h-6" />
+          <PlusIcon className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Segmented Pill Switcher - Restored High-Fidelity UX */}
+      <div className="flex bg-gray-900/50 p-1 rounded-[1.25rem] border border-white/5 mb-8 shadow-2xl backdrop-blur-xl">
+        <button
+          onClick={() => setActiveTab("POTS")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl transition-all font-black text-[10px] tracking-widest ${
+            activeTab === "POTS"
+              ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.1)]"
+              : "text-gray-500 hover:text-white"
+          }`}
+        >
+          <BanknotesIcon className="w-3.5 h-3.5" /> SPENDING POTS
+        </button>
+        <button
+          onClick={() => setActiveTab("GOALS")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl transition-all font-black text-[10px] tracking-widest ${
+            activeTab === "GOALS"
+              ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.1)]"
+              : "text-gray-500 hover:text-white"
+          }`}
+        >
+          <ChartBarIcon className="w-3.5 h-3.5" /> FINANCIAL GOALS
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pb-20">
         {activeTab === "POTS" ? (
           pots.length === 0 ? (
-            <div className="col-span-full py-12 text-center text-gray-500 bg-gray-900/30 rounded-2xl border border-dashed border-gray-700">
-              <BanknotesIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p>No saving pots yet. Create one to organize your funds!</p>
+            <div className="col-span-full py-20 text-center bg-gray-900/40 rounded-[2.5rem] border border-gray-800/60 backdrop-blur-md">
+              <div className="w-16 h-16 bg-gray-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-gray-700/50">
+                <BanknotesIcon className="w-8 h-8 text-gray-600" />
+              </div>
+              <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                No active pots found
+              </p>
             </div>
           ) : (
             pots.map((pot) => {
-              const progress = (pot.currentAmount / pot.targetAmount) * 100;
+              const usedAmount = pot.targetAmount - pot.currentAmount;
+              const progress = (usedAmount / pot.targetAmount) * 100;
               return (
                 <div
                   key={pot.id}
-                  className="bg-gray-900 rounded-2xl p-5 border border-gray-800 flex flex-col justify-between"
+                  className="bg-surface/40 backdrop-blur-xl rounded-[2.5rem] p-6 sm:p-8 border border-white/5 shadow-2xl transition-all hover:border-indigo-500/20 group relative overflow-hidden"
                 >
-                  <div>
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-white font-bold text-lg">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-2xl -mr-16 -mt-16"></div>
+
+                  <div className="relative z-10">
+                    <div className="flex justify-between items-center mb-6">
+                      <div className="space-y-1">
+                        <h3 className="text-xl font-black text-white tracking-tight">
                           {pot.name}
                         </h3>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
                           {getAccountName(pot.accountId)}
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleEditPot(pot)}
-                          className="p-2 text-gray-400 hover:text-white"
+                          className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl transition-all"
                         >
                           <PencilIcon className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => onDeletePot(pot.id)}
-                          className="p-2 text-gray-400 hover:text-red-400"
+                          className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-all"
                         >
                           <TrashIcon className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-primary font-bold">
-                        {pot.currency} {pot.currentAmount.toLocaleString()}
-                      </span>
-                      <span className="text-gray-500">
-                        of {pot.currency} {pot.targetAmount.toLocaleString()}
-                      </span>
+                    <div className="mb-6">
+                      <div className="flex justify-between items-end mb-3">
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                            Available
+                          </p>
+                          <p className="text-2xl font-black text-white tracking-tighter">
+                            {pot.currency} {pot.currentAmount.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                            Limit
+                          </p>
+                          <p className="text-sm font-black text-gray-400 tracking-tight">
+                            {pot.currency} {pot.targetAmount.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden border border-white/5">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(99,102,241,0.5)] relative"
+                          style={{
+                            width: `${Math.max(0, Math.min(100, progress))}%`,
+                          }}
+                        ></div>
+                      </div>
                     </div>
 
-                    <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-primary h-full transition-all duration-1000"
-                        style={{ width: `${Math.min(100, progress)}%` }}
-                      />
+                    <div className="flex justify-between items-center">
+                      <div className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+                        <span className="text-[11px] font-black text-indigo-400 uppercase tracking-widest">
+                          {Math.round(progress)}% USED
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                        {Math.max(0, usedAmount).toLocaleString()}{" "}
+                        {pot.currency} TOTAL SPENT
+                      </p>
                     </div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-gray-800 flex justify-between items-center">
-                    <span className="text-xs font-bold px-2 py-1 rounded bg-gray-800 text-gray-400">
-                      {Math.round(progress)}% Available
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {pot.currency}{" "}
-                      {(pot.targetAmount - pot.currentAmount).toLocaleString()}{" "}
-                      used
-                    </span>
                   </div>
                 </div>
               );
             })
           )
         ) : goals.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-gray-500 bg-gray-900/30 rounded-2xl border border-dashed border-gray-700">
-            <ChartBarIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p>No goals yet. Dream big and start tracking!</p>
+          <div className="col-span-full py-20 text-center bg-gray-900/40 rounded-[2.5rem] border border-gray-800/60 backdrop-blur-md">
+            <div className="w-16 h-16 bg-gray-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-gray-700/50">
+              <ChartBarIcon className="w-8 h-8 text-gray-600" />
+            </div>
+            <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
+              No financial goals set
+            </p>
           </div>
         ) : (
           goals.map((goal) => {
@@ -301,20 +369,35 @@ const Goals: React.FC<Props> = ({
               savedAmount = acc ? acc.balance : 0;
             }
             const progress = (savedAmount / goal.targetAmount) * 100;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const daysLeft = goal.deadline
+              ? Math.ceil(
+                  (parseDateSafe(goal.deadline).getTime() - today.getTime()) /
+                    (1000 * 60 * 60 * 24),
+                )
+              : null;
+
+            const timeLabel = goal.deadline
+              ? formatTimeRemaining(goal.deadline)
+              : "DEADLINE NOT SET";
 
             return (
               <div
                 key={goal.id}
-                className="bg-gray-900 rounded-2xl p-5 border border-gray-800 shadow-xl flex flex-col justify-between"
+                className="bg-surface/40 backdrop-blur-xl rounded-[2.5rem] p-6 sm:p-8 border border-white/5 shadow-2xl transition-all hover:border-emerald-500/20 group relative overflow-hidden"
               >
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-white font-bold text-lg">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-2xl -mr-16 -mt-16"></div>
+
+                <div className="relative z-10">
+                  <div className="flex justify-between items-center mb-6">
+                    <div className="space-y-1">
+                      <h3 className="text-xl font-black text-white tracking-tight">
                         {goal.name}
                       </h3>
                       {goal.linkedAccountId && (
-                        <p className="text-[10px] text-primary font-bold uppercase tracking-wider">
+                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest leading-none">
                           Linked to {getAccountName(goal.linkedAccountId)}
                         </p>
                       )}
@@ -322,60 +405,68 @@ const Goals: React.FC<Props> = ({
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEditGoal(goal)}
-                        className="p-2 text-gray-400 hover:text-white transition-colors"
+                        className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl transition-all"
                       >
                         <PencilIcon className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => onDeleteGoal(goal.id)}
-                        className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                        className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-all"
                       >
                         <TrashIcon className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">Progress</span>
-                    <span className="text-white font-bold">
-                      {Math.round(progress)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-800 h-2 rounded-full mb-4 overflow-hidden">
-                    <div
-                      className="bg-primary h-full rounded-full transition-all duration-1000"
-                      style={{ width: `${Math.min(100, progress)}%` }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Saved</p>
-                      <p className="text-primary font-bold">
-                        {goal.currency} {savedAmount.toLocaleString()}
-                      </p>
+
+                  <div className="mb-6">
+                    <div className="flex justify-between items-end mb-3">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                          Saved So Far
+                        </p>
+                        <p className="text-2xl font-black text-white tracking-tighter">
+                          {goal.currency} {savedAmount.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                          Final Goal
+                        </p>
+                        <p className="text-sm font-black text-gray-400 tracking-tight">
+                          {goal.currency} {goal.targetAmount.toLocaleString()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase">Target</p>
-                      <p className="text-white font-bold">
-                        {goal.currency} {goal.targetAmount.toLocaleString()}
-                      </p>
+
+                    <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden border border-white/5">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+                        style={{ width: `${Math.min(100, progress)}%` }}
+                      />
                     </div>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                      <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">
+                        {Math.round(progress)}% PROGRESS
+                      </span>
+                    </div>
+                    <p
+                      className={`text-[10px] font-black uppercase tracking-widest ${
+                        daysLeft === null
+                          ? "text-gray-500"
+                          : daysLeft < 0
+                            ? "text-rose-400"
+                            : daysLeft < 30
+                              ? "text-orange-400"
+                              : "text-gray-500"
+                      }`}
+                    >
+                      {timeLabel}
+                    </p>
                   </div>
                 </div>
-
-                {goal.deadline && (
-                  <div className="mt-4 pt-4 border-t border-gray-800">
-                    <p className="text-xs text-gray-500 uppercase mb-1">
-                      Deadline
-                    </p>
-                    <p className="text-white font-medium text-sm">
-                      {new Date(goal.deadline).toLocaleDateString(undefined, {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </p>
-                  </div>
-                )}
               </div>
             );
           })
@@ -383,16 +474,16 @@ const Goals: React.FC<Props> = ({
       </div>
 
       {showPotModal && (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-80 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
           <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
             {/* Header */}
             <div className="p-4 sm:p-5 border-b border-gray-700 bg-surface shrink-0 flex justify-between items-center">
               <div>
                 <h3 className="text-base sm:text-lg font-bold text-white">
-                  {editingId ? "Edit Saving Pot" : "Create Saving Pot"}
+                  {editingId ? "Edit Spending Pot" : "Create Spending Pot"}
                 </h3>
                 <p className="text-[10px] text-gray-500 font-medium">
-                  Reserve funds within an account
+                  Set a spending limit within an account
                 </p>
               </div>
               <button
@@ -450,7 +541,7 @@ const Goals: React.FC<Props> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
-                    Target Amount
+                    Spending Limit
                   </label>
                   <input
                     type="text"
@@ -470,7 +561,7 @@ const Goals: React.FC<Props> = ({
                 </div>
                 <div>
                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
-                    Current Balance
+                    Amount Used
                   </label>
                   <input
                     type="text"
@@ -493,9 +584,9 @@ const Goals: React.FC<Props> = ({
               {potAccountId && (
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 sm:p-4">
                   <p className="text-[10px] sm:text-xs text-primary/80 font-medium leading-relaxed">
-                    This pot will reserve funds from{" "}
-                    {getAccountName(potAccountId)}. Spending from this pot will
-                    reduce its balance automatically.
+                    This pot sets a spending limit for funds within{" "}
+                    {getAccountName(potAccountId)}. Tracking your usage here
+                    helps you stay within budget.
                   </p>
                 </div>
               )}
@@ -523,7 +614,7 @@ const Goals: React.FC<Props> = ({
       )}
 
       {showGoalModal && (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-80 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
           <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
             {/* Header */}
             <div className="p-4 sm:p-5 border-b border-gray-700 bg-surface shrink-0 flex justify-between items-center">
@@ -647,7 +738,7 @@ const Goals: React.FC<Props> = ({
                   type="date"
                   value={goalDeadline}
                   onChange={(e) => setGoalDeadline(e.target.value)}
-                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm focus:border-primary outline-none [color-scheme:dark]"
+                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm focus:border-primary outline-none scheme-dark"
                 />
               </div>
 

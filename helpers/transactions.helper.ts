@@ -51,28 +51,30 @@ export const groupTransactions = (
           p.id !== t.id &&
           p.type === TransactionType.TRANSFER &&
           normalizeDate(p.date) === normalizeDate(t.date) &&
-          p.time === t.time &&
           p.amount === t.amount &&
           ((p.accountId === t.toAccountId && p.toAccountId === t.accountId) || // Symmetric
-            (p.accountId === t.accountId &&
-              p.toAccountId === t.toAccountId &&
-              p.shopName === t.shopName)), // exact logical duplicate
+            (p.accountId === (t as any).toAccountId &&
+              (p as any).toAccountId === t.accountId) ||
+            // Or if accounts are swapped but toAccountId is not explicitly set on one
+            p.accountId === t.toAccountId ||
+            t.accountId === p.toAccountId),
       );
 
       if (partner) {
-        // If it's a symmetric pair, we merge. If it's a duplicate, we still merge to deduplicate.
-        const isSymmetric = partner.accountId === t.toAccountId;
-        const main = isSymmetric
-          ? t.transferDirection === "OUT" || !t.transferDirection
-            ? t
-            : partner
-          : t;
-        const linked = main === t ? partner : t;
+        // Double check symmetric account relationship
+        const isActuallySymmetric =
+          partner.accountId === t.toAccountId || t.accountId === partner.toAccountId;
 
-        grouped.push({ ...main, linkedTransaction: linked });
-        processedIds.add(main.id);
-        processedIds.add(linked.id);
-        continue;
+        if (isActuallySymmetric) {
+          const main =
+            t.transferDirection === "OUT" || !t.transferDirection ? t : partner;
+          const linked = main === t ? partner : t;
+
+          grouped.push({ ...main, linkedTransaction: linked });
+          processedIds.add(main.id);
+          processedIds.add(linked.id);
+          continue;
+        }
       }
     }
 

@@ -190,7 +190,7 @@ const AIInsights: React.FC<Props> = ({
 
   const suggestions = [
     "How much did I spend this week?",
-    "Am I on track for my savings goals?",
+    "Am I staying within my spending limits?",
     "Analyze my biggest expense category.",
     "Help me create a budget for next month.",
   ];
@@ -200,7 +200,7 @@ const AIInsights: React.FC<Props> = ({
       className={
         isInline
           ? "flex w-full h-full bg-transparent relative overflow-hidden"
-          : "fixed inset-0 bg-background z-[100] flex animate-fadeIn"
+          : "fixed inset-0 bg-background z-100 flex animate-fadeIn"
       }
     >
       {/* Sidebar - Desktop */}
@@ -286,7 +286,7 @@ const AIInsights: React.FC<Props> = ({
               <Bars3Icon className="w-6 h-6" />
             </button>
             <div>
-              <h2 className="text-sm font-bold text-white truncate max-w-[150px] sm:max-w-xs">
+              <h2 className="text-sm font-bold text-white truncate max-w-37.5 sm:max-w-xs">
                 {activeSession?.title || "AI Assistant"}
               </h2>
               {!isInline && (
@@ -313,7 +313,7 @@ const AIInsights: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
           {!activeSession && !loading && (
             <div className="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-8 animate-slideUp">
-              <div className="w-32 h-32 bg-primary/10 rounded-[2rem] flex items-center justify-center rotate-3 overflow-hidden border border-white/5 shadow-2xl">
+              <div className="w-32 h-32 bg-primary/10 rounded-4xl flex items-center justify-center rotate-3 overflow-hidden border border-white/5 shadow-2xl">
                 <img
                   src={neuralVault}
                   alt="AI Assistant"
@@ -374,12 +374,12 @@ const AIInsights: React.FC<Props> = ({
                   }`}
                 >
                   {m.role === "user" ? (
-                    <div className="text-sm sm:text-base whitespace-pre-wrap break-words">
+                    <div className="text-sm sm:text-base whitespace-pre-wrap wrap-break-word">
                       {m.content}
                     </div>
                   ) : (
                     <div
-                      className={`prose prose-invert prose-sm max-w-none break-words prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black ${
+                      className={`prose prose-invert prose-sm max-w-none wrap-break-word prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black ${
                         isError
                           ? "prose-strong:text-red-400"
                           : "prose-strong:text-primary"
@@ -447,7 +447,7 @@ const AIInsights: React.FC<Props> = ({
           {streamingText && (
             <div className="flex justify-start">
               <div className="max-w-[85%] sm:max-w-[75%] bg-surface border border-gray-800 text-gray-200 rounded-2xl rounded-tl-none p-4 sm:p-5">
-                <div className="prose prose-invert prose-sm max-w-none break-words prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black prose-strong:text-primary">
+                <div className="prose prose-invert prose-sm max-w-none wrap-break-word prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black prose-strong:text-primary">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {parseMessage(streamingText).cleanText}
                   </ReactMarkdown>
@@ -465,7 +465,7 @@ const AIInsights: React.FC<Props> = ({
         </div>
 
         {/* Input */}
-        <div className="p-4 sm:p-6 bg-gradient-to-t from-background via-background to-transparent shrink-0">
+        <div className="p-4 sm:p-6 bg-linear-to-t from-background via-background to-transparent shrink-0">
           <form
             onSubmit={handleAsk}
             className="max-w-4xl mx-auto relative group"
@@ -491,7 +491,7 @@ const AIInsights: React.FC<Props> = ({
             <button
               type="submit"
               disabled={loading || !query.trim()}
-              className="absolute right-3 bottom-3 p-2.5 bg-primary text-white rounded-xl hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 flex items-center justify-center min-w-[40px] min-h-[40px]"
+              className="absolute right-3 bottom-3 p-2.5 bg-primary text-white rounded-xl hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg active:scale-95 flex items-center justify-center min-w-10 min-h-10"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

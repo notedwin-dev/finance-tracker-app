@@ -263,8 +263,8 @@ const AccountDetailModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn">
-      <div className="w-full max-w-2xl bg-card rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-800 shadow-2xl flex flex-col h-[92vh] sm:h-auto max-h-[92vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
+    <div className="fixed inset-0 z-70 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn">
+      <div className="w-full max-w-2xl md:max-w-4xl bg-card rounded-t-3xl sm:rounded-3xl border-t sm:border border-gray-800 shadow-2xl flex flex-col h-[92vh] sm:h-auto max-h-[92vh] md:max-h-[85vh] overflow-hidden animate-slideUp sm:animate-fadeIn">
         {/* Header */}
         <div className="p-4 sm:p-6 pb-2 flex justify-between items-start shrink-0 border-b border-gray-800 sm:border-none">
           <div className="flex items-center gap-3 sm:gap-4">
@@ -299,177 +299,203 @@ const AccountDetailModal: React.FC<Props> = ({
               onClick={onClose}
               className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700 sm:border-none"
             >
-              <XMarkIcon className="w-5 h-5 sm:w-6 h-6" />
+              <XMarkIcon className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-5 sm:p-8 overflow-y-auto flex-1 custom-scrollbar space-y-6 sm:space-y-8 pb-20 sm:pb-8">
-          {/* Main Balance */}
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
-            <div>
-              <p className="text-gray-400 text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold">
-                Current Balance
-              </p>
-              <h3 className="text-3xl sm:text-4xl font-black text-white">
-                <span className="text-gray-500 text-sm sm:text-base mr-1 font-medium">
-                  {getCurrencySymbol(account.currency)}
-                </span>
-                {account.balance.toLocaleString("en-US", {
-                  minimumFractionDigits:
-                    account.currency === "BTC" || account.currency === "ETH"
-                      ? 8
-                      : 2,
-                })}
-              </h3>
-              {convertedBalance !== null && (
-                <p className="text-gray-500 text-sm font-bold mt-1">
-                  ≈ {getCurrencySymbol(displayCurrency)}{" "}
-                  {convertedBalance.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 6,
-                  })}
-                </p>
-              )}
-            </div>
-            {totalInPots > 0 && (
-              <div className="sm:text-right bg-primary/5 sm:bg-transparent p-3 sm:p-0 rounded-2xl border border-primary/10 sm:border-none">
-                <p className="text-primary text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold flex items-center sm:justify-end gap-1">
-                  <WalletIcon className="w-3 h-3 sm:w-4 h-4" /> Available •{" "}
-                  {accountPots.length} Active Pots
-                </p>
-                <h3 className="text-2xl sm:text-3xl font-black text-success">
-                  <span className="text-success/50 text-sm sm:text-base mr-1 font-medium">
-                    {getCurrencySymbol(account.currency)}
-                  </span>
-                  {availableBalance.toLocaleString("en-US", {
-                    minimumFractionDigits:
-                      account.currency === "BTC" || account.currency === "ETH"
-                        ? 8
-                        : 2,
-                  })}
-                </h3>
-              </div>
-            )}
-          </div>
-
-          {/* Graph */}
-          <div className="h-64 w-full bg-surface/50 rounded-2xl p-4 border border-gray-800">
-            <Line data={chartData} options={chartOptions} />
-          </div>
-
-          {/* Saving Pots */}
-          {accountPots.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="font-bold text-white flex items-center gap-2">
-                <WalletIcon className="w-5 h-5 text-primary" /> Linked Saving
-                Pots
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {accountPots.map((pot) => {
-                  const progress = (pot.currentAmount / pot.targetAmount) * 100;
-                  return (
-                    <div
-                      key={pot.id}
-                      className="bg-surface rounded-xl p-4 border border-gray-800"
-                    >
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm font-bold text-white">
-                          {pot.name}
-                        </span>
-                        <span className="text-xs text-primary font-bold">
-                          {getCurrencySymbol(account.currency)}
-                          {pot.currentAmount.toLocaleString(undefined, {
-                            minimumFractionDigits:
-                              account.currency === "BTC" ||
-                              account.currency === "ETH"
-                                ? 8
-                                : 2,
-                          })}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className="bg-primary h-full"
-                          style={{ width: `${Math.min(100, progress)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Account Details */}
-          {account.details && (
-            <div className="bg-surface rounded-xl p-5 border border-gray-800 space-y-4">
-              <h4 className="font-bold text-white flex items-center gap-2">
-                <CreditCardIcon className="w-5 h-5 text-primary" /> Account
-                Details
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {account.details.holderName && (
-                  <div>
-                    <label className="text-xs text-gray-500 uppercase">
-                      Account Holder
-                    </label>
-                    <p className="font-mono text-gray-200">
-                      {account.details.holderName}
-                    </p>
-                  </div>
-                )}
-                {account.details.accountNumber && (
-                  <div>
-                    <label className="text-xs text-gray-500 uppercase">
-                      Account Number
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-gray-200 text-lg tracking-wider">
-                        {account.details.accountNumber}
-                      </p>
-                      <button
-                        onClick={() =>
-                          copyToClipboard(account.details?.accountNumber)
-                        }
-                        className="text-gray-500 hover:text-white"
-                      >
-                        <ClipboardDocumentIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {account.details.expiry && (
-                  <div>
-                    <label className="text-xs text-gray-500 uppercase">
-                      Expiry
-                    </label>
-                    <p className="font-mono text-gray-200">
-                      {account.details.expiry}
-                    </p>
-                  </div>
-                )}
-                {account.details.cvv && (
-                  <div>
-                    <label className="text-xs text-gray-500 uppercase">
-                      CVV
-                    </label>
-                    <p className="font-mono text-gray-200">***</p>
-                  </div>
-                )}
-              </div>
-
-              {account.details.note && (
-                <div className="pt-2 border-t border-gray-800">
-                  <p className="text-xs text-gray-500 italic">
-                    {account.details.note}
+        <div className="p-5 sm:p-8 overflow-y-auto flex-1 custom-scrollbar pb-20 sm:pb-8">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
+            {/* Header / Summary Section - Full Width on md */}
+            <div className="md:col-span-12">
+              {/* Main Balance */}
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
+                <div>
+                  <p className="text-gray-400 text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold">
+                    Current Balance
                   </p>
+                  <h3 className="text-3xl sm:text-4xl font-black text-white">
+                    <span className="text-gray-500 text-sm sm:text-base mr-1 font-medium">
+                      {getCurrencySymbol(account.currency)}
+                    </span>
+                    {account.balance.toLocaleString("en-US", {
+                      minimumFractionDigits:
+                        account.currency === "BTC" || account.currency === "ETH"
+                          ? 8
+                          : 2,
+                    })}
+                  </h3>
+                  {convertedBalance !== null && (
+                    <p className="text-gray-500 text-sm font-bold mt-1">
+                      ≈ {getCurrencySymbol(displayCurrency)}{" "}
+                      {convertedBalance.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 6,
+                      })}
+                    </p>
+                  )}
+                </div>
+                {totalInPots > 0 && (
+                  <div className="sm:text-right bg-primary/5 sm:bg-transparent p-3 sm:p-0 rounded-2xl border border-primary/10 sm:border-none">
+                    <p className="text-primary text-[10px] sm:text-xs mb-1 uppercase tracking-widest font-bold flex items-center sm:justify-end gap-1">
+                      <WalletIcon className="w-3 h-3 sm:w-4 sm:h-4" /> Available
+                      • {accountPots.length} Active Pots
+                    </p>
+                    <h3 className="text-2xl sm:text-3xl font-black text-success">
+                      <span className="text-success/50 text-sm sm:text-base mr-1 font-medium">
+                        {getCurrencySymbol(account.currency)}
+                      </span>
+                      {availableBalance.toLocaleString("en-US", {
+                        minimumFractionDigits:
+                          account.currency === "BTC" ||
+                          account.currency === "ETH"
+                            ? 8
+                            : 2,
+                      })}
+                    </h3>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Left Side - Analytics */}
+            <div className="md:col-span-7 space-y-8">
+              {/* Graph */}
+              <div className="h-64 md:h-full min-h-64 md:min-h-80 w-full bg-surface/50 rounded-2xl p-4 border border-gray-800">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+            </div>
+
+            {/* Right Side - Details & Limits */}
+            <div className="md:col-span-5 space-y-8">
+              {/* Active Limits */}
+              {accountPots.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <WalletIcon className="w-5 h-5 text-primary" /> Active
+                    Limits
+                  </h4>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 md:grid-cols-1 gap-3">
+                    {accountPots.map((pot) => {
+                      const usedAmount = pot.targetAmount - pot.currentAmount;
+                      const progress = (usedAmount / pot.targetAmount) * 100;
+                      return (
+                        <div
+                          key={pot.id}
+                          className="bg-surface rounded-xl p-4 border border-gray-800"
+                        >
+                          <div className="flex justify-between mb-2">
+                            <span className="text-sm font-bold text-white">
+                              {pot.name}
+                            </span>
+                            <span className="text-xs text-primary font-bold">
+                              {getCurrencySymbol(account.currency)}
+                              {pot.currentAmount.toLocaleString(undefined, {
+                                minimumFractionDigits:
+                                  account.currency === "BTC" ||
+                                  account.currency === "ETH"
+                                    ? 8
+                                    : 2,
+                              })}{" "}
+                              Available
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${progress >= 100 ? "bg-red-500" : "bg-primary"}`}
+                              style={{
+                                width: `${Math.max(0, Math.min(100, progress))}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[10px] text-gray-500 uppercase">
+                              Used: {getCurrencySymbol(account.currency)}
+                              {usedAmount.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-gray-500 uppercase">
+                              Limit: {getCurrencySymbol(account.currency)}
+                              {pot.targetAmount.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Account Details */}
+              {account.details && (
+                <div className="bg-surface rounded-xl p-5 border border-gray-800 space-y-4">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <CreditCardIcon className="w-5 h-5 text-primary" /> Account
+                    Details
+                  </h4>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 md:grid-cols-1 gap-6">
+                    {account.details.holderName && (
+                      <div>
+                        <label className="text-xs text-gray-500 uppercase">
+                          Account Holder
+                        </label>
+                        <p className="font-mono text-gray-200">
+                          {account.details.holderName}
+                        </p>
+                      </div>
+                    )}
+                    {account.details.accountNumber && (
+                      <div>
+                        <label className="text-xs text-gray-500 uppercase">
+                          Account Number
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <p className="font-mono text-gray-200 text-lg tracking-wider">
+                            {account.details.accountNumber}
+                          </p>
+                          <button
+                            onClick={() =>
+                              copyToClipboard(account.details?.accountNumber)
+                            }
+                            className="text-gray-500 hover:text-white"
+                          >
+                            <ClipboardDocumentIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {account.details.expiry && (
+                      <div>
+                        <label className="text-xs text-gray-500 uppercase">
+                          Expiry
+                        </label>
+                        <p className="font-mono text-gray-200">
+                          {account.details.expiry}
+                        </p>
+                      </div>
+                    )}
+                    {account.details.cvv && (
+                      <div>
+                        <label className="text-xs text-gray-500 uppercase">
+                          CVV
+                        </label>
+                        <p className="font-mono text-gray-200">***</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {account.details.note && (
+                    <div className="pt-2 border-t border-gray-800">
+                      <p className="text-xs text-gray-500 italic">
+                        {account.details.note}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

@@ -186,7 +186,7 @@ const TransactionForm: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 md:p-6">
+    <div className="fixed inset-0 z-70 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 md:p-6">
       <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
         <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-700 bg-surface">
           <h2 className="text-base sm:text-lg font-bold text-white">
@@ -284,11 +284,11 @@ const TransactionForm: React.FC<Props> = ({
             {/* Pot Selection (Only if account has pots) */}
             {filteredPots.length > 0 && (
               <div className="animate-fadeIn">
-                <label className="block text-xs font-medium text-gray-400 mb-1 flex justify-between">
-                  <span>Saving Pot (Optional)</span>
+                <label className="text-xs font-medium text-gray-400 mb-1 flex justify-between">
+                  <span>Spending Limit / Pot (Optional)</span>
                   {selectedPot && (
                     <span className="text-secondary text-[10px] font-bold">
-                      BAL: {currency === "MYR" ? "RM" : "$"}{" "}
+                      AVAILABLE: {currency === "MYR" ? "RM" : "$"}{" "}
                       {selectedPot.currentAmount.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                       })}
@@ -303,21 +303,22 @@ const TransactionForm: React.FC<Props> = ({
                       isPotLow ? "border-amber-500/50" : "border-gray-700"
                     }`}
                   >
-                    <option value="">No Pot (Direct from Account)</option>
+                    <option value="">No Limit / Pot</option>
                     {filteredPots.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.icon} {p.name}
+                        {p.icon} {p.name} ({currency === "MYR" ? "RM" : "$"}
+                        {p.currentAmount.toLocaleString()} left)
                       </option>
                     ))}
                   </select>
                 </div>
                 {isPotLow && (
                   <div className="mt-2 flex items-center gap-2 text-[10px] text-amber-400 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
-                    <ExclamationTriangleIcon className="w-3 h-3 flex-shrink-0" />
+                    <ExclamationTriangleIcon className="w-3 h-3 shrink-0" />
                     <span>
-                      Low pot balance (
+                      Limit almost reached (
                       {selectedPot?.currentAmount <= 0
-                        ? "Empty"
+                        ? "Exceeded"
                         : "Less than 10% left"}
                       )
                     </span>
@@ -370,7 +371,7 @@ const TransactionForm: React.FC<Props> = ({
                     key={cat.id}
                     type="button"
                     onClick={() => setCategoryId(cat.id)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all aspect-square sm:aspect-auto sm:min-h-[60px] ${
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all aspect-square sm:aspect-auto sm:min-h-15 ${
                       categoryId === cat.id
                         ? "bg-primary text-white border-primary"
                         : "bg-surface border-gray-800 text-gray-400 hover:border-gray-600"

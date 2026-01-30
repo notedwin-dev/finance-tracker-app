@@ -654,7 +654,13 @@ export const SparklineChart: React.FC<{
 export const CategoryPieChart: React.FC<{
   data: { label: string; value: number; color: string }[];
   height?: number;
-}> = ({ data, height = 300 }) => {
+  currencySymbol?: string;
+}> = ({ data, height = 300, currencySymbol = "RM" }) => {
+  const total = useMemo(
+    () => data.reduce((sum, item) => sum + item.value, 0),
+    [data],
+  );
+
   const chartData = {
     labels: data.map((d) => d.label),
     datasets: [
@@ -691,11 +697,11 @@ export const CategoryPieChart: React.FC<{
           label: (context: any) => {
             const label = context.label || "";
             const value = context.parsed || 0;
-            const total = context.dataset.data.reduce(
+            const totalVal = context.dataset.data.reduce(
               (a: number, b: number) => a + b,
               0,
             );
-            const percentage = ((value / total) * 100).toFixed(1);
+            const percentage = ((value / totalVal) * 100).toFixed(1);
             return ` ${label}: ${value.toLocaleString()} (${percentage}%)`;
           },
         },
@@ -705,8 +711,23 @@ export const CategoryPieChart: React.FC<{
   };
 
   return (
-    <div style={{ height }}>
+    <div style={{ height }} className="relative">
       <Pie data={chartData} options={options} />
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transform -translate-y-8">
+        <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1">
+          Total Spent
+        </span>
+        <div className="flex items-baseline gap-1">
+          <span className="text-sm font-black text-indigo-400">
+            {currencySymbol}
+          </span>
+          <span className="text-2xl font-black text-white tracking-tighter">
+            {total.toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            })}
+          </span>
+        </div>
+      </div>
     </div>
   );
 };

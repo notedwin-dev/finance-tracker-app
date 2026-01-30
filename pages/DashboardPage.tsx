@@ -2,34 +2,22 @@ import React, { useState, useMemo } from "react";
 import { useOutletContext, Link, useNavigate } from "react-router-dom";
 import {
   PlusIcon,
-  ChevronRightIcon,
-  QrCodeIcon,
-  ArrowsRightLeftIcon,
   ChartPieIcon,
   ListBulletIcon,
   CalendarIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  Squares2X2Icon,
-  BellIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
   CalendarDaysIcon,
   ChevronUpDownIcon,
 } from "@heroicons/react/24/outline";
-import { ArrowUpRightIcon } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
-import CurrencyRateCard from "../components/CurrencyRateCard";
 import { SparklineChart, CategoryPieChart } from "../components/Charts";
 import AccountCard from "../components/AccountCard";
-import AIInsights from "../components/AIInsights";
 import {
   groupTransactions,
   normalizeDate,
   GroupedTransaction,
 } from "../helpers/transactions.helper";
-import { TransactionType, Account } from "../types";
+import { TransactionType } from "../types";
 
 type TimeFrame = "1D" | "1W" | "1M" | "YTD" | "ALL";
 
@@ -606,7 +594,11 @@ const DashboardPage: React.FC = () => {
               {showTransactionPie ? (
                 <div className="h-full flex items-center justify-center p-6 sm:p-8 animate-fadeIn">
                   {pieChartData.length > 0 ? (
-                    <CategoryPieChart data={pieChartData} height={300} />
+                    <CategoryPieChart
+                      data={pieChartData}
+                      height={300}
+                      currencySymbol={displayCurrency === "MYR" ? "RM" : "$"}
+                    />
                   ) : (
                     <div className="text-center opacity-30">
                       <ChartPieIcon className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4" />

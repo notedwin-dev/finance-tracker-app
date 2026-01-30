@@ -23,7 +23,6 @@ import { useData } from "../context/DataContext";
 import CurrencyRateCard from "../components/CurrencyRateCard";
 import { SparklineChart, CategoryPieChart } from "../components/Charts";
 import AccountCard from "../components/AccountCard";
-import AccountDetailModal from "../components/AccountDetailModal";
 import AIInsights from "../components/AIInsights";
 import {
   groupTransactions,

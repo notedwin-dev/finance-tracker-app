@@ -5,6 +5,7 @@ import {
   Goal,
   Subscription,
   Pot,
+  ChatSession,
 } from "../types";
 import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
 

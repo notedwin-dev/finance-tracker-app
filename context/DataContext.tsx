@@ -173,16 +173,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setSubscriptions(updatedSubs);
       StorageService.saveSubscriptions(updatedSubs);
       const accUpdates = new Map<string, number>();
-      newTxs.forEach((t) =>
+      newTxs.forEach((t) => {
+        const acc = accounts.find((a) => a.id === t.accountId);
+        let amount = t.amount;
+        if (acc && t.currency !== acc.currency) {
+          if (t.currency === "USD") amount *= usdRate;
+          else if (t.currency === "MYR") amount /= usdRate;
+        }
         accUpdates.set(
           t.accountId,
-          (accUpdates.get(t.accountId) || 0) + t.amount,
-        ),
-      );
+          (accUpdates.get(t.accountId) || 0) + amount,
+        );
+      });
       setAccounts((prev) => {
         const updated = prev.map((a) => {
           if (accUpdates.has(a.id))
-            return { ...a, balance: a.balance - (accUpdates.get(a.id) || 0) };
+            return {
+              ...a,
+              balance: a.balance - (accUpdates.get(a.id) || 0),
+              updatedAt: Date.now(),
+            };
           return a;
         });
         StorageService.saveAccounts(updated);
@@ -363,31 +373,63 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // 2. Update Accounts Balance
     const updatedAccounts = accounts.map((a) => {
       let balance = a.balance;
+      let isChanged = false;
+
+      const getConvertedAmount = (
+        amount: number,
+        txCurrency: string,
+        accCurrency: string,
+      ) => {
+        if (txCurrency === accCurrency) return amount;
+        if (txCurrency === "USD" && accCurrency === "MYR")
+          return amount * usdRate;
+        if (txCurrency === "MYR" && accCurrency === "USD")
+          return amount / usdRate;
+        return amount; // Fallback
+      };
 
       // Revert old transaction impacts
       if (isEdit && oldTx) {
+        const oldAmount = getConvertedAmount(
+          oldTx.amount,
+          oldTx.currency,
+          a.currency,
+        );
         if (a.id === oldTx.accountId) {
-          if (oldTx.type === TransactionType.INCOME) balance -= oldTx.amount;
-          else balance += oldTx.amount; // Expense, Transfer, Adjustment
+          isChanged = true;
+          if (
+            oldTx.type === TransactionType.INCOME ||
+            oldTx.type === TransactionType.ACCOUNT_OPENING
+          )
+            balance -= oldAmount;
+          else balance += oldAmount; // Expense, Transfer, Adjustment
         }
         if (
           oldTx.type === TransactionType.TRANSFER &&
           a.id === oldTx.toAccountId
         ) {
-          balance -= oldTx.amount;
+          isChanged = true;
+          balance -= oldAmount;
         }
       }
 
       // Apply new transaction impacts
+      const newAmount = getConvertedAmount(tx.amount, tx.currency, a.currency);
       if (a.id === tx.accountId) {
-        if (tx.type === TransactionType.INCOME) balance += tx.amount;
-        else balance -= tx.amount;
+        isChanged = true;
+        if (
+          tx.type === TransactionType.INCOME ||
+          tx.type === TransactionType.ACCOUNT_OPENING
+        )
+          balance += newAmount;
+        else balance -= newAmount;
       }
       if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
-        balance += tx.amount;
+        isChanged = true;
+        balance += newAmount;
       }
 
-      return balance !== a.balance ? { ...a, balance } : a;
+      return isChanged ? { ...a, balance, updatedAt: Date.now() } : a;
     });
 
     setAccounts(updatedAccounts);
@@ -429,14 +471,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const tx = transactions.find((t) => t.id === id);
     if (tx) {
       const updatedAccounts = accounts.map((a) => {
+        const amount =
+          tx.currency === a.currency
+            ? tx.amount
+            : tx.currency === "USD"
+              ? tx.amount * usdRate
+              : tx.amount / usdRate;
+
         if (a.id === tx.accountId) {
           let balanceRestore = 0;
-          if (tx.type === TransactionType.INCOME) balanceRestore = -tx.amount;
-          else balanceRestore = tx.amount;
-          return { ...a, balance: a.balance + balanceRestore };
+          if (
+            tx.type === TransactionType.INCOME ||
+            tx.type === TransactionType.ACCOUNT_OPENING
+          )
+            balanceRestore = -amount;
+          else balanceRestore = amount;
+          return {
+            ...a,
+            balance: a.balance + balanceRestore,
+            updatedAt: Date.now(),
+          };
         }
         if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
-          return { ...a, balance: a.balance - tx.amount };
+          return { ...a, balance: a.balance - amount, updatedAt: Date.now() };
         }
         return a;
       });

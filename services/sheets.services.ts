@@ -21,14 +21,16 @@ const DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ];
 
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+const getApiKey = () =>
+  import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
 
 let gapiInited = false;
 let hasAccessToken = false;
 let tokenExpiryTime = 0;
 
 export const initGapiClient = async (): Promise<void> => {
-  if (!API_KEY) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     console.warn("Google API Key not found.");
     return;
   }
@@ -74,7 +76,7 @@ export const initGapiClient = async (): Promise<void> => {
     window.gapi.load("client", async () => {
       try {
         await window.gapi.client.init({
-          apiKey: API_KEY,
+          apiKey,
           discoveryDocs: DISCOVERY_DOCS,
         });
 

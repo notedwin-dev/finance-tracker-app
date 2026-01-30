@@ -29,24 +29,13 @@ const DashboardPage: React.FC = () => {
     transactions,
     categories,
     pots,
-    goals,
-    chatSessions,
-    handleSaveChatSession,
-    handleDeleteChatSession,
     usdRate,
     cryptoPrices,
-    exchangeRate,
     displayCurrency,
     setDisplayCurrency,
   } = useData();
-  const {
-    setShowAddModal,
-    setShowAccountForm,
-    setEditingAccount,
-    setShowCategoryManager,
-  } = useOutletContext<any>();
+  const { setShowAddModal, setShowAccountForm } = useOutletContext<any>();
 
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<TimeFrame | "CUSTOM">("1M");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTransactionPie, setShowTransactionPie] = useState(false);
@@ -312,74 +301,6 @@ const DashboardPage: React.FC = () => {
       color: colors[i % colors.length],
     }));
   }, [spendingByCategory]);
-
-  // Currency strength metrics
-  const currencyStats = useMemo(() => {
-    if (
-      !exchangeRate ||
-      !exchangeRate.history ||
-      exchangeRate.history.length === 0
-    ) {
-      return { label: "Stable", change: 0, isStronger: true };
-    }
-
-    const history = [...exchangeRate.history].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-
-    const now = new Date();
-    let targetDate = new Date();
-    if (timeframe === "1D") targetDate.setDate(now.getDate() - 1);
-    else if (timeframe === "1W") targetDate.setDate(now.getDate() - 7);
-    else if (timeframe === "1M") targetDate.setDate(now.getDate() - 30);
-    else if (timeframe === "YTD")
-      targetDate = new Date(now.getFullYear(), 0, 1);
-    else targetDate = new Date(0);
-
-    const historicalRateObj =
-      history.find((h) => new Date(h.date) <= targetDate) ||
-      history[history.length - 1];
-    const historicalRate = historicalRateObj.rate;
-    const currentRate = usdRate;
-
-    const change = currentRate - historicalRate;
-    const percentChange = (change / historicalRate) * 100;
-    const isStronger = change <= 0; // Lower rate means stronger MYR
-
-    return {
-      label: isStronger ? "Stronger" : "Weaker",
-      change: Math.abs(percentChange),
-      isStronger,
-    };
-  }, [exchangeRate, usdRate, timeframe]);
-
-  const usdRateTrend = useMemo(() => {
-    if (!exchangeRate?.history) return { labels: [], data: [] };
-
-    const now = new Date();
-    let startLimit = new Date();
-    if (timeframe === "1D") startLimit.setHours(now.getHours() - 24);
-    else if (timeframe === "1W") startLimit.setDate(now.getDate() - 7);
-    else if (timeframe === "1M") startLimit.setDate(now.getDate() - 30);
-    else if (timeframe === "YTD")
-      startLimit = new Date(now.getFullYear(), 0, 1);
-    else if (timeframe === "ALL") startLimit = new Date(0);
-    else if (timeframe === "CUSTOM") startLimit = new Date(customRange.start);
-
-    const filteredHistory = exchangeRate.history
-      .filter((h) => new Date(h.date) >= startLimit)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    return {
-      labels: filteredHistory.map((h) =>
-        new Date(h.date).toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-        }),
-      ),
-      data: filteredHistory.map((h) => h.rate),
-    };
-  }, [exchangeRate, timeframe, customRange]);
 
   const sortedRecentTransactions = useMemo(() => {
     // Show most recent 10 transactions regardless of timeframe

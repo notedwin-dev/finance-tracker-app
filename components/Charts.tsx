@@ -702,7 +702,7 @@ export const CategoryPieChart: React.FC<{
               0,
             );
             const percentage = ((value / totalVal) * 100).toFixed(1);
-            return ` ${label}: ${value.toLocaleString()} (${percentage}%)`;
+            return ` ${label}: ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${percentage}%)`;
           },
         },
       },
@@ -723,7 +723,7 @@ export const CategoryPieChart: React.FC<{
           </span>
           <span className="text-2xl font-black text-white tracking-tighter">
             {total.toLocaleString(undefined, {
-              maximumFractionDigits: 0,
+              maximumFractionDigits: 2,
             })}
           </span>
         </div>

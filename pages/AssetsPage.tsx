@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { useOutletContext, Link } from "react-router-dom";
+import { useOutletContext, Link, useNavigate } from "react-router-dom";
 import { PlusIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
 import AccountCard from "../components/AccountCard";
-import AccountDetailModal from "../components/AccountDetailModal";
 import { Account } from "../types";
 
 const AssetsPage: React.FC = () => {
+  const navigate = useNavigate();
   const {
     accounts,
     pots,
@@ -16,8 +16,6 @@ const AssetsPage: React.FC = () => {
     displayCurrency,
   } = useData();
   const { setShowAccountForm, setEditingAccount } = useOutletContext<any>();
-
-  const [viewAccount, setViewAccount] = useState<Account | null>(null);
 
   return (
     <div className="animate-fadeIn space-y-8 pb-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
@@ -54,7 +52,7 @@ const AssetsPage: React.FC = () => {
             account={acc}
             pots={pots}
             transactions={transactions}
-            onClick={(a) => setViewAccount(a)}
+            onClick={(a) => navigate(`/app/account/${a.id}`)}
             displayCurrency={displayCurrency}
             usdRate={usdRate}
             cryptoPrices={cryptoPrices}
@@ -74,20 +72,6 @@ const AssetsPage: React.FC = () => {
           </span>
         </button>
       </div>
-
-      {viewAccount && (
-        <AccountDetailModal
-          account={viewAccount}
-          transactions={transactions}
-          pots={pots}
-          onClose={() => setViewAccount(null)}
-          onEdit={(acc) => {
-            setViewAccount(null);
-            setEditingAccount(acc);
-            setShowAccountForm(true);
-          }}
-        />
-      )}
     </div>
   );
 };

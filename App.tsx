@@ -11,6 +11,7 @@ import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import HistoryPage from "./pages/HistoryPage";
+import AccountPage from "./pages/AccountPage";
 import GoalsPage from "./pages/GoalsPage";
 import AssetsPage from "./pages/AssetsPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -59,6 +60,7 @@ const App: React.FC = () => {
             >
               <Route index element={<DashboardPage />} />
               <Route path="history" element={<HistoryPage />} />
+              <Route path="account/:id" element={<AccountPage />} />
               <Route path="goals" element={<GoalsPage />} />
               <Route path="assets" element={<AssetsPage />} />
               <Route path="ai" element={<div />} />

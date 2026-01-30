@@ -214,22 +214,6 @@ export const ASSET_PROVIDERS = [
 
   // Investments
   {
-    id: "BTC",
-    name: "Bitcoin",
-    type: "INVESTMENT",
-    color: "bg-[#F7931A]",
-    icon: "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
-    currency: "BTC",
-  },
-  {
-    id: "ETH",
-    name: "Ethereum",
-    type: "INVESTMENT",
-    color: "bg-[#627EEA]",
-    icon: "https://cryptologos.cc/logos/ethereum-eth-logo.png",
-    currency: "ETH",
-  },
-  {
     id: "STASHAWAY",
     name: "StashAway",
     type: "INVESTMENT",

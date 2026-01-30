@@ -111,7 +111,7 @@ const History: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-8 pb-32">
+    <div className="space-y-6 sm:space-y-8">
       <div className="hidden lg:flex justify-end mb-4">
         <button
           onClick={onAddTransaction}
@@ -124,20 +124,20 @@ const History: React.FC<Props> = ({
 
       {sortedDates.map((dateStr) => (
         <div key={dateStr} className="animate-slideUp">
-          <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4 pl-4 flex items-center gap-3">
+          <h3 className="text-[10px] font-extrabold text-gray-500 uppercase tracking-[0.2em] mb-4 pl-4 flex items-center gap-3">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/40"></span>
             {formatDateHeader(dateStr)}
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {grouped[dateStr].map((t) => (
               <div
                 key={t.id}
                 onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
-                className="group flex items-center p-5 bg-surface/40 backdrop-blur-md rounded-4xl border border-white/5 hover:border-indigo-500/30 transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden shadow-xl"
+                className="group flex items-center p-4 sm:p-5 bg-surface/40 backdrop-blur-md rounded-4xl sm:rounded-4xl border border-white/5 hover:border-indigo-500/30 transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden shadow-xl"
               >
-                <div className="flex items-center gap-5 flex-1 min-w-0">
+                <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
                   <div
-                    className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition-all duration-500 ${
+                    className={`shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-md sm:text-lg transition-all duration-500 ${
                       t.linkedTransaction
                         ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
                         : "bg-surface border border-white/5"
@@ -151,7 +151,7 @@ const History: React.FC<Props> = ({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="font-black text-white text-lg tracking-tight truncate">
+                      <p className="font-extrabold sm:font-black text-white text-[17px] sm:text-lg tracking-tight truncate">
                         {t.linkedTransaction
                           ? t.shopName || (
                               <>
@@ -165,19 +165,19 @@ const History: React.FC<Props> = ({
                           : t.shopName || "UNTITLED"}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
                       {t.time && (
-                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                           {t.time}
                         </span>
                       )}
-                      <span className="w-1 h-1 rounded-full bg-gray-700"></span>
+                      <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
                       {t.linkedTransaction ? (
-                        <p className="text-[11px] font-bold text-indigo-400/70 truncate uppercase tracking-wider">
+                        <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-indigo-400/70 truncate uppercase tracking-wider">
                           INTERNAL TRANSFER
                         </p>
                       ) : (
-                        <p className="text-[11px] font-bold text-gray-400/70 truncate uppercase tracking-[0.05em]">
+                        <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-gray-500/70 truncate uppercase tracking-[0.05em]">
                           {categories.find((c) => c.id === t.categoryId)
                             ?.name ||
                             (t.type === TransactionType.ACCOUNT_OPENING
@@ -189,10 +189,10 @@ const History: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 shrink-0 ml-4">
+                <div className="flex items-center gap-3 sm:gap-4 shrink-0 ml-4">
                   <div className="flex flex-col items-end">
                     <span
-                      className={`font-black text-xl tracking-tighter ${
+                      className={`font-black text-xl sm:text-xl tracking-tighter ${
                         t.linkedTransaction
                           ? "text-indigo-400"
                           : t.type === TransactionType.INCOME ||
@@ -220,7 +220,7 @@ const History: React.FC<Props> = ({
                         maximumFractionDigits: 2,
                       })}
                     </span>
-                    <span className="text-[10px] text-gray-600 font-black tracking-widest uppercase">
+                    <span className="text-[8px] sm:text-[9px] text-gray-600 font-bold sm:font-black tracking-widest uppercase">
                       {t.currency}
                     </span>
                   </div>
@@ -228,7 +228,7 @@ const History: React.FC<Props> = ({
 
                 {/* Simplified floating actions on expand */}
                 {openMenuId === t.id && (
-                  <div className="absolute inset-y-0 right-0 bg-indigo-600 flex items-center gap-4 px-6 animate-in slide-in-from-right duration-300">
+                  <div className="absolute inset-y-0 right-0 bg-indigo-600 flex items-center gap-4 px-4 animate animate-fadeIn">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -241,27 +241,27 @@ const History: React.FC<Props> = ({
                         );
                         setOpenMenuId(null);
                       }}
-                      className="p-3 bg-white/20 rounded-2xl text-white hover:scale-110 transition-transform"
+                      className="p-2 bg-white/20 rounded-lg text-white hover:scale-110 transition-transform"
                     >
-                      <PencilIcon className="w-6 h-6" />
+                      <PencilIcon className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onDeleteTransaction(t.id);
                       }}
-                      className="p-3 bg-rose-500/40 rounded-2xl text-white hover:scale-110 transition-transform"
+                      className="p-2 bg-rose-500/40 rounded-lg text-white hover:scale-110 transition-transform"
                     >
-                      <TrashIcon className="w-6 h-6" />
+                      <TrashIcon className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setOpenMenuId(null);
                       }}
-                      className="p-3 bg-white/10 rounded-2xl text-white/50"
+                      className="p-2 bg-white/10 rounded-lg text-white/50"
                     >
-                      <XMarkIcon className="w-6 h-6" />
+                      <XMarkIcon className="w-4 h-4" />
                     </button>
                   </div>
                 )}

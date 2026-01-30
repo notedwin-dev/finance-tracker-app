@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useOutletContext, Link } from "react-router-dom";
+import { useOutletContext, Link, useNavigate } from "react-router-dom";
 import {
   PlusIcon,
   ChevronRightIcon,
@@ -36,6 +36,7 @@ type TimeFrame = "1D" | "1W" | "1M" | "YTD" | "ALL";
 
 const DashboardPage: React.FC = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const {
     accounts,
     transactions,
@@ -58,7 +59,6 @@ const DashboardPage: React.FC = () => {
     setShowCategoryManager,
   } = useOutletContext<any>();
 
-  const [viewAccount, setViewAccount] = useState<Account | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<TimeFrame | "CUSTOM">("1M");
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -642,7 +642,7 @@ const DashboardPage: React.FC = () => {
                                 "💰"}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[17px] font-black text-gray-100 group-hover:text-indigo-400 transition-colors truncate tracking-tight">
+                            <p className="text-[17px] font-extrabold text-white group-hover:text-indigo-400 transition-colors truncate tracking-tight">
                               {t.linkedTransaction
                                 ? t.shopName || (
                                     <>
@@ -660,7 +660,7 @@ const DashboardPage: React.FC = () => {
                                     ?.name ||
                                   "UNTITLED"}
                             </p>
-                            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mt-1">
+                            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">
                               {t.time || "??:??"} • {normalizeDate(t.date)}
                             </p>
                           </div>
@@ -738,7 +738,7 @@ const DashboardPage: React.FC = () => {
                 account={acc}
                 pots={pots}
                 transactions={transactions}
-                onClick={(a) => setViewAccount(a)}
+                onClick={(a) => navigate(`/app/account/${a.id}`)}
                 displayCurrency={displayCurrency}
                 usdRate={usdRate}
                 cryptoPrices={cryptoPrices}
@@ -760,20 +760,6 @@ const DashboardPage: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {viewAccount && (
-        <AccountDetailModal
-          account={viewAccount}
-          transactions={transactions}
-          pots={pots}
-          onClose={() => setViewAccount(null)}
-          onEdit={(acc) => {
-            setViewAccount(null);
-            setEditingAccount(acc);
-            setShowAccountForm(true);
-          }}
-        />
-      )}
 
       {showDatePicker && (
         <div className="fixed inset-0 z-100 flex items-end sm:items-center justify-center p-0 sm:p-4">

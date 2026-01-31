@@ -90,8 +90,9 @@ const prepareContext = (
     })),
     spendingLimits: pots.map((p) => ({
       name: p.name,
-      totalBudgetLimit: p.targetAmount,
-      remainingAvailableBudget: p.currentAmount,
+      totalBudgetLimit: p.limitAmount,
+      remainingAvailableBudget: p.amountLeft,
+      amountUsed: p.usedAmount,
       linkedAccount: accounts.find((a) => a.id === p.accountId)?.name,
       updatedAt: p.updatedAt ? new Date(p.updatedAt).toISOString() : "Unknown",
     })),

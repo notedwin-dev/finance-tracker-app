@@ -438,22 +438,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // 3. Update Pot balance if linked
     if (tx.potId || (isEdit && oldTx?.potId)) {
       const updatedPots = pots.map((p) => {
-        let newAmount = p.currentAmount;
+        let newUsedAmount = p.usedAmount;
 
         // Revert old Pot impact
         if (isEdit && oldTx?.potId === p.id) {
-          if (oldTx.type === TransactionType.INCOME) newAmount -= oldTx.amount;
-          else newAmount += oldTx.amount;
+          if (oldTx.type === TransactionType.INCOME)
+            newUsedAmount -= oldTx.amount;
+          else newUsedAmount += oldTx.amount;
         }
 
         // Apply new Pot impact
         if (tx.potId === p.id) {
-          if (tx.type === TransactionType.INCOME) newAmount += tx.amount;
-          else newAmount -= tx.amount;
+          if (tx.type === TransactionType.INCOME) newUsedAmount += tx.amount;
+          else newUsedAmount -= tx.amount;
         }
 
-        if (newAmount !== p.currentAmount) {
-          const updated = { ...p, currentAmount: newAmount };
+        if (newUsedAmount !== p.usedAmount) {
+          const updated = {
+            ...p,
+            usedAmount: newUsedAmount,
+            amountLeft: p.limitAmount - newUsedAmount,
+          };
           if (SheetService.isClientReady())
             SheetService.updateOne("Pots", p.id, updated);
           return updated;
@@ -507,9 +512,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             let balanceRestore = 0;
             if (tx.type === TransactionType.INCOME) balanceRestore = -tx.amount;
             else balanceRestore = tx.amount;
+            const newUsedAmount = p.usedAmount + balanceRestore;
             const updatedPot = {
               ...p,
-              currentAmount: p.currentAmount + balanceRestore,
+              usedAmount: newUsedAmount,
+              amountLeft: p.limitAmount - newUsedAmount,
             };
             if (SheetService.isClientReady())
               SheetService.updateOne("Pots", p.id, updatedPot);
@@ -579,7 +586,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const handlePotSave = async (pot: Omit<Pot, "userId">) => {
     const isEdit = pots.some((p) => p.id === pot.id);
-    const potWithUser = { ...pot, userId: profile.id || "local" } as Pot;
+    const amountLeft = pot.limitAmount - pot.usedAmount;
+    const potWithUser = {
+      ...pot,
+      amountLeft,
+      userId: profile.id || "local",
+    } as Pot;
     const updated = isEdit
       ? pots.map((p) => (p.id === pot.id ? potWithUser : p))
       : [...pots, potWithUser];

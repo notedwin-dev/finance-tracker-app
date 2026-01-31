@@ -755,13 +755,44 @@ export const loadFromGoogleSheets = async (): Promise<{
     }
   }
 
+  // Perform migration for Pots if needed
+  const pots = (result.pots || []).map((p: any) => {
+    // Migration from old naming: targetAmount -> limitAmount, currentAmount -> amountLeft
+    const migratedPot = { ...p };
+    if (
+      migratedPot.limitAmount === undefined &&
+      migratedPot.targetAmount !== undefined
+    ) {
+      migratedPot.limitAmount = Number(migratedPot.targetAmount);
+    }
+    if (
+      migratedPot.amountLeft === undefined &&
+      migratedPot.currentAmount !== undefined
+    ) {
+      migratedPot.amountLeft = Number(migratedPot.currentAmount);
+    }
+    // Ensure usedAmount is calculated if missing
+    if (migratedPot.usedAmount === undefined) {
+      if (
+        migratedPot.limitAmount !== undefined &&
+        migratedPot.amountLeft !== undefined
+      ) {
+        migratedPot.usedAmount =
+          migratedPot.limitAmount - migratedPot.amountLeft;
+      } else {
+        migratedPot.usedAmount = 0;
+      }
+    }
+    return migratedPot;
+  });
+
   return {
     accounts: result.accounts || [],
     transactions: result.transactions || [],
     categories: result.categories || [],
     goals: result.goals || [],
     subscriptions: result.subscriptions || [],
-    pots: result.pots || [],
+    pots,
     chatSessions: result.chatsessions || [],
   };
 };

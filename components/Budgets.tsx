@@ -81,7 +81,7 @@ const Budgets: React.FC<Props> = ({
                   </div>
                   <div>
                     <h3 className="font-semibold text-white">{cat.name}</h3>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-rose-400 font-bold">
                       ${spent.toFixed(2)} spent
                     </p>
                   </div>
@@ -110,13 +110,13 @@ const Budgets: React.FC<Props> = ({
                       className="text-right group cursor-pointer"
                       onClick={() => startEdit(cat)}
                     >
-                      <div className="flex items-center justify-end gap-1 text-gray-300">
-                        <span className="text-sm font-medium">
-                          {limit > 0 ? `$${limit}` : "No Limit"}
+                      <div className="flex items-center justify-end gap-1 text-indigo-400">
+                        <span className="text-sm font-bold">
+                          {limit > 0 ? `$${(limit - spent).toFixed(2)}` : "No Limit"}
                         </span>
-                        <PencilIcon className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <PencilIcon className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500" />
                       </div>
-                      <p className="text-[10px] text-gray-500">Limit</p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Available</p>
                     </div>
                   )}
                 </div>

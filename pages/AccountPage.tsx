@@ -90,7 +90,10 @@ const AccountPage: React.FC = () => {
     }
   };
 
-  const totalInPots = accountPots.reduce((sum, p) => sum + p.currentAmount, 0);
+  const totalInPots = accountPots.reduce(
+    (sum, p) => sum + (p.amountLeft || 0),
+    0,
+  );
   const availableBalance = (account?.balance || 0) - totalInPots;
 
   const convertedBalance = useMemo(() => {
@@ -480,8 +483,9 @@ const AccountPage: React.FC = () => {
               </h4>
               <div className="space-y-3 sm:space-y-4">
                 {accountPots.map((pot) => {
-                  const usedAmount = pot.targetAmount - pot.currentAmount;
-                  const progress = (usedAmount / pot.targetAmount) * 100;
+                  const usedAmount = pot.usedAmount;
+                  const limitAmount = pot.limitAmount;
+                  const progress = (usedAmount / limitAmount) * 100;
                   return (
                     <div
                       key={pot.id}
@@ -492,12 +496,12 @@ const AccountPage: React.FC = () => {
                           {pot.name}
                         </span>
                         <div className="text-right shrink-0">
-                          <p className="text-[7px] sm:text-[10px] font-bold sm:font-black text-indigo-400 uppercase tracking-widest">
-                            Available
+                          <p className="text-[7px] sm:text-[10px] font-bold sm:font-black text-rose-400 uppercase tracking-widest">
+                            Spent
                           </p>
                           <p className="text-[11px] sm:text-sm font-extrabold sm:font-black text-white font-mono">
                             {getCurrencySymbol(account.currency)}
-                            {pot.currentAmount.toLocaleString()}
+                            {pot.usedAmount.toLocaleString()}
                           </p>
                         </div>
                       </div>
@@ -510,8 +514,8 @@ const AccountPage: React.FC = () => {
                         />
                       </div>
                       <div className="flex justify-between text-[10px] sm:text-[10px] font-bold sm:font-black uppercase tracking-widest text-gray-500">
-                        <span>Used: {usedAmount.toLocaleString()}</span>
-                        <span>Limit: {pot.targetAmount.toLocaleString()}</span>
+                        <span className="text-indigo-400">Available: {pot.amountLeft.toLocaleString()}</span>
+                        <span>Limit: {limitAmount.toLocaleString()}</span>
                       </div>
                     </div>
                   );

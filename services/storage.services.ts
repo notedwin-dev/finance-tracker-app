@@ -406,7 +406,37 @@ export const saveSubscriptions = async (subscriptions: Subscription[]) => {
 
 export const getStoredPots = (): Pot[] => {
   const stored = localStorage.getItem(getKey(KEYS.POTS));
-  return stored ? JSON.parse(stored) : [];
+  if (!stored) return [];
+
+  const pots = JSON.parse(stored);
+  return pots.map((p: any) => {
+    // Migration logic for Pots
+    const migratedPot = { ...p };
+    if (
+      migratedPot.limitAmount === undefined &&
+      migratedPot.targetAmount !== undefined
+    ) {
+      migratedPot.limitAmount = Number(migratedPot.targetAmount);
+    }
+    if (
+      migratedPot.amountLeft === undefined &&
+      migratedPot.currentAmount !== undefined
+    ) {
+      migratedPot.amountLeft = Number(migratedPot.currentAmount);
+    }
+    if (migratedPot.usedAmount === undefined) {
+      if (
+        migratedPot.limitAmount !== undefined &&
+        migratedPot.amountLeft !== undefined
+      ) {
+        migratedPot.usedAmount =
+          migratedPot.limitAmount - migratedPot.amountLeft;
+      } else {
+        migratedPot.usedAmount = 0;
+      }
+    }
+    return migratedPot;
+  });
 };
 
 export const savePots = async (pots: Pot[]) => {

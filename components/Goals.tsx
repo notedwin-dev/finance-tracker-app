@@ -135,8 +135,8 @@ const Goals: React.FC<Props> = ({
     setEditingId(pot.id);
     setPotName(pot.name);
     setPotAccountId(pot.accountId);
-    setPotTarget(pot.targetAmount.toFixed(2));
-    setPotCurrent(pot.currentAmount.toFixed(2));
+    setPotTarget(pot.limitAmount.toFixed(2));
+    setPotCurrent(pot.usedAmount.toFixed(2));
     setShowPotModal(true);
   };
 
@@ -157,12 +157,15 @@ const Goals: React.FC<Props> = ({
 
     setIsSubmitting(true);
     try {
+      const limit = parseFloat(potTarget);
+      const used = parseFloat(potCurrent) || 0;
       await onSavePot({
         id: editingId || crypto.randomUUID(),
         name: potName,
         accountId: potAccountId,
-        targetAmount: parseFloat(potTarget),
-        currentAmount: parseFloat(potCurrent) || 0,
+        limitAmount: limit,
+        usedAmount: used,
+        amountLeft: limit - used,
         currency:
           accounts.find((a) => a.id === potAccountId)?.currency || "MYR",
         icon: "💰",
@@ -271,8 +274,9 @@ const Goals: React.FC<Props> = ({
             </div>
           ) : (
             pots.map((pot) => {
-              const usedAmount = pot.targetAmount - pot.currentAmount;
-              const progress = (usedAmount / pot.targetAmount) * 100;
+              const usedAmount = pot.usedAmount;
+              const limitAmount = pot.limitAmount;
+              const progress = (usedAmount / limitAmount) * 100;
               return (
                 <div
                   key={pot.id}
@@ -309,19 +313,19 @@ const Goals: React.FC<Props> = ({
                     <div className="mb-6">
                       <div className="flex justify-between items-end mb-3">
                         <div className="space-y-0.5">
-                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
-                            Available
+                          <p className="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em]">
+                            Total Spent
                           </p>
                           <p className="text-2xl font-black text-white tracking-tighter">
-                            {pot.currency} {pot.currentAmount.toLocaleString()}
+                            {pot.currency} {pot.usedAmount.toLocaleString()}
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                          <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">
                             Limit
                           </p>
-                          <p className="text-sm font-black text-gray-400 tracking-tight">
-                            {pot.currency} {pot.targetAmount.toLocaleString()}
+                          <p className="text-sm font-black text-white tracking-tight">
+                            {pot.currency} {limitAmount.toLocaleString()}
                           </p>
                         </div>
                       </div>
@@ -343,8 +347,8 @@ const Goals: React.FC<Props> = ({
                         </span>
                       </div>
                       <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                        {Math.max(0, usedAmount).toLocaleString()}{" "}
-                        {pot.currency} TOTAL SPENT
+                        Amount left: {pot.currency}{" "}
+                        {pot.amountLeft.toLocaleString()}
                       </p>
                     </div>
                   </div>

@@ -106,8 +106,9 @@ export interface Pot {
   userId: string;
   accountId: string; // Linked bank account/e-wallet
   name: string;
-  targetAmount: number; // The "Limit" or "Goal" for this pot
-  currentAmount: number; // How much is currently in the pot
+  limitAmount: number; // The total budget limit for this pot
+  usedAmount: number; // How much has been spent/used so far
+  amountLeft: number; // The remaining balance available to spend
   currency: Currency;
   color: string;
   icon: string;

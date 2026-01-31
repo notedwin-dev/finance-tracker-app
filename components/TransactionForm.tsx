@@ -126,8 +126,8 @@ const TransactionForm: React.FC<Props> = ({
   const selectedPot = filteredPots.find((p) => p.id === potId);
   const isPotLow =
     selectedPot &&
-    (selectedPot.currentAmount <= 0 ||
-      selectedPot.currentAmount / selectedPot.targetAmount <= 0.1);
+    (selectedPot.amountLeft <= 0 ||
+      selectedPot.amountLeft / selectedPot.limitAmount <= 0.1);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -289,7 +289,7 @@ const TransactionForm: React.FC<Props> = ({
                   {selectedPot && (
                     <span className="text-secondary text-[10px] font-bold">
                       AVAILABLE: {currency === "MYR" ? "RM" : "$"}{" "}
-                      {selectedPot.currentAmount.toLocaleString(undefined, {
+                      {selectedPot.amountLeft.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                       })}
                     </span>
@@ -307,7 +307,7 @@ const TransactionForm: React.FC<Props> = ({
                     {filteredPots.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.icon} {p.name} ({currency === "MYR" ? "RM" : "$"}
-                        {p.currentAmount.toLocaleString()} left)
+                        {p.amountLeft.toLocaleString()} left)
                       </option>
                     ))}
                   </select>
@@ -317,7 +317,7 @@ const TransactionForm: React.FC<Props> = ({
                     <ExclamationTriangleIcon className="w-3 h-3 shrink-0" />
                     <span>
                       Limit almost reached (
-                      {selectedPot?.currentAmount <= 0
+                      {selectedPot?.amountLeft <= 0
                         ? "Exceeded"
                         : "Less than 10% left"}
                       )

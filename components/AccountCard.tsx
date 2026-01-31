@@ -32,7 +32,7 @@ const AccountCard: React.FC<Props> = ({
 }) => {
   const accountPots = pots.filter((p) => p.accountId === account.id);
   const totalInPots = accountPots.reduce(
-    (sum, p) => sum + (p.currentAmount || 0),
+    (sum, p) => sum + (p.amountLeft || 0),
     0,
   );
   const availableBalance = account.balance - totalInPots;
@@ -185,7 +185,8 @@ const AccountCard: React.FC<Props> = ({
           <div className="mt-1">
             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
               {displayCurrency === "MYR" ? "RM" : "$"}{" "}
-              {hideBalance ? "****" : displayPotsBalance.toLocaleString()} Available
+              {hideBalance ? "****" : displayPotsBalance.toLocaleString()}{" "}
+              Available
             </span>
           </div>
         )}

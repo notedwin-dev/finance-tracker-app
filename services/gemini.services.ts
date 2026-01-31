@@ -57,7 +57,9 @@ const prepareContext = (
     goals: goals.map((g) => ({
       name: g.name,
       targetAmount: g.targetAmount,
-      currentAmount: g.currentAmount,
+      currentAmount: g.linkedAccountId
+        ? accounts.find((a) => a.id === g.linkedAccountId)?.balance
+        : g.currentAmount,
       deadline: g.deadline,
       type: g.type,
       linkedAccount: g.linkedAccountId,

@@ -16,6 +16,7 @@ import {
   DocumentArrowDownIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
+import { useData } from "../context/DataContext";
 
 interface Props {
   profile: UserProfile;
@@ -44,6 +45,7 @@ const Profile: React.FC<Props> = ({
   onResetSync,
   isSyncing = false,
 }) => {
+  const { maskText } = useData();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(profile.name);
 
@@ -150,7 +152,7 @@ const Profile: React.FC<Props> = ({
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-2xl font-black text-white flex items-center gap-2">
-                      {profile.name}
+                      {maskText(profile.name)}
                       <button
                         onClick={() => {
                           setName(profile.name);
@@ -162,7 +164,7 @@ const Profile: React.FC<Props> = ({
                       </button>
                     </h2>
                     <p className="text-gray-500 text-sm font-medium">
-                      {profile.email}
+                      {maskText(profile.email)}
                     </p>
                   </div>
                   <div className="bg-primary/10 text-primary text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider border border-primary/20">

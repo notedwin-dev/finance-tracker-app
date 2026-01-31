@@ -8,6 +8,7 @@ import {
   ArrowDownRightIcon,
 } from "@heroicons/react/24/solid";
 import { SparklineChart } from "./Charts";
+import { useData } from "../context/DataContext";
 
 interface Props {
   account: Account;
@@ -30,6 +31,7 @@ const AccountCard: React.FC<Props> = ({
   displayCurrency = "MYR",
   hideBalance = false,
 }) => {
+  const { maskAmount, maskText } = useData();
   const accountPots = pots.filter((p) => p.accountId === account.id);
   const totalInPots = accountPots.reduce(
     (sum, p) => sum + (p.amountLeft || 0),
@@ -148,7 +150,7 @@ const AccountCard: React.FC<Props> = ({
           </div>
           <div className="space-y-0.5 min-w-0">
             <h4 className="font-bold text-lg text-white tracking-tight truncate">
-              {account.name}
+              {maskText(account.name)}
             </h4>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest truncate">
@@ -173,19 +175,21 @@ const AccountCard: React.FC<Props> = ({
             {displayCurrency === "MYR" ? "RM" : "$"}
           </span>
           <span className="text-4xl font-black text-white tracking-tighter">
-            {hideBalance
-              ? "****"
-              : displayBalance.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+            {maskAmount(
+              displayBalance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }),
+            )}
           </span>
         </div>
         {totalInPots > 0 && (
           <div className="mt-1">
             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
-              {displayCurrency === "MYR" ? "RM" : "$"}{" "}
-              {hideBalance ? "****" : displayPotsBalance.toLocaleString()}{" "}
+              {maskAmount(
+                displayPotsBalance.toLocaleString(),
+                displayCurrency === "MYR" ? "RM" : "$",
+              )}{" "}
               Available
             </span>
           </div>

@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./services/auth.services";
-import { DataProvider } from "./context/DataContext";
+import { DataProvider } from "./context/DataProvider";
 
 // Layouts
 import MainLayout from "./layouts/MainLayout";

@@ -20,6 +20,7 @@ export const KEYS = {
   SUBSCRIPTIONS: "zenfinance_subscriptions_v2",
   POTS: "zenfinance_pots_v2",
   CHATS: "zenfinance_chats_v2",
+  SETTINGS: "zenfinance_settings_v2",
 };
 
 const getKey = (baseKey: string) => getBaseKey(baseKey, KEYS.PROFILE);
@@ -467,6 +468,9 @@ export const getStoredProfile = (): UserProfile => {
   }
   if (profile.showAIAssistant === undefined) {
     profile.showAIAssistant = true;
+  }
+  if (profile.privacyMode === undefined) {
+    profile.privacyMode = false;
   }
 
   return profile;

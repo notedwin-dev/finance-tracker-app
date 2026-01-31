@@ -33,6 +33,8 @@ const DashboardPage: React.FC = () => {
     cryptoPrices,
     displayCurrency,
     setDisplayCurrency,
+    maskAmount,
+    maskText,
   } = useData();
   const { setShowAddModal, setShowAccountForm } = useOutletContext<any>();
 
@@ -330,7 +332,7 @@ const DashboardPage: React.FC = () => {
             })}
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Welcome back, {profile?.name?.split(" ")[0]}!
+            Welcome back, {maskText(profile?.name?.split(" ")[0] || "User")}!
           </h1>
         </div>
       </div>
@@ -416,10 +418,12 @@ const DashboardPage: React.FC = () => {
             </div>
 
             <h3 className="text-4xl sm:text-6xl font-black text-white tracking-tighter break-all">
-              {displayCurrency === "MYR" ? "RM" : "$"}
-              {totalBalance.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
+              {maskAmount(
+                totalBalance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                }),
+                displayCurrency === "MYR" ? "RM" : "$",
+              )}
             </h3>
           </div>
 
@@ -555,22 +559,32 @@ const DashboardPage: React.FC = () => {
                           </div>
                           <div className="min-w-0">
                             <p className="text-[17px] font-extrabold text-white group-hover:text-indigo-400 transition-colors truncate tracking-tight">
-                              {t.linkedTransaction
-                                ? t.shopName || (
-                                    <>
-                                      {accounts.find(
-                                        (a) => a.id === t.accountId,
-                                      )?.name || "???"}{" "}
-                                      →{" "}
-                                      {accounts.find(
+                              {t.linkedTransaction ? (
+                                t.shopName ? (
+                                  maskText(t.shopName)
+                                ) : (
+                                  <>
+                                    {maskText(
+                                      accounts.find((a) => a.id === t.accountId)
+                                        ?.name || "???",
+                                    )}{" "}
+                                    →{" "}
+                                    {maskText(
+                                      accounts.find(
                                         (a) => a.id === t.toAccountId,
-                                      )?.name || "???"}
-                                    </>
-                                  )
-                                : t.shopName ||
-                                  categories.find((c) => c.id === t.categoryId)
-                                    ?.name ||
-                                  "UNTITLED"}
+                                      )?.name || "???",
+                                    )}
+                                  </>
+                                )
+                              ) : (
+                                maskText(
+                                  t.shopName ||
+                                    categories.find(
+                                      (c) => c.id === t.categoryId,
+                                    )?.name ||
+                                    "UNTITLED",
+                                )
+                              )}
                             </p>
                             <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">
                               {t.time || "??:??"} • {normalizeDate(t.date)}
@@ -596,17 +610,19 @@ const DashboardPage: React.FC = () => {
                                     t.transferDirection === "IN")
                                 ? "+"
                                 : "-"}
-                            {Math.abs(
-                              displayCurrency === "MYR"
-                                ? t.currency === "USD"
-                                  ? t.amount * usdRate
-                                  : t.amount
-                                : t.currency === "MYR"
-                                  ? t.amount / usdRate
-                                  : t.amount,
-                            ).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                            })}
+                            {maskAmount(
+                              Math.abs(
+                                displayCurrency === "MYR"
+                                  ? t.currency === "USD"
+                                    ? t.amount * usdRate
+                                    : t.amount
+                                  : t.currency === "MYR"
+                                    ? t.amount / usdRate
+                                    : t.amount,
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              }),
+                            )}
                           </p>
                           <span className="text-[10px] text-gray-600 font-black tracking-widest uppercase">
                             {displayCurrency}

@@ -84,6 +84,7 @@ export interface UserProfile {
   showAIAssistant?: boolean;
   geminiApiKey?: string;
   syncChatToSheets?: boolean;
+  privacyMode?: boolean;
 }
 
 export interface Goal {

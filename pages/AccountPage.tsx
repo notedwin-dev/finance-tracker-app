@@ -51,6 +51,9 @@ const AccountPage: React.FC = () => {
     usdRate,
     cryptoPrices,
     displayCurrency,
+    maskAmount,
+    maskText,
+    privacyMode,
   } = useData();
   const {
     setShowAddModal,
@@ -358,21 +361,23 @@ const AccountPage: React.FC = () => {
           </p>
           <div className="space-y-1">
             <h3 className="text-3xl sm:text-5xl font-extrabold sm:font-black text-white tracking-tighter">
-              <span className="text-gray-500 text-lg sm:text-xl mr-2 font-medium">
-                {getCurrencySymbol(account.currency)}
-              </span>
-              {account.balance.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
+              {maskAmount(
+                account.balance.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                }),
+                getCurrencySymbol(account.currency),
+              )}
             </h3>
             {convertedBalance !== null && (
               <p className="text-gray-500 text-[11px] sm:text-sm font-bold flex items-center gap-1.5 mt-2.5">
                 <ArrowUpRightIcon className="w-3.5 h-3.5" />≈{" "}
-                {getCurrencySymbol(displayCurrency)}{" "}
-                {convertedBalance.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 6,
-                })}
+                {maskAmount(
+                  convertedBalance.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 6,
+                  }),
+                  getCurrencySymbol(displayCurrency),
+                )}
               </p>
             )}
           </div>
@@ -395,8 +400,10 @@ const AccountPage: React.FC = () => {
             </h3>
             <p className="text-gray-400 text-[10px] font-bold sm:font-black uppercase tracking-widest mt-2.5 truncate">
               Reserved in {accountPots.length} Limits:{" "}
-              {getCurrencySymbol(account.currency)}{" "}
-              {totalInPots.toLocaleString()}
+              {maskAmount(
+                totalInPots.toLocaleString(),
+                getCurrencySymbol(account.currency),
+              )}
             </p>
           </div>
         </div>
@@ -493,15 +500,17 @@ const AccountPage: React.FC = () => {
                     >
                       <div className="flex justify-between mb-3 sm:mb-4">
                         <span className="text-[11px] sm:text-sm font-extrabold sm:font-black text-white tracking-tight truncate mr-2">
-                          {pot.name}
+                          {maskText(pot.name)}
                         </span>
                         <div className="text-right shrink-0">
                           <p className="text-[7px] sm:text-[10px] font-bold sm:font-black text-rose-400 uppercase tracking-widest">
                             Spent
                           </p>
                           <p className="text-[11px] sm:text-sm font-extrabold sm:font-black text-white font-mono">
-                            {getCurrencySymbol(account.currency)}
-                            {pot.usedAmount.toLocaleString()}
+                            {maskAmount(
+                              pot.usedAmount.toLocaleString(),
+                              getCurrencySymbol(account.currency),
+                            )}
                           </p>
                         </div>
                       </div>
@@ -515,9 +524,12 @@ const AccountPage: React.FC = () => {
                       </div>
                       <div className="flex justify-between text-[10px] sm:text-[10px] font-bold sm:font-black uppercase tracking-widest text-gray-500">
                         <span className="text-indigo-400">
-                          Available: {pot.amountLeft.toLocaleString()}
+                          Available:{" "}
+                          {maskAmount(pot.amountLeft.toLocaleString())}
                         </span>
-                        <span>Limit: {limitAmount.toLocaleString()}</span>
+                        <span>
+                          Limit: {maskAmount(limitAmount.toLocaleString())}
+                        </span>
                       </div>
                     </div>
                   );
@@ -541,7 +553,7 @@ const AccountPage: React.FC = () => {
                       Account Holder
                     </label>
                     <p className="font-mono text-gray-200 text-sm sm:text-sm">
-                      {account.details.holderName}
+                      {maskText(account.details.holderName)}
                     </p>
                   </div>
                 )}
@@ -552,7 +564,10 @@ const AccountPage: React.FC = () => {
                     </label>
                     <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group">
                       <p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
-                        {account.details.accountNumber}
+                        {privacyMode
+                          ? "**** **** **** " +
+                            account.details.accountNumber.slice(-4)
+                          : account.details.accountNumber}
                       </p>
                       <button
                         onClick={() =>
@@ -572,7 +587,7 @@ const AccountPage: React.FC = () => {
                         Expiry Date
                       </label>
                       <p className="font-mono text-gray-200 text-sm sm:text-sm">
-                        {account.details.expiry}
+                        {privacyMode ? "**/**" : account.details.expiry}
                       </p>
                     </div>
                   )}

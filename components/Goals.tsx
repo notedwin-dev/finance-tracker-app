@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Goal, Account, Pot } from "../types";
 import { parseDateSafe, normalizeDate } from "../helpers/transactions.helper";
+import { useData } from "../context/DataContext";
 import {
   PlusIcon,
   TrashIcon,
@@ -30,6 +31,7 @@ const Goals: React.FC<Props> = ({
   onSavePot,
   onDeletePot,
 }) => {
+  const { maskText, maskAmount } = useData();
   const [activeTab, setActiveTab] = useState<"POTS" | "GOALS">("POTS");
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showPotModal, setShowPotModal] = useState(false);
@@ -288,10 +290,10 @@ const Goals: React.FC<Props> = ({
                     <div className="flex justify-between items-center mb-6">
                       <div className="space-y-1">
                         <h3 className="text-xl font-black text-white tracking-tight">
-                          {pot.name}
+                          {maskText(pot.name)}
                         </h3>
                         <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                          {getAccountName(pot.accountId)}
+                          {maskText(getAccountName(pot.accountId))}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -317,7 +319,8 @@ const Goals: React.FC<Props> = ({
                             Total Spent
                           </p>
                           <p className="text-2xl font-black text-white tracking-tighter">
-                            {pot.currency} {pot.usedAmount.toLocaleString()}
+                            {pot.currency}{" "}
+                            {maskAmount(pot.usedAmount.toLocaleString())}
                           </p>
                         </div>
                         <div className="text-right">
@@ -325,7 +328,8 @@ const Goals: React.FC<Props> = ({
                             Limit
                           </p>
                           <p className="text-sm font-black text-white tracking-tight">
-                            {pot.currency} {limitAmount.toLocaleString()}
+                            {pot.currency}{" "}
+                            {maskAmount(limitAmount.toLocaleString())}
                           </p>
                         </div>
                       </div>
@@ -348,7 +352,7 @@ const Goals: React.FC<Props> = ({
                       </div>
                       <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
                         Amount left: {pot.currency}{" "}
-                        {pot.amountLeft.toLocaleString()}
+                        {maskAmount(pot.amountLeft.toLocaleString())}
                       </p>
                     </div>
                   </div>
@@ -398,11 +402,12 @@ const Goals: React.FC<Props> = ({
                   <div className="flex justify-between items-center mb-6">
                     <div className="space-y-1">
                       <h3 className="text-xl font-black text-white tracking-tight">
-                        {goal.name}
+                        {maskText(goal.name)}
                       </h3>
                       {goal.linkedAccountId && (
                         <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest leading-none">
-                          Linked to {getAccountName(goal.linkedAccountId)}
+                          Linked to{" "}
+                          {maskText(getAccountName(goal.linkedAccountId))}
                         </p>
                       )}
                     </div>
@@ -429,7 +434,8 @@ const Goals: React.FC<Props> = ({
                           Saved So Far
                         </p>
                         <p className="text-2xl font-black text-white tracking-tighter">
-                          {goal.currency} {savedAmount.toLocaleString()}
+                          {goal.currency}{" "}
+                          {maskAmount(savedAmount.toLocaleString())}
                         </p>
                       </div>
                       <div className="text-right">
@@ -437,7 +443,8 @@ const Goals: React.FC<Props> = ({
                           Final Goal
                         </p>
                         <p className="text-sm font-black text-gray-400 tracking-tight">
-                          {goal.currency} {goal.targetAmount.toLocaleString()}
+                          {goal.currency}{" "}
+                          {maskAmount(goal.targetAmount.toLocaleString())}
                         </p>
                       </div>
                     </div>

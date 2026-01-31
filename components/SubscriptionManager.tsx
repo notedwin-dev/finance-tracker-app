@@ -12,6 +12,7 @@ import {
   CalendarDaysIcon,
 } from "@heroicons/react/24/outline";
 import { parseDateSafe } from "../helpers/transactions.helper";
+import { useData } from "../context/DataContext";
 
 interface Props {
   subscriptions: Subscription[];
@@ -30,6 +31,7 @@ const SubscriptionManager: React.FC<Props> = ({
   onDelete,
   onClose,
 }) => {
+  const { maskText, maskAmount } = useData();
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -305,7 +307,7 @@ const SubscriptionManager: React.FC<Props> = ({
                       </div>
                       <div className="min-w-0">
                         <h3 className="font-bold text-white text-sm sm:text-base truncate">
-                          {sub.name}
+                          {maskText(sub.name)}
                         </h3>
                         <p className="text-[10px] sm:text-xs text-gray-500 font-medium truncate mt-0.5">
                           {sub.frequency} • Next:{" "}
@@ -318,16 +320,18 @@ const SubscriptionManager: React.FC<Props> = ({
                           })}
                         </p>
                         <p className="text-[10px] text-primary/80 font-bold uppercase tracking-tighter mt-1">
-                          FROM {accountName}
+                          FROM {maskText(accountName)}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-4 shrink-0 pl-2">
                       <span className="font-mono font-black text-white text-base sm:text-lg">
                         {sub.currency === "MYR" ? "RM" : "$"}{" "}
-                        {sub.amount.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                        })}
+                        {maskAmount(
+                          sub.amount.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          }),
+                        )}
                       </span>
                       <button
                         onClick={() => onDelete(sub.id)}

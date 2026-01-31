@@ -9,6 +9,8 @@ import {
   Squares2X2Icon,
   SparklesIcon,
   ChatBubbleBottomCenterIcon,
+  EyeSlashIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
 import {
   HomeIcon as HomeIconSolid,
@@ -52,6 +54,8 @@ const MainLayout: React.FC = () => {
     handleMigrateData,
     handleResetAndSync,
     isSyncing,
+    privacyMode,
+    setPrivacyMode,
   } = useData();
 
   const location = useLocation();
@@ -124,6 +128,38 @@ const MainLayout: React.FC = () => {
             active={location.pathname === "/app/profile"}
           />
         </nav>
+
+        {/* Privacy Mode Toggle */}
+        <div className="mt-auto pt-6 border-t border-gray-800">
+          <button
+            onClick={() => setPrivacyMode(!privacyMode)}
+            className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/50 hover:bg-gray-800/50 border border-gray-800/50 transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="text-gray-400 group-hover:text-indigo-400 transition-colors">
+                {privacyMode ? (
+                  <EyeSlashIcon className="w-5 h-5" />
+                ) : (
+                  <EyeIcon className="w-5 h-5" />
+                )}
+              </div>
+              <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors">
+                Privacy Mode
+              </span>
+            </div>
+            <div
+              className={`w-8 h-4 rounded-full relative transition-colors ${
+                privacyMode ? "bg-indigo-500" : "bg-gray-700"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
+                  privacyMode ? "right-1" : "left-1"
+                }`}
+              />
+            </div>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -139,23 +175,39 @@ const MainLayout: React.FC = () => {
               Zen<span className="text-indigo-400 font-black">Finance</span>
             </h1>
           </div>
-          <Link to="/app/profile" className="relative group">
-            {profile.photoUrl ? (
-              <div className="w-10 h-10 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-surface shadow-lg group-active:scale-90 transition-transform">
-                <img
-                  src={profile.photoUrl}
-                  className="w-full h-full object-cover"
-                  alt="Avatar"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-surface border-2 border-gray-800 flex items-center justify-center shadow-lg group-active:scale-90 transition-transform">
-                <UserIcon className="w-6 h-6 text-gray-400" />
-              </div>
-            )}
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-background rounded-full"></div>
-          </Link>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setPrivacyMode(!privacyMode)}
+              className={`p-2 rounded-xl transition-all ${
+                privacyMode
+                  ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"
+                  : "bg-surface border border-gray-800 text-gray-400"
+              }`}
+            >
+              {privacyMode ? (
+                <EyeSlashIcon className="w-5 h-5" />
+              ) : (
+                <EyeIcon className="w-5 h-5" />
+              )}
+            </button>
+            <Link to="/app/profile" className="relative group">
+              {profile.photoUrl ? (
+                <div className="w-10 h-10 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-surface shadow-lg group-active:scale-90 transition-transform">
+                  <img
+                    src={profile.photoUrl}
+                    className="w-full h-full object-cover"
+                    alt="Avatar"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-surface border-2 border-gray-800 flex items-center justify-center shadow-lg group-active:scale-90 transition-transform">
+                  <UserIcon className="w-6 h-6 text-gray-400" />
+                </div>
+              )}
+              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-background rounded-full"></div>
+            </Link>
+          </div>
         </header>
 
         <main className="flex-1 p-4 pb-32 lg:pb-8 overflow-y-auto w-full mx-auto">

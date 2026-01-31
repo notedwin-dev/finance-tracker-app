@@ -13,6 +13,7 @@ import {
   normalizeDate,
   parseDateSafe,
 } from "../helpers/transactions.helper";
+import { useData } from "../context/DataContext";
 
 interface Props {
   transactions: Transaction[];
@@ -31,6 +32,7 @@ const History: React.FC<Props> = ({
   onEditTransaction,
   onDeleteTransaction,
 }) => {
+  const { maskAmount, maskText, privacyMode } = useData();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   if (transactions.length === 0) {
@@ -152,17 +154,25 @@ const History: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-extrabold sm:font-black text-white text-[17px] sm:text-lg tracking-tight truncate">
-                        {t.linkedTransaction
-                          ? t.shopName || (
-                              <>
-                                {accounts.find((a) => a.id === t.accountId)
-                                  ?.name || "???"}{" "}
-                                →{" "}
-                                {accounts.find((a) => a.id === t.toAccountId)
-                                  ?.name || "???"}
-                              </>
-                            )
-                          : t.shopName || "UNTITLED"}
+                        {t.linkedTransaction ? (
+                          t.shopName ? (
+                            maskText(t.shopName)
+                          ) : (
+                            <>
+                              {maskText(
+                                accounts.find((a) => a.id === t.accountId)
+                                  ?.name || "???",
+                              )}{" "}
+                              →{" "}
+                              {maskText(
+                                accounts.find((a) => a.id === t.toAccountId)
+                                  ?.name || "???",
+                              )}
+                            </>
+                          )
+                        ) : (
+                          maskText(t.shopName || "UNTITLED")
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
@@ -215,10 +225,12 @@ const History: React.FC<Props> = ({
                               t.amount >= 0)
                           ? "+"
                           : "-"}
-                      {Math.abs(t.amount).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {maskAmount(
+                        Math.abs(t.amount).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        }),
+                      )}
                     </span>
                     <span className="text-[8px] sm:text-[9px] text-gray-600 font-bold sm:font-black tracking-widest uppercase">
                       {t.currency}

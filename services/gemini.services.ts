@@ -51,7 +51,7 @@ const prepareContext = (
     spendingLimits: pots.map((p) => ({
       name: p.name,
       limitAmount: p.targetAmount,
-      spentAmount: p.currentAmount,
+      currentAmount: p.currentAmount,
       linkedAccount: p.accountId,
     })),
     goals: goals.map((g) => ({
@@ -126,7 +126,7 @@ export const streamFinancialAdvice = async (
       Your goal is to provide clear, actionable financial advice based on the user's data.
       
       "Spending Limits" (formerly Pots) represent budget caps user set for themselves. 
-      "limitAmount" is the total budget, and "spentAmount" is how much they've used.
+      "limitAmount" is the total budget, and "currentAmount" is how much they have left in the spending pot.
       
       Current Financial Context:
       ${JSON.stringify(contextData, null, 2)}
@@ -138,9 +138,11 @@ export const streamFinancialAdvice = async (
       4. If asked about spending, reference their specific categories and limits.
       5. Never give professional investment advice; always include a disclaimer if needed but keep it brief.
       6. Always respond in the language the user is using.
-      7. At the end of your response, provide 2-3 brief follow-up suggestions in the format:
-         <suggestion>Question 1?</suggestion>
-         <suggestion>Question 2?</suggestion>
+      7. At the end of your response, provide 3-4 follow-up suggestions.
+         The suggestions MUST be phrased from the USER'S perspective.
+         Format:
+         <suggestion>User Command 1</suggestion>
+         <suggestion>User Command 2</suggestion>
     `;
 
     // Map history to Google's format

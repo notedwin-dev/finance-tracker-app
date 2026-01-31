@@ -83,7 +83,7 @@ const LandingPage: React.FC = () => {
           </div>
         </div>
         <div className="relative group perspective-1000 hidden lg:block">
-          <div className="w-full aspect-square bg-gradient-to-br from-primary/20 to-secondary/20 rounded-[3rem] border border-white/10 flex items-center justify-center overflow-hidden rotate-3 group-hover:rotate-0 transition-transform duration-700 shadow-2xl">
+          <div className="w-full aspect-square bg-linear-to-br from-primary/20 to-secondary/20 rounded-[3rem] border border-white/10 flex items-center justify-center overflow-hidden rotate-3 group-hover:rotate-0 transition-transform duration-700 shadow-2xl">
             <div className="absolute inset-0 bg-[url('https://notedwin.dev/grid.svg')] bg-center opacity-30"></div>
             <img
               src={neuralVault}

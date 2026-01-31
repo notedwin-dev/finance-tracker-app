@@ -247,6 +247,7 @@ const MainLayout: React.FC = () => {
           categories={categories}
           pots={pots}
           goals={goals}
+          subscriptions={subscriptions}
           onClose={() => navigate(-1)}
           onSaveSession={handleSaveChatSession}
           onDeleteSession={handleDeleteChatSession}

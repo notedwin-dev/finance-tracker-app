@@ -9,6 +9,7 @@ import {
   ChatMessage,
   Pot,
   Goal,
+  Subscription,
 } from "../types";
 import {
   streamFinancialAdvice,
@@ -22,6 +23,7 @@ import {
   TrashIcon,
   ChatBubbleLeftRightIcon,
   Bars3Icon,
+  ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 import neuralVault from "../images/neural-vault.png";
 
@@ -31,6 +33,7 @@ interface Props {
   categories: Category[];
   pots: Pot[];
   goals: Goal[];
+  subscriptions: Subscription[];
   sessions: ChatSession[];
   activeSessionId: string | null;
   onClose: () => void;
@@ -48,6 +51,7 @@ const AIInsights: React.FC<Props> = ({
   categories,
   pots,
   goals,
+  subscriptions,
   sessions,
   activeSessionId,
   onClose,
@@ -133,19 +137,21 @@ const AIInsights: React.FC<Props> = ({
         categories,
         pots,
         goals,
+        subscriptions,
         history,
         (chunk) => {
           setStreamingText((prev) => prev + chunk);
-          fullResponse += chunk;
         },
       );
 
-      const finalResponse = await aiResponsePromise;
+      const result = await aiResponsePromise;
 
       const aiMessage: ChatMessage = {
         role: "model",
-        content: finalResponse,
+        content: result.text,
         timestamp: Date.now(),
+        functionCall: result.functionCall,
+        status: result.functionCall ? "pending" : undefined,
       };
 
       const updatedSession = {
@@ -157,12 +163,13 @@ const AIInsights: React.FC<Props> = ({
       // Auto-titling if it's the first exchange
       if (
         currentSession.title === "New Chat" &&
-        currentSession.messages.length === 1
+        currentSession.messages.length === 1 &&
+        result.text
       ) {
         const title = await generateChatTitle(
           apiKey || "",
           userQuery,
-          finalResponse,
+          result.text,
         );
         updatedSession.title = title;
       }
@@ -186,6 +193,91 @@ const AIInsights: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToolAction = async (msgIndex: number, approved: boolean) => {
+    if (!activeSession) return;
+
+    const messages = [...activeSession.messages];
+    const msg = messages[msgIndex];
+    if (!msg.functionCall) return;
+
+    if (!approved) {
+      msg.status = "rejected";
+      const systemResponse: ChatMessage = {
+        role: "user",
+        content: "I denied access to historical data.",
+        timestamp: Date.now(),
+        functionResponse: {
+          name: msg.functionCall.name,
+          response: { error: "User rejected the request" },
+        },
+      };
+
+      const updatedSession = {
+        ...activeSession,
+        messages: [...messages, systemResponse],
+        updatedAt: Date.now(),
+      };
+      onSaveSession(updatedSession);
+
+      // Trigger AI to respond to rejection
+      setTimeout(() => {
+        handleAsk(undefined, "I denied access to historical data.");
+      }, 100);
+      return;
+    }
+
+    // Process tool
+    msg.status = "approved";
+    let toolResult: any = null;
+
+    if (msg.functionCall.name === "get_historical_transactions") {
+      const { searchKeyword, startDate, endDate, categoryName } =
+        msg.functionCall.args;
+
+      toolResult = transactions
+        .filter((t) => {
+          if (
+            searchKeyword &&
+            !t.shopName.toLowerCase().includes(searchKeyword.toLowerCase())
+          )
+            return false;
+          if (startDate && t.date < startDate) return false;
+          if (endDate && t.date > endDate) return false;
+          if (categoryName) {
+            const cat = categories.find((c) => c.name === categoryName);
+            if (cat && t.categoryId !== cat.id) return false;
+          }
+          return true;
+        })
+        .slice(0, 50); // Limit results
+    }
+
+    const functionResponseMessage: ChatMessage = {
+      role: "user",
+      content: `I've approved the data access. Found ${toolResult?.length || 0} matching transactions.`,
+      timestamp: Date.now(),
+      functionResponse: {
+        name: msg.functionCall.name,
+        response: toolResult || { result: "No data found" },
+      },
+    };
+
+    const nextSession = {
+      ...activeSession,
+      messages: [...messages, functionResponseMessage],
+      updatedAt: Date.now(),
+    };
+    onSaveSession(nextSession);
+
+    // Automatically trigger next AI turn with the tool result
+    setTimeout(() => {
+      handleAsk(
+        undefined,
+        `I've approved the data access. Found ${toolResult?.length || 0} matching transactions.`,
+      );
+    }, 100);
   };
 
   const suggestions = [
@@ -390,6 +482,66 @@ const AIInsights: React.FC<Props> = ({
                       </ReactMarkdown>
                     </div>
                   )}
+
+                  {m.functionCall && (
+                    <div className="mt-4 pt-4 border-t border-gray-800">
+                      <div className="flex items-center gap-2 mb-3">
+                        <ShieldCheckIcon className="w-4 h-4 text-primary" />
+                        <span className="text-xs font-bold text-white uppercase tracking-wider">
+                          Data Access Request
+                        </span>
+                      </div>
+                      <div className="bg-black/20 rounded-xl p-3 mb-4">
+                        <p className="text-xs text-gray-400 leading-relaxed mb-2">
+                          AI would like to access your historical data with the
+                          following filters:
+                        </p>
+                        <div className="space-y-1">
+                          {Object.entries(m.functionCall.args || {}).map(
+                            ([k, v]) => (
+                              <div
+                                key={k}
+                                className="flex items-center justify-between text-[10px]"
+                              >
+                                <span className="text-gray-500 font-medium">
+                                  {k}:
+                                </span>
+                                <span className="text-primary font-bold">
+                                  {String(v)}
+                                </span>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+
+                      {m.status === "pending" ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleToolAction(i, true)}
+                            className="flex-1 bg-primary hover:bg-primary-dark text-white text-xs font-bold py-2 rounded-lg transition-all active:scale-95"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleToolAction(i, false)}
+                            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold py-2 rounded-lg transition-all active:scale-95"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+                          {m.status === "approved" ? (
+                            <span className="text-emerald-500">✓ Approved</span>
+                          ) : (
+                            <span className="text-red-500">✕ Rejected</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <p
                     className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${
                       m.role === "user"

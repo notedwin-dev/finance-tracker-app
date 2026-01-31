@@ -133,6 +133,15 @@ export interface ChatMessage {
   role: "user" | "model" | "system";
   content: string;
   timestamp: number;
+  functionCall?: {
+    name: string;
+    args: any;
+  };
+  functionResponse?: {
+    name: string;
+    response: any;
+  };
+  status?: "pending" | "approved" | "rejected";
 }
 
 export interface ChatSession {

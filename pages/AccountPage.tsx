@@ -514,7 +514,9 @@ const AccountPage: React.FC = () => {
                         />
                       </div>
                       <div className="flex justify-between text-[10px] sm:text-[10px] font-bold sm:font-black uppercase tracking-widest text-gray-500">
-                        <span className="text-indigo-400">Available: {pot.amountLeft.toLocaleString()}</span>
+                        <span className="text-indigo-400">
+                          Available: {pot.amountLeft.toLocaleString()}
+                        </span>
                         <span>Limit: {limitAmount.toLocaleString()}</span>
                       </div>
                     </div>

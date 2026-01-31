@@ -17,18 +17,15 @@ export async function getCryptoPrices(): Promise<CryptoPrices> {
   }
 
   try {
-    // Using Binance Public API for simple price fetching
-    const [btcRes, ethRes] = await Promise.all([
-      fetch("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"),
-      fetch("https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT"),
-    ]);
-
-    const btcData = await btcRes.json();
-    const ethData = await ethRes.json();
+    // Switching to CoinGecko public API (No API key required for basic usage)
+    const response = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
+    );
+    const data = await response.json();
 
     const prices: CryptoPrices = {
-      BTC: parseFloat(btcData.price),
-      ETH: parseFloat(ethData.price),
+      BTC: data.bitcoin.usd,
+      ETH: data.ethereum.usd,
     };
 
     // Store in cache

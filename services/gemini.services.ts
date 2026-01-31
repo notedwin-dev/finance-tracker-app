@@ -20,7 +20,7 @@ const getModel = (apiKey?: string) => {
 
   const genAI = new GoogleGenerativeAI(finalKey);
   return genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     tools: [
       {
         functionDeclarations: [

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../services/auth.services";
 import {
   UserCircleIcon,
@@ -158,6 +159,15 @@ export const AuthScreen: React.FC = () => {
             {isSignup ? "Sign In" : "Sign Up"}
           </button>
         </p>
+
+        <div className="flex items-center justify-center gap-4 mt-8 pt-6 border-t border-gray-800 text-[10px] font-bold uppercase tracking-widest text-gray-600">
+          <Link to="/privacy" className="hover:text-gray-400 transition-colors">
+            Privacy Policy
+          </Link>
+          <Link to="/terms" className="hover:text-gray-400 transition-colors">
+            Terms of Service
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -18,7 +18,7 @@ const TermsOfService: React.FC = () => {
           Terms of Service
         </h1>
         <p className="text-gray-500 mb-8 uppercase tracking-widest text-sm font-bold">
-          Last Updated: 28th January 2026
+          Last Updated: 31st January 2026
         </p>
 
         <div className="prose prose-invert prose-primary max-w-none space-y-8">

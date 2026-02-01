@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **Multi-Device Passkey Support**: Users can now register and manage multiple biometric credentials (TouchID/FaceID) across different devices.
+- **Google Sheets Link Management**: Users can now explicitly link or unlink their Google Sheets at any time from the Profile settings for better control over cloud synchronization.
 - **Enhanced Vault Security**: Vault passwords are now encrypted using local device keys before being stored in session storage.
 - **Offline Mode**: Comprehensive support for offline usage with status notifications and local data persistence.
 - **Device Tracking**: Added tracking for trusted devices to improve biometric restoration and security management.

@@ -5,7 +5,7 @@ import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
 
 const ProfilePage: React.FC = () => {
-  const { profile, loginWithGoogle, updateProfile } = useAuth();
+  const { profile, loginWithGoogle, updateProfile, unlinkCloud } = useAuth();
   const {
     isSyncing,
     syncData,
@@ -63,6 +63,7 @@ const ProfilePage: React.FC = () => {
         onExport={handleExportData}
         onMigrate={handleMigrateData}
         onSync={syncData}
+        onUnlinkCloud={unlinkCloud}
         onResetSync={handleResetAndSync}
         isSyncing={isSyncing}
       />

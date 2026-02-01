@@ -12,6 +12,7 @@ interface AuthContextType {
   emailSignup: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => void;
   loginOffline: () => void;
+  unlinkCloud: () => void;
   updateProfile: (updates: Partial<UserProfile>, skipCloud?: boolean) => void;
   isInitialized: boolean;
 }
@@ -242,6 +243,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     // No need for reload, state update is enough
   };
 
+  const unlinkCloud = () => {
+    SheetService.clearGapiAccessToken();
+    // Use the existing updater to ensure storage is also updated
+    const p = { ...profile, offlineMode: true };
+    setProfile(p);
+    StorageService.saveProfile(p);
+  };
+
   const logout = () => {
     googleLogout();
     SheetService.clearGapiAccessToken();
@@ -264,6 +273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         emailSignup,
         logout,
         loginOffline,
+        unlinkCloud,
         updateProfile: async (u, skipCloud = false) => {
           const p = { ...profile, ...u };
           setProfile(p);

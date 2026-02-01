@@ -31,6 +31,7 @@ interface Props {
   onExport?: () => void;
   onMigrate?: () => void;
   onSync?: () => void;
+  onUnlinkCloud?: () => void;
   onResetSync?: () => void;
   isSyncing?: boolean;
 }
@@ -45,6 +46,7 @@ const Profile: React.FC<Props> = ({
   onExport,
   onMigrate,
   onSync,
+  onUnlinkCloud,
   onResetSync,
   isSyncing = false,
 }) => {
@@ -627,31 +629,60 @@ const Profile: React.FC<Props> = ({
             )}
 
             <SectionHeader title="Cloud & Data" />
-            {profile.offlineMode ? (
+
+            {/* Google Sheets Link Status */}
+            <SettingItem
+              icon={CloudArrowUpIcon}
+              label="Google Sheets Connection"
+              description={
+                profile.offlineMode
+                  ? "Not linked to Google Sheets"
+                  : `Linked to ${profile.email || "Google Account"}`
+              }
+              color={profile.offlineMode ? "text-gray-400" : "text-sky-400"}
+              onClick={
+                profile.offlineMode
+                  ? onLogin
+                  : () => {
+                      if (
+                        window.confirm(
+                          "Disconnect from Google Sheets? Your data will remain on this device but won't sync to the cloud until re-linked.",
+                        )
+                      ) {
+                        onUnlinkCloud?.();
+                      }
+                    }
+              }
+              action={
+                <div
+                  className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
+                    profile.offlineMode
+                      ? "bg-gray-800 text-gray-400"
+                      : "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                  }`}
+                >
+                  {profile.offlineMode ? "Unlinked" : "Linked"}
+                </div>
+              }
+            />
+
+            {!profile.offlineMode && onSync && (
               <SettingItem
-                icon={CloudArrowUpIcon}
-                label="Connect Cloud Sync"
-                description="Enable backup to Google Sheets"
-                onClick={onLogin}
+                icon={ArrowPathIcon}
+                label="Sync Now"
+                description={
+                  isSyncing
+                    ? "Synchronizing your data..."
+                    : "Force sync with Google Sheets"
+                }
+                onClick={onSync}
                 color="text-sky-400"
+                action={
+                  isSyncing ? (
+                    <ArrowPathIcon className="w-4 h-4 text-sky-400 animate-spin" />
+                  ) : null
+                }
               />
-            ) : (
-              onSync && (
-                <SettingItem
-                  icon={CloudArrowUpIcon}
-                  label="Cloud Synchronization"
-                  description={
-                    isSyncing ? "Syncing now..." : "Backup to Google Sheets"
-                  }
-                  onClick={onSync}
-                  color="text-sky-400"
-                  action={
-                    isSyncing ? (
-                      <ArrowPathIcon className="w-4 h-4 text-sky-400 animate-spin" />
-                    ) : null
-                  }
-                />
-              )
             )}
             {onResetSync && (
               <SettingItem

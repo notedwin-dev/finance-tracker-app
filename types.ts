@@ -54,6 +54,12 @@ export interface Category {
   isDefault?: boolean;
 }
 
+export interface AmountBreakdownItem {
+  id: string;
+  description: string;
+  amount: number;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -66,6 +72,7 @@ export interface Transaction {
   shopName: string;
   date: string; // ISO String (YYYY-MM-DD or full ISO)
   time?: string; // Optional time (HH:mm)
+  amountBreakdown?: AmountBreakdownItem[];
   createdAt: number; // For sorting and conflict resolution
   note?: string;
   updatedAt?: number;

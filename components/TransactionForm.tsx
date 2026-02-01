@@ -6,12 +6,17 @@ import {
   Transaction,
   Currency,
   Pot,
+  AmountBreakdownItem,
 } from "../types";
 import {
   XMarkIcon,
   PlusIcon,
   ExclamationTriangleIcon,
-} from "@heroicons/react/24/solid";
+  ChevronDownIcon,
+  ChevronUpIcon,
+  TrashIcon as TrashIconOutline,
+} from "@heroicons/react/24/outline";
+import { TrashIcon } from "@heroicons/react/24/solid";
 
 interface Props {
   accounts: Account[];
@@ -70,49 +75,59 @@ const TransactionForm: React.FC<Props> = ({
   const [time, setTime] = useState(
     initialTransaction ? initialTransaction.time || "" : "",
   );
+  const [breakdownEnabled, setBreakdownEnabled] = useState(
+    initialTransaction?.amountBreakdown &&
+      initialTransaction.amountBreakdown.length > 0
+      ? true
+      : false,
+  );
+  const [breakdownItems, setBreakdownItems] = useState<any[]>(
+    initialTransaction?.amountBreakdown?.map((item) => ({
+      ...item,
+      amount: item.amount.toFixed(2),
+    })) || [],
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-decimal with manual "." support
-  const handleAmountChange = (val: string) => {
-    if (!val) {
-      setAmount("");
-      return;
-    }
+  // Reusable Calculator-style decimal logic
+  const formatCalculatorAmount = (val: string, currentVal: string) => {
+    if (!val) return "";
+
+    const cleanCurrent = String(currentVal || "");
 
     // 1. Handle Dot Promotion (e.g., "4.50" + "." -> "450.")
-    if (val.endsWith(".") && !amount.endsWith(".")) {
-      const d = amount.replace(/\D/g, "");
-      setAmount(parseInt(d || "0", 10).toString() + ".");
-      return;
+    if (val.endsWith(".") && !cleanCurrent.endsWith(".")) {
+      const d = cleanCurrent.replace(/\D/g, "");
+      return parseInt(d || "0", 10).toString() + ".";
     }
 
     // 2. Manual Decimal Entry (e.g., "450." + "2" -> "450.2")
-    if (amount.endsWith(".") || amount.match(/\.\d$/)) {
-      const parts = amount.split(".");
-      const newChar = val.length > amount.length ? val.slice(-1) : "";
+    if (cleanCurrent.endsWith(".") || cleanCurrent.match(/\.\d$/)) {
+      const parts = cleanCurrent.split(".");
+      const newChar = val.length > cleanCurrent.length ? val.slice(-1) : "";
 
       if (/\d/.test(newChar)) {
         if (parts[1] === "") {
-          setAmount(parts[0] + "." + newChar);
-          return;
+          return parts[0] + "." + newChar;
         }
         if (parts[1].length === 1) {
-          setAmount(parts[0] + "." + parts[1] + newChar);
-          return;
+          return parts[0] + "." + parts[1] + newChar;
         }
       }
     }
 
     // 3. Default Shifting Logic (Calculator style)
     const digits = val.replace(/\D/g, "");
-    if (!digits) {
-      setAmount("");
-      return;
-    }
+    if (!digits) return "";
 
     const cents = parseInt(digits, 10);
-    setAmount((cents / 100).toFixed(2));
+    return (cents / 100).toFixed(2);
+  };
+
+  // Auto-decimal with manual "." support
+  const handleAmountChange = (val: string) => {
+    setAmount(formatCalculatorAmount(val, amount));
   };
   // Update currency based on selected account
   useEffect(() => {
@@ -121,6 +136,29 @@ const TransactionForm: React.FC<Props> = ({
       if (acc) setCurrency(acc.currency);
     }
   }, [accountId, accounts, initialTransaction]);
+
+  const addBreakdownItem = () => {
+    setBreakdownItems([
+      ...breakdownItems,
+      { id: crypto.randomUUID(), description: "", amount: "" },
+    ]);
+  };
+
+  const removeBreakdownItem = (id: string) => {
+    setBreakdownItems(breakdownItems.filter((i) => i.id !== id));
+  };
+
+  const updateBreakdownItem = (
+    id: string,
+    field: keyof AmountBreakdownItem,
+    value: any,
+  ) => {
+    setBreakdownItems(
+      breakdownItems.map((item) =>
+        item.id === id ? { ...item, [field]: value } : item,
+      ),
+    );
+  };
 
   const filteredPots = pots.filter((p) => p.accountId === accountId);
   const selectedPot = filteredPots.find((p) => p.id === potId);
@@ -159,6 +197,19 @@ const TransactionForm: React.FC<Props> = ({
       return;
     }
 
+    if (breakdownEnabled) {
+      const breakdownTotal = breakdownItems.reduce(
+        (sum, item) => sum + (parseFloat(item.amount) || 0),
+        0,
+      );
+      if (breakdownTotal > parseFloat(amount)) {
+        setValidationError(
+          `Breakdown total (${breakdownTotal.toFixed(2)}) exceeds total amount (${parseFloat(amount).toFixed(2)})`,
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -177,6 +228,13 @@ const TransactionForm: React.FC<Props> = ({
         shopName,
         date,
         time: time || undefined,
+        amountBreakdown:
+          breakdownEnabled && breakdownItems.length > 0
+            ? breakdownItems.map((item) => ({
+                ...item,
+                amount: parseFloat(item.amount) || 0,
+              }))
+            : undefined,
         createdAt: initialTransaction?.createdAt || Date.now(),
       });
       onClose();
@@ -431,6 +489,125 @@ const TransactionForm: React.FC<Props> = ({
                 className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
               />
             </div>
+          </div>
+
+          {/* Amount Breakdown Section */}
+          <div className="border-t border-gray-800 pt-5">
+            <button
+              type="button"
+              onClick={() => setBreakdownEnabled(!breakdownEnabled)}
+              className="flex items-center justify-between w-full text-xs font-bold text-gray-400 mb-3 hover:text-white transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <PlusIcon className="w-3 h-3" />
+                Add Amount Breakdown
+              </span>
+              {breakdownEnabled ? (
+                <ChevronUpIcon className="w-4 h-4" />
+              ) : (
+                <ChevronDownIcon className="w-4 h-4" />
+              )}
+            </button>
+
+            {breakdownEnabled && (
+              <div className="space-y-3 animate-fadeIn mb-4">
+                {breakdownItems.map((item) => (
+                  <div key={item.id} className="flex gap-2 items-center group">
+                    <input
+                      type="text"
+                      placeholder="e.g., Burger"
+                      value={item.description}
+                      onChange={(e) =>
+                        updateBreakdownItem(
+                          item.id,
+                          "description",
+                          e.target.value,
+                        )
+                      }
+                      className="flex-1 min-w-0 bg-gray-900/50 border border-gray-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-primary transition-all"
+                    />
+                    <div className="w-24 shrink-0">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={item.amount || ""}
+                        onChange={(e) =>
+                          updateBreakdownItem(
+                            item.id,
+                            "amount",
+                            formatCalculatorAmount(e.target.value, item.amount),
+                          )
+                        }
+                        className="w-full bg-gray-900/50 border border-gray-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-primary text-right font-mono"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeBreakdownItem(item.id)}
+                      className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                    >
+                      <TrashIconOutline className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={addBreakdownItem}
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-all"
+                >
+                  <PlusIcon className="w-3 h-3" /> Add Item
+                </button>
+
+                {breakdownItems.length > 0 && (
+                  <div className="flex justify-between items-center px-3 py-3 bg-gray-900/40 rounded-xl border border-gray-800">
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-0.5">
+                        Allocated
+                      </span>
+                      <span className="text-xs font-mono font-bold text-indigo-400">
+                        {currency === "MYR" ? "RM" : "$"}{" "}
+                        {breakdownItems
+                          .reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+                          .toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col text-right">
+                      <span className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-0.5">
+                        Remaining
+                      </span>
+                      <span
+                        className={`text-xs font-mono font-bold ${
+                          parseFloat(amount || "0") -
+                            breakdownItems.reduce(
+                              (s, i) => s + (parseFloat(i.amount) || 0),
+                              0,
+                            ) <
+                          0
+                            ? "text-red-500"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {currency === "MYR" ? "RM" : "$"}{" "}
+                        {(
+                          parseFloat(amount || "0") -
+                          breakdownItems.reduce(
+                            (s, i) => s + (parseFloat(i.amount) || 0),
+                            0,
+                          )
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </form>
 

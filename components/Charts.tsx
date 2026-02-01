@@ -14,6 +14,7 @@ import {
 } from "chart.js";
 import { Line, Pie } from "react-chartjs-2";
 import { Transaction, TransactionType } from "../types";
+import { useData } from "../context/DataContext";
 
 // Register ChartJS components
 ChartJS.register(
@@ -292,12 +293,12 @@ export const NetWorthChart: React.FC<Props> = ({
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-bold text-lg text-white">Net Worth Trend</h3>
       </div>
-      <div className="w-full h-75">
+      <div className="w-full h-64">
         {hasData ? (
           <Line data={chartData} options={options} />
         ) : (
-          <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-            No data available
+          <div className="h-full flex items-center justify-center text-gray-500 text-sm italic">
+            No transaction data for the last 6 months
           </div>
         )}
       </div>
@@ -307,7 +308,11 @@ export const NetWorthChart: React.FC<Props> = ({
 
 // --- REVENUE CHART ---
 
-export const RevenueChart: React.FC<Props> = ({ transactions }) => {
+export const RevenueChart: React.FC<Props> = ({
+  transactions,
+  usdRate = 4.5,
+  displayCurrency = "MYR",
+}) => {
   const chartData = useMemo(() => {
     // Generate last 6 months labels
     const labels = [];
@@ -330,7 +335,16 @@ export const RevenueChart: React.FC<Props> = ({ transactions }) => {
             t.type === TransactionType.INCOME &&
             toYMD(t.date).startsWith(monthStr),
         )
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => {
+          let val = t.amount;
+          if (t.currency !== displayCurrency) {
+            if (t.currency === "USD" && displayCurrency === "MYR")
+              val = t.amount * usdRate;
+            else if (t.currency === "MYR" && displayCurrency === "USD")
+              val = t.amount / usdRate;
+          }
+          return sum + val;
+        }, 0);
 
       const expense = transactions
         .filter(
@@ -338,7 +352,16 @@ export const RevenueChart: React.FC<Props> = ({ transactions }) => {
             t.type === TransactionType.EXPENSE &&
             toYMD(t.date).startsWith(monthStr),
         )
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => {
+          let val = t.amount;
+          if (t.currency !== displayCurrency) {
+            if (t.currency === "USD" && displayCurrency === "MYR")
+              val = t.amount * usdRate;
+            else if (t.currency === "MYR" && displayCurrency === "USD")
+              val = t.amount / usdRate;
+          }
+          return sum + val;
+        }, 0);
 
       incomeData.push(income);
       expenseData.push(expense);
@@ -411,9 +434,9 @@ export const RevenueChart: React.FC<Props> = ({ transactions }) => {
               label += ": ";
             }
             if (context.parsed.y !== null) {
-              label += new Intl.NumberFormat("en-MY", {
+              label += new Intl.NumberFormat("en-US", {
                 style: "currency",
-                currency: "MYR",
+                currency: displayCurrency,
                 maximumFractionDigits: 0,
               }).format(context.parsed.y);
             }
@@ -429,51 +452,36 @@ export const RevenueChart: React.FC<Props> = ({ transactions }) => {
           drawBorder: false,
         },
         ticks: {
-          color: "#64748b",
-          font: {
-            size: 10,
-          },
-        },
-        border: {
-          display: true,
-          color: "#334155",
+          color: "#94a3b8",
         },
       },
       y: {
+        beginAtZero: true,
         grid: {
           color: "#334155",
           drawBorder: false,
-          borderDash: [5, 5],
         },
         ticks: {
-          color: "#64748b",
-          font: {
-            size: 10,
-          },
+          color: "#94a3b8",
           callback: (value: any) => {
-            if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
-            return `$${value}`;
+            if (value >= 1000)
+              return `${displayCurrency === "MYR" ? "RM" : "$"}${(value / 1000).toFixed(1)}k`;
+            return `${displayCurrency === "MYR" ? "RM" : "$"}${value}`;
           },
-        },
-        border: {
-          display: false,
         },
       },
-    },
-    interaction: {
-      mode: "nearest" as const,
-      axis: "x" as const,
-      intersect: false,
     },
   };
 
   return (
     <div className="bg-surface rounded-2xl p-6 border border-gray-800 shadow-lg h-auto">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="font-bold text-lg text-white">Analytics</h3>
-        <select className="bg-slate-900 border border-gray-700 text-xs text-white rounded px-2 py-1 outline-none">
-          <option>Last 6 Months</option>
-        </select>
+        <div>
+          <h3 className="font-bold text-lg text-white">Monthly Analytics</h3>
+          <p className="text-gray-400 text-sm">
+            Income vs Expenses (Last 6 Months)
+          </p>
+        </div>
       </div>
       <div className="w-full h-75">
         {hasData ? (
@@ -727,6 +735,150 @@ export const CategoryPieChart: React.FC<{
             })}
           </span>
         </div>
+      </div>
+    </div>
+  );
+};
+
+export const MonthlyBreakdown: React.FC<Props> = ({
+  transactions,
+  usdRate = 4.5,
+  displayCurrency = "MYR",
+}) => {
+  const { maskAmount } = useData();
+
+  const monthlyStats = useMemo(() => {
+    const stats: {
+      month: string;
+      income: number;
+      expense: number;
+      net: number;
+    }[] = [];
+
+    // Last 12 months
+    for (let i = 0; i < 12; i++) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const monthStr = `${y}-${m}`;
+      const monthLabel = d.toLocaleString("default", {
+        month: "short",
+        year: "numeric",
+      });
+
+      const income = transactions
+        .filter(
+          (t) =>
+            t.type === TransactionType.INCOME &&
+            toYMD(t.date).startsWith(monthStr),
+        )
+        .reduce((sum, t) => {
+          let val = t.amount;
+          if (t.currency !== displayCurrency) {
+            if (t.currency === "USD" && displayCurrency === "MYR")
+              val = t.amount * usdRate;
+            else if (t.currency === "MYR" && displayCurrency === "USD")
+              val = t.amount / usdRate;
+          }
+          return sum + val;
+        }, 0);
+
+      const expense = transactions
+        .filter(
+          (t) =>
+            t.type === TransactionType.EXPENSE &&
+            toYMD(t.date).startsWith(monthStr),
+        )
+        .reduce((sum, t) => {
+          let val = t.amount;
+          if (t.currency !== displayCurrency) {
+            if (t.currency === "USD" && displayCurrency === "MYR")
+              val = t.amount * usdRate;
+            else if (t.currency === "MYR" && displayCurrency === "USD")
+              val = t.amount / usdRate;
+          }
+          return sum + val;
+        }, 0);
+
+      if (income === 0 && expense === 0) continue;
+
+      stats.push({
+        month: monthLabel,
+        income,
+        expense,
+        net: income - expense,
+      });
+    }
+    return stats;
+  }, [transactions, usdRate, displayCurrency]);
+
+  if (monthlyStats.length === 0) return null;
+
+  return (
+    <div className="bg-surface rounded-3xl p-6 border border-gray-800 shadow-xl overflow-hidden mt-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="font-black text-lg text-white tracking-tight">
+            Monthly Performance
+          </h3>
+          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+            Summary for {displayCurrency}
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto -mx-2">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em]">
+              <th className="px-4 py-2 border-b border-gray-800/40">Month</th>
+              <th className="px-4 py-2 border-b border-gray-800/40">Income</th>
+              <th className="px-4 py-2 border-b border-gray-800/40">Spent</th>
+              <th className="px-4 py-2 border-b border-gray-800/40 text-right">
+                Net
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800/30">
+            {monthlyStats.map((s) => (
+              <tr key={s.month} className="group hover:bg-white/2">
+                <td className="px-4 py-4 text-xs font-black text-white">
+                  {s.month}
+                </td>
+                <td className="px-4 py-4 text-xs font-bold text-emerald-400">
+                  {maskAmount(
+                    s.income.toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    }),
+                    displayCurrency === "MYR" ? "RM" : "$",
+                  )}
+                </td>
+                <td className="px-4 py-4 text-xs font-bold text-rose-400">
+                  {maskAmount(
+                    s.expense.toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    }),
+                    displayCurrency === "MYR" ? "RM" : "$",
+                  )}
+                </td>
+                <td
+                  className={`px-4 py-4 text-xs font-black text-right ${s.net >= 0 ? "text-indigo-400" : "text-rose-500"}`}
+                >
+                  {maskAmount(
+                    s.net.toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    }),
+                    displayCurrency === "MYR" ? "RM" : "$",
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

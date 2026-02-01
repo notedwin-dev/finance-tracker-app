@@ -10,7 +10,12 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
-import { SparklineChart, CategoryPieChart } from "../components/Charts";
+import {
+  RevenueChart,
+  MonthlyBreakdown,
+  SparklineChart,
+  CategoryPieChart,
+} from "../components/Charts";
 import AccountCard from "../components/AccountCard";
 import {
   groupTransactions,
@@ -477,6 +482,24 @@ const DashboardPage: React.FC = () => {
                 interactive={true}
               />
             </div>
+          </div>
+        </div>
+
+        {/* Analytics Section */}
+        <div className="grid lg:grid-cols-12 gap-6 sm:gap-8">
+          <div className="lg:col-span-12">
+            <RevenueChart
+              transactions={transactions}
+              usdRate={usdRate}
+              displayCurrency={displayCurrency}
+            />
+          </div>
+          <div className="lg:col-span-12">
+            <MonthlyBreakdown
+              transactions={transactions}
+              usdRate={usdRate}
+              displayCurrency={displayCurrency}
+            />
           </div>
         </div>
 

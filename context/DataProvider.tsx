@@ -196,6 +196,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         // If no encrypted accounts, we accept the password as is (first time or empty vault)
         setVaultPassword(encryptedPassword);
         localStorage.setItem("vault_password_session", encryptedPassword);
+        // Also save to remembered if user chooses (this should be tied to a 'remember me' logic)
+        // For now, we update it if it exists to keep it sync'd
+        if (localStorage.getItem("vault_password_remembered")) {
+          localStorage.setItem("vault_password_remembered", encryptedPassword);
+        }
         return true;
       }
 
@@ -208,6 +213,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       if (decryptedDetails) {
         setVaultPassword(encryptedPassword);
         localStorage.setItem("vault_password_session", encryptedPassword);
+        if (localStorage.getItem("vault_password_remembered")) {
+          localStorage.setItem("vault_password_remembered", encryptedPassword);
+        }
         return true;
       }
     } catch (error) {
@@ -287,6 +295,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         profile.syncChatToSheets ? chatSessions : undefined,
       );
     }
+  };
+
+  const lockVault = () => {
+    setVaultPassword(null);
+    localStorage.removeItem("vault_password_session");
+    // We keep vault_password_remembered if they chose to "remember" for biometrics
+    showToast("Vault locked", "info");
   };
 
   const disableVault = async () => {
@@ -1210,6 +1225,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         isVaultCreated,
         isVaultUnlocked,
         unlockVault,
+        lockVault,
         enableVault,
         disableVault,
         maskAmount,

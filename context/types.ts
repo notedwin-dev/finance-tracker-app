@@ -28,6 +28,7 @@ export interface DataContextType {
   isVaultCreated: boolean;
   isVaultUnlocked: boolean;
   unlockVault: (password: string) => Promise<boolean>;
+  lockVault: () => void;
   enableVault: (password: string) => Promise<void>;
   disableVault: () => Promise<void>;
   maskAmount: (

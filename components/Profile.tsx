@@ -57,6 +57,7 @@ const Profile: React.FC<Props> = ({
     isVaultCreated,
     isVaultUnlocked,
     unlockVault,
+    lockVault,
     enableVault,
     disableVault,
     showToast,
@@ -229,22 +230,14 @@ const Profile: React.FC<Props> = ({
                               );
                               if (storedPass) {
                                 try {
-                                  const success = await unlockVault(storedPass);
-                                  if (success) {
-                                    // Important: Ensure vault is actually ENABLED if it was just unlocked
-                                    if (!isVaultEnabled) {
-                                      await enableVault(storedPass);
-                                    }
-                                    showToast(
-                                      "Vault unlocked with Biometrics!",
-                                      "success",
-                                    );
-                                    setShowVaultPrompt(false);
-                                  } else {
-                                    setVaultError(
-                                      "Biometric unlock failed. Please use password.",
-                                    );
-                                  }
+                                  // The storedPass is already encrypted/hashed via encryptVaultPassword
+                                  await unlockVault(storedPass);
+
+                                  showToast(
+                                    "Vault unlocked with Biometrics!",
+                                    "success",
+                                  );
+                                  setShowVaultPrompt(false);
                                 } catch (e) {
                                   setVaultError(
                                     "Unlock failed. Please try again.",
@@ -406,22 +399,44 @@ const Profile: React.FC<Props> = ({
                             : "Unlock & Enable Vault"}
                       </button>
                     ) : (
-                      <button
-                        disabled={isSyncingLocal}
-                        onClick={async () => {
-                          setIsSyncingLocal(true);
-                          try {
-                            await disableVault();
+                      <div className="space-y-2 w-full">
+                        <button
+                          disabled={isSyncingLocal}
+                          onClick={() => {
+                            lockVault();
                             setShowVaultPrompt(false);
-                            showToast("Vault disabled", "info");
-                          } finally {
-                            setIsSyncingLocal(false);
-                          }
-                        }}
-                        className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
-                      >
-                        Disable Vault
-                      </button>
+                          }}
+                          className="w-full bg-surface text-white border border-gray-800 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                          Lock Vault
+                        </button>
+                        <button
+                          disabled={isSyncingLocal}
+                          onClick={() => {
+                            setConfirmationModal({
+                              isOpen: true,
+                              title: "Disable Security Vault?",
+                              description:
+                                "This will decrypt all your sensitive data and store it unencrypted in your Google Sheet. This is not recommended.",
+                              confirmLabel: "Disable Encryption",
+                              isDestructive: true,
+                              onConfirm: async () => {
+                                setIsSyncingLocal(true);
+                                try {
+                                  await disableVault();
+                                  setShowVaultPrompt(false);
+                                  showToast("Vault disabled", "info");
+                                } finally {
+                                  setIsSyncingLocal(false);
+                                }
+                              },
+                            });
+                          }}
+                          className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                        >
+                          Disable Vault Entirely
+                        </button>
+                      </div>
                     )}
                     <button
                       onClick={() => {
@@ -681,7 +696,13 @@ const Profile: React.FC<Props> = ({
                       : "Vault is disabled. Data is stored without encryption."
                   : "Enable a Secure Vault to protect sensitive details."
               }
-              color={isVaultEnabled ? (isVaultUnlocked ? "text-emerald-400" : "text-rose-400") : "text-gray-400"}
+              color={
+                isVaultEnabled
+                  ? isVaultUnlocked
+                    ? "text-emerald-400"
+                    : "text-rose-400"
+                  : "text-gray-400"
+              }
               onClick={() => setShowVaultPrompt(true)}
               action={
                 isVaultEnabled ? (

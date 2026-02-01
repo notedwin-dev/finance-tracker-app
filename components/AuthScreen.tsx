@@ -9,7 +9,7 @@ import {
 import zenLogo from "../images/ZenFinance.svg";
 
 export const AuthScreen: React.FC = () => {
-  const { emailLogin, emailSignup, loginWithGoogle } = useAuth();
+  const { emailLogin, emailSignup, loginWithGoogle, loginOffline } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -148,6 +148,13 @@ export const AuthScreen: React.FC = () => {
             alt="Google"
           />
           Google Account
+        </button>
+
+        <button
+          onClick={loginOffline}
+          className="w-full mt-3 bg-card border border-gray-800 hover:border-gray-700 text-gray-400 hover:text-white font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
+        >
+          Continue Offline
         </button>
 
         <p className="text-center text-gray-500 text-sm mt-8">

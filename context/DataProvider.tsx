@@ -64,6 +64,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const isVaultEnabled = checkBool(profile.isVaultEnabled);
   const isVaultCreated = checkBool(profile.isVaultCreated);
 
+  const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
+
   const getVaultSalt = () => {
     if (profile.vaultSalt) return profile.vaultSalt;
     const newSalt = Math.random().toString(36).substring(2, 15);
@@ -273,7 +275,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
-    if (SheetService.isClientReady()) {
+    if (isCloudEnabled) {
       await SheetService.syncWithGoogleSheets(
         encryptedAccounts,
         transactions,
@@ -318,7 +320,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setAccounts(decryptedAccounts);
     StorageService.saveAccounts(decryptedAccounts);
-    if (SheetService.isClientReady()) {
+    if (isCloudEnabled) {
       await SheetService.syncWithGoogleSheets(
         decryptedAccounts,
         transactions,
@@ -480,10 +482,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [profile.id]);
 
   useEffect(() => {
-    if (profile.isLoggedIn && isInitialized) {
+    if (profile.isLoggedIn && isInitialized && !profile.offlineMode) {
       syncData();
     }
-  }, [profile.isLoggedIn, isInitialized]);
+  }, [profile.isLoggedIn, isInitialized, profile.offlineMode]);
 
   const processSubscriptions = (
     subs: Subscription[],
@@ -569,7 +571,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const syncData = async () => {
-    if (isSyncing) return;
+    if (isSyncing || profile.offlineMode) return;
     setIsSyncing(true);
     const currentProfile = StorageService.getStoredProfile();
     const userId = currentProfile.id || profile.id;
@@ -577,7 +579,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     try {
       if (!SheetService.isClientReady()) {
-        await SheetService.initGapiClient();
+        try {
+          await SheetService.initGapiClient();
+        } catch (e) {
+          console.warn("GAPI init failed, likely offline.");
+          setIsSyncing(false);
+          return;
+        }
         const savedToken = localStorage.getItem("google_access_token");
         const savedExpiry = localStorage.getItem("google_token_expiry");
         if (savedToken) {
@@ -589,6 +597,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       if (!SheetService.isClientReady()) {
+        // If they had a token but still not ready, don't force login if they could be offline
+        if (!navigator.onLine) {
+          setIsSyncing(false);
+          return;
+        }
         showToast("Session expired. Please sign in again.", "info");
         loginWithGoogle();
         setIsSyncing(false);
@@ -790,11 +803,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     let updated;
     if (isNew) {
       updated = [...accounts, accountWithUser];
-      if (SheetService.isClientReady() && isActuallyEncrypted)
+      if (isCloudEnabled && isActuallyEncrypted)
         await SheetService.insertOne("Accounts", encryptedAccount);
     } else {
       updated = accounts.map((a) => (a.id === acc.id ? accountWithUser : a));
-      if (SheetService.isClientReady() && isActuallyEncrypted)
+      if (isCloudEnabled && isActuallyEncrypted)
         await SheetService.updateOne("Accounts", acc.id, encryptedAccount);
     }
     setAccounts(updated);
@@ -816,8 +829,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
     StorageService.saveAccounts(encryptedAccounts);
 
-    if (SheetService.isClientReady())
-      await SheetService.deleteOne("Accounts", id);
+    if (isCloudEnabled) await SheetService.deleteOne("Accounts", id);
     showToast("Account deleted", "success");
   };
 
@@ -831,11 +843,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       updatedTransactions = transactions.map((t) =>
         t.id === tx.id ? txWithUser : t,
       );
-      if (SheetService.isClientReady())
+      if (isCloudEnabled)
         await SheetService.updateOne("Transactions", tx.id, txWithUser);
     } else {
       updatedTransactions = [...transactions, txWithUser];
-      if (SheetService.isClientReady())
+      if (isCloudEnabled)
         await SheetService.insertOne("Transactions", txWithUser);
     }
     setTransactions(updatedTransactions);
@@ -924,8 +936,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
           };
-          if (SheetService.isClientReady())
-            SheetService.updateOne("Pots", p.id, updated);
+          if (isCloudEnabled) SheetService.updateOne("Pots", p.id, updated);
           return updated;
         }
         return p;
@@ -982,7 +993,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
               usedAmount: newUsedAmount,
               amountLeft: p.limitAmount - newUsedAmount,
             };
-            if (SheetService.isClientReady())
+            if (isCloudEnabled)
               SheetService.updateOne("Pots", p.id, updatedPot);
             return updatedPot;
           }
@@ -995,8 +1006,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = transactions.filter((t) => t.id !== id);
     setTransactions(updated);
     StorageService.saveTransactions(updated);
-    if (SheetService.isClientReady())
-      await SheetService.deleteOne("Transactions", id);
+    if (isCloudEnabled) await SheetService.deleteOne("Transactions", id);
     showToast("Transaction deleted", "success");
   };
 
@@ -1008,7 +1018,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       : [...categories, catWithUser];
     setCategories(updated);
     StorageService.saveCategories(updated);
-    if (SheetService.isClientReady()) {
+    if (isCloudEnabled) {
       if (isEdit)
         await SheetService.updateOne("Categories", cat.id, catWithUser);
       else await SheetService.insertOne("Categories", catWithUser);
@@ -1020,8 +1030,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = categories.filter((c) => c.id !== id);
     setCategories(updated);
     StorageService.saveCategories(updated);
-    if (SheetService.isClientReady())
-      await SheetService.deleteOne("Categories", id);
+    if (isCloudEnabled) await SheetService.deleteOne("Categories", id);
     showToast("Category deleted", "success");
   };
 
@@ -1033,7 +1042,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       : [...goals, goalWithUser];
     setGoals(updated);
     StorageService.saveGoals(updated);
-    if (SheetService.isClientReady()) {
+    if (isCloudEnabled) {
       if (isEdit) await SheetService.updateOne("Goals", goal.id, goalWithUser);
       else await SheetService.insertOne("Goals", goalWithUser);
     }
@@ -1044,7 +1053,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = goals.filter((g) => g.id !== id);
     setGoals(updated);
     StorageService.saveGoals(updated);
-    if (SheetService.isClientReady()) await SheetService.deleteOne("Goals", id);
+    if (isCloudEnabled) await SheetService.deleteOne("Goals", id);
     showToast("Goal deleted", "success");
   };
 
@@ -1061,7 +1070,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       : [...pots, potWithUser];
     setPots(updated);
     StorageService.savePots(updated);
-    if (SheetService.isClientReady()) {
+    if (isCloudEnabled) {
       if (isEdit) await SheetService.updateOne("Pots", pot.id, potWithUser);
       else await SheetService.insertOne("Pots", potWithUser);
     }
@@ -1072,7 +1081,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = pots.filter((p) => p.id !== id);
     setPots(updated);
     StorageService.savePots(updated);
-    if (SheetService.isClientReady()) await SheetService.deleteOne("Pots", id);
+    if (isCloudEnabled) await SheetService.deleteOne("Pots", id);
     showToast("Pot deleted", "success");
   };
 
@@ -1082,8 +1091,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = [...subscriptions, newSub];
     setSubscriptions(updated);
     StorageService.saveSubscriptions(updated);
-    if (SheetService.isClientReady())
-      await SheetService.insertOne("Subscriptions", newSub);
+    if (isCloudEnabled) await SheetService.insertOne("Subscriptions", newSub);
     showToast("Subscription added", "success");
   };
 
@@ -1091,8 +1099,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = subscriptions.filter((s) => s.id !== id);
     setSubscriptions(updated);
     StorageService.saveSubscriptions(updated);
-    if (SheetService.isClientReady())
-      await SheetService.deleteOne("Subscriptions", id);
+    if (isCloudEnabled) await SheetService.deleteOne("Subscriptions", id);
   };
 
   const handleSaveChatSession = async (session: ChatSession) => {
@@ -1102,7 +1109,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       : [...chatSessions, session];
     setChatSessions(updated);
     StorageService.saveChatSessions(updated);
-    if (SheetService.isClientReady() && profile.syncChatToSheets) {
+    if (isCloudEnabled && profile.syncChatToSheets) {
       if (isEdit)
         await SheetService.updateOne("ChatSessions", session.id, session);
       else await SheetService.insertOne("ChatSessions", session);
@@ -1113,7 +1120,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updated = chatSessions.filter((s) => s.id !== id);
     setChatSessions(updated);
     StorageService.saveChatSessions(updated);
-    if (SheetService.isClientReady() && profile.syncChatToSheets) {
+    if (isCloudEnabled && profile.syncChatToSheets) {
       await SheetService.deleteOne("ChatSessions", id);
     }
   };

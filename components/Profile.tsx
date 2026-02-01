@@ -616,21 +616,31 @@ const Profile: React.FC<Props> = ({
             )}
 
             <SectionHeader title="Cloud & Data" />
-            {onSync && (
+            {profile.offlineMode ? (
               <SettingItem
                 icon={CloudArrowUpIcon}
-                label="Cloud Synchronization"
-                description={
-                  isSyncing ? "Syncing now..." : "Backup to Google Sheets"
-                }
-                onClick={onSync}
+                label="Connect Cloud Sync"
+                description="Enable backup to Google Sheets"
+                onClick={onLogin}
                 color="text-sky-400"
-                action={
-                  isSyncing ? (
-                    <ArrowPathIcon className="w-4 h-4 text-sky-400 animate-spin" />
-                  ) : null
-                }
               />
+            ) : (
+              onSync && (
+                <SettingItem
+                  icon={CloudArrowUpIcon}
+                  label="Cloud Synchronization"
+                  description={
+                    isSyncing ? "Syncing now..." : "Backup to Google Sheets"
+                  }
+                  onClick={onSync}
+                  color="text-sky-400"
+                  action={
+                    isSyncing ? (
+                      <ArrowPathIcon className="w-4 h-4 text-sky-400 animate-spin" />
+                    ) : null
+                  }
+                />
+              )
             )}
             {onResetSync && (
               <SettingItem

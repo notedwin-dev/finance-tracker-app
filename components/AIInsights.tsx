@@ -96,6 +96,49 @@ const AIInsights: React.FC<Props> = ({
 
     const userQuery = activeQuery.trim();
     setQuery("");
+
+    if (!navigator.onLine) {
+      const offlineMsg: ChatMessage = {
+        role: "model",
+        content:
+          "🚫 **No Internet Connection**\n\nI need an active internet connection to process your request. Please check your connection and try again.",
+        timestamp: Date.now(),
+      };
+
+      const sessionForError = activeSession
+        ? {
+            ...activeSession,
+            messages: [
+              ...activeSession.messages,
+              {
+                role: "user",
+                content: userQuery,
+                timestamp: Date.now(),
+              } as ChatMessage,
+              offlineMsg,
+            ],
+            updatedAt: Date.now(),
+          }
+        : {
+            id: crypto.randomUUID(),
+            userId: accounts[0]?.userId || "local",
+            title: "Offline Request",
+            messages: [
+              {
+                role: "user",
+                content: userQuery,
+                timestamp: Date.now(),
+              } as ChatMessage,
+              offlineMsg,
+            ],
+            updatedAt: Date.now(),
+          };
+
+      onSaveSession(sessionForError);
+      if (!activeSession) onSelectSession(sessionForError.id);
+      return;
+    }
+
     setLoading(true);
     setStreamingText("");
 

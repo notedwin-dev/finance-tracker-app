@@ -11,6 +11,7 @@ interface AuthContextType {
   emailLogin: (email: string, pass: string) => Promise<void>;
   emailSignup: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => void;
+  loginOffline: () => void;
   updateProfile: (updates: Partial<UserProfile>, skipCloud?: boolean) => void;
   isInitialized: boolean;
 }
@@ -129,6 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         email: userInfo.email,
         photoUrl: userInfo.picture,
         isLoggedIn: true,
+        offlineMode: false,
         // Sync cloud settings if they exist
         isVaultEnabled: cloudUser?.isVaultEnabled ?? profile.isVaultEnabled,
         isVaultCreated: cloudUser?.isVaultCreated ?? profile.isVaultCreated,
@@ -211,6 +213,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     await emailLogin(email, pass);
   };
 
+  const loginOffline = () => {
+    const offlineProfile: UserProfile = {
+      id: "offline_user",
+      name: "Local User",
+      email: "local@zenfinance",
+      isLoggedIn: true,
+      offlineMode: true,
+    };
+    StorageService.saveProfile(offlineProfile);
+    setProfile(offlineProfile);
+    // No need for reload, state update is enough
+  };
+
   const logout = () => {
     googleLogout();
     SheetService.clearGapiAccessToken();
@@ -232,6 +247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         emailLogin,
         emailSignup,
         logout,
+        loginOffline,
         updateProfile: async (u, skipCloud = false) => {
           const p = { ...profile, ...u };
           setProfile(p);

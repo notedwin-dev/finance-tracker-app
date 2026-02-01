@@ -7,6 +7,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
 import * as SecurityService from "../services/security.services";
+import Modal from "./Modal";
 
 interface Props {
   initialAccount?: Account;
@@ -46,6 +47,36 @@ const AccountForm: React.FC<Props> = ({
   const [cvv, setCvv] = useState("");
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [vaultPassword, setVaultPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    confirmLabel: string;
+    isDestructive?: boolean;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+    confirmLabel: "Confirm",
+  });
+
+  const handleVaultUnlock = async () => {
+    if (!vaultPassword) return;
+    const success = await unlockVault(vaultPassword);
+    if (success) {
+      setShowUnlockModal(false);
+      setVaultPassword("");
+      setUnlockError("");
+    } else {
+      setUnlockError("Incorrect vault password.");
+    }
+  };
 
   const handleBalanceChange = (val: string) => {
     if (!val) {
@@ -458,14 +489,10 @@ const AccountForm: React.FC<Props> = ({
                 {isVaultEnabled && !isVaultUnlocked && (
                   <button
                     type="button"
-                    onClick={async () => {
-                      const password = window.prompt(
-                        "🔒 Please enter the password you created when enabling your Secure Vault:",
-                      );
-                      if (password) {
-                        const success = await unlockVault(password);
-                        if (!success) alert("Incorrect vault password.");
-                      }
+                    onClick={() => {
+                      setVaultPassword("");
+                      setUnlockError("");
+                      setShowUnlockModal(true);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
                   >
@@ -491,14 +518,10 @@ const AccountForm: React.FC<Props> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={async () => {
-                      const pass = window.prompt(
-                        "🔒 Please enter the password you created when enabling your Secure Vault:",
-                      );
-                      if (pass) {
-                        const success = await unlockVault(pass);
-                        if (!success) alert("Incorrect vault password.");
-                      }
+                    onClick={() => {
+                      setVaultPassword("");
+                      setUnlockError("");
+                      setShowUnlockModal(true);
                     }}
                     className="mt-4 w-full bg-primary/10 text-primary border border-primary/20 text-xs font-black py-2.5 rounded-xl active:scale-[0.98] transition-all"
                   >
@@ -592,14 +615,17 @@ const AccountForm: React.FC<Props> = ({
           {editingId && onDelete && (
             <button
               onClick={() => {
-                if (
-                  window.confirm(
-                    `Are you sure you want to delete ${name}? This will remove it from your holdings.`,
-                  )
-                ) {
-                  onDelete(editingId, name);
-                  onClose();
-                }
+                setConfirmationModal({
+                  isOpen: true,
+                  title: "Delete Asset",
+                  description: `Are you sure you want to delete ${name}? This will remove it from your holdings.`,
+                  confirmLabel: "Delete",
+                  isDestructive: true,
+                  onConfirm: () => {
+                    onDelete(editingId, name);
+                    onClose();
+                  },
+                });
               }}
               className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold py-3 rounded-xl transition-all border border-red-500/20"
             >
@@ -608,6 +634,94 @@ const AccountForm: React.FC<Props> = ({
           )}
         </div>
       </div>
+
+      <Modal
+        isOpen={showUnlockModal}
+        onClose={() => setShowUnlockModal(false)}
+        title="Unlock Vault"
+        description="Enter your vault password to view sensitive details."
+        icon={LockClosedIcon}
+        iconColor="text-indigo-400"
+        iconBgColor="bg-indigo-500/10"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <input
+              type="password"
+              autoFocus
+              value={vaultPassword}
+              onChange={(e) => {
+                setVaultPassword(e.target.value);
+                setUnlockError("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleVaultUnlock();
+              }}
+              placeholder="Vault Password"
+              className="w-full bg-surface border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-gray-500"
+            />
+            {unlockError && (
+              <p className="text-[10px] text-rose-500 font-bold pl-1">
+                {unlockError}
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setShowUnlockModal(false)}
+              className="py-3 px-4 rounded-xl font-bold text-sm bg-surface border border-gray-700 hover:bg-gray-800 text-gray-400 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleVaultUnlock}
+              className="py-3 px-4 rounded-xl font-bold text-sm bg-primary hover:bg-primaryDark text-white transition-colors shadow-lg shadow-primary/20"
+            >
+              Unlock
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={confirmationModal.isOpen}
+        onClose={() =>
+          setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        title={confirmationModal.title}
+        description={confirmationModal.description}
+        icon={confirmationModal.isDestructive ? XMarkIcon : undefined}
+        iconColor={
+          confirmationModal.isDestructive ? "text-rose-400" : "text-primary"
+        }
+        iconBgColor={
+          confirmationModal.isDestructive ? "bg-rose-500/10" : "bg-primary/10"
+        }
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() =>
+              setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
+            }
+            className="py-3 px-4 rounded-xl font-bold text-sm bg-surface border border-gray-700 hover:bg-gray-800 text-gray-400 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              confirmationModal.onConfirm();
+              setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
+            }}
+            className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors shadow-lg ${
+              confirmationModal.isDestructive
+                ? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20 text-white"
+                : "bg-primary hover:bg-primaryDark shadow-primary/20 text-white"
+            }`}
+          >
+            {confirmationModal.confirmLabel}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

@@ -269,23 +269,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.setItem("vault_password_remembered", password);
     }
 
-    // Register biometrics if available and NOT already registered (or restored)
-    if (
-      (await SecurityService.isBiometricAvailable()) &&
-      !SecurityService.isBiometricRegistered()
-    ) {
-      const wantBiometrics = window.confirm(
-        "Would you like to enable TouchID/FaceID for secure reveals?",
-      );
-      if (wantBiometrics) {
-        const ok = await SecurityService.registerBiometrics(
-          profile.name || "User",
-        );
-        if (ok) {
-          localStorage.setItem("vault_password_remembered", password);
-        }
-      }
-    } else if (await SecurityService.isBiometricRegistered()) {
+    // Register biometrics logic moved to UI components to allow meaningful Modals
+    // instead of window.confirm blocking calls.
+    if (await SecurityService.isBiometricRegistered()) {
       // If already registered (e.g. restored above), ensure password is updated
       localStorage.setItem("vault_password_remembered", password);
     }

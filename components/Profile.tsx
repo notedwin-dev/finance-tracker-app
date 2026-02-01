@@ -20,6 +20,7 @@ import {
 import { useData } from "../context/DataContext";
 import * as SecurityService from "../services/security.services";
 import { getDeviceId } from "../services/storage.services";
+import Modal from "./Modal";
 
 interface Props {
   profile: UserProfile;
@@ -67,6 +68,20 @@ const Profile: React.FC<Props> = ({
   const [showBiometricManagement, setShowBiometricManagement] = useState(false);
   const [vaultError, setVaultError] = useState("");
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    confirmLabel: string;
+    isDestructive?: boolean;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+    confirmLabel: "Confirm",
+  });
 
   const handleSave = () => {
     onUpdate({ name });
@@ -256,11 +271,57 @@ const Profile: React.FC<Props> = ({
                         return;
                       }
                       setIsSyncingLocal(true);
+                      const currentPass = vaultPass; // Capture for biometric setup
                       try {
-                        await enableVault(vaultPass);
+                        await enableVault(currentPass);
                         setVaultPass("");
                         setShowVaultPrompt(false);
-                        showToast("Vault enabled!", "success");
+
+                        // Check biometrics availability
+                        if (
+                          (await SecurityService.isBiometricAvailable()) &&
+                          !SecurityService.isBiometricRegistered()
+                        ) {
+                          setConfirmationModal({
+                            isOpen: true,
+                            title: "Enable Biometrics",
+                            description:
+                              "Would you like to enable TouchID/FaceID for secure reveals on this device?",
+                            confirmLabel: "Enable Secure Access",
+                            onConfirm: async () => {
+                              const credId =
+                                await SecurityService.registerBiometrics(
+                                  profile.name || "User",
+                                );
+                              if (credId) {
+                                localStorage.setItem(
+                                  "vault_password_remembered",
+                                  currentPass,
+                                );
+                                onUpdate({
+                                  biometricCredIds: Array.from(
+                                    new Set([
+                                      ...(profile.biometricCredIds || []),
+                                      credId,
+                                    ]),
+                                  ),
+                                  biometricCredId: credId,
+                                });
+                                showToast(
+                                  "Vault enabled with Biometrics!",
+                                  "success",
+                                );
+                              } else {
+                                showToast(
+                                  "Biometric setup failed, but Vault is enabled.",
+                                  "alert",
+                                );
+                              }
+                            },
+                          });
+                        } else {
+                          showToast("Vault enabled!", "success");
+                        }
                       } catch (e) {
                         setVaultError("Failed to enable vault.");
                       } finally {
@@ -434,22 +495,26 @@ const Profile: React.FC<Props> = ({
                 profile.biometricCredIds?.length ||
                 profile.biometricCredId) && (
                 <button
-                  onClick={async () => {
-                    if (
-                      confirm(
+                  onClick={() => {
+                    setConfirmationModal({
+                      isOpen: true,
+                      title: "Unlink Passkeys",
+                      description:
                         "Unlink all security keys? You will need your vault password to unlock next time.",
-                      )
-                    ) {
-                      localStorage.removeItem("biometric_cred_id");
-                      localStorage.removeItem("biometric_cred_ids");
-                      localStorage.removeItem("vault_password_remembered");
-                      onUpdate({
-                        biometricCredId: "",
-                        biometricCredIds: [],
-                      });
-                      showToast("Security links removed", "info");
-                      setShowBiometricManagement(false);
-                    }
+                      confirmLabel: "Unlink All",
+                      isDestructive: true,
+                      onConfirm: () => {
+                        localStorage.removeItem("biometric_cred_id");
+                        localStorage.removeItem("biometric_cred_ids");
+                        localStorage.removeItem("vault_password_remembered");
+                        onUpdate({
+                          biometricCredId: "",
+                          biometricCredIds: [],
+                        });
+                        showToast("Security links removed", "info");
+                        setShowBiometricManagement(false);
+                      },
+                    });
                   }}
                   className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
                 >
@@ -652,13 +717,17 @@ const Profile: React.FC<Props> = ({
                 profile.offlineMode
                   ? onLogin
                   : () => {
-                      if (
-                        window.confirm(
+                      setConfirmationModal({
+                        isOpen: true,
+                        title: "Disconnect Cloud",
+                        description:
                           "Disconnect from Google Sheets? Your data will remain on this device but won't sync to the cloud until re-linked.",
-                        )
-                      ) {
-                        onUnlinkCloud?.();
-                      }
+                        confirmLabel: "Disconnect",
+                        isDestructive: true,
+                        onConfirm: () => {
+                          if (onUnlinkCloud) onUnlinkCloud();
+                        },
+                      });
                     }
               }
               action={
@@ -846,6 +915,50 @@ const Profile: React.FC<Props> = ({
           </button>
         </div>
       )}
+
+      <Modal
+        isOpen={confirmationModal.isOpen}
+        onClose={() =>
+          setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        title={confirmationModal.title}
+        description={confirmationModal.description}
+        icon={
+          confirmationModal.isDestructive
+            ? ArrowRightOnRectangleIcon
+            : undefined
+        }
+        iconColor={
+          confirmationModal.isDestructive ? "text-rose-400" : "text-primary"
+        }
+        iconBgColor={
+          confirmationModal.isDestructive ? "bg-rose-500/10" : "bg-primary/10"
+        }
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() =>
+              setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
+            }
+            className="py-3 px-4 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10 text-gray-400 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              confirmationModal.onConfirm();
+              setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
+            }}
+            className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors shadow-lg ${
+              confirmationModal.isDestructive
+                ? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20 text-white"
+                : "bg-primary hover:bg-primary-600 shadow-primary/20 text-white"
+            }`}
+          >
+            {confirmationModal.confirmLabel}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

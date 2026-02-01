@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
+import Modal from "../components/Modal";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
@@ -60,8 +61,8 @@ const AccountPage: React.FC = () => {
     displayCurrency,
     maskAmount,
     maskText,
-    privacyMode,
     isVaultEnabled,
+    isVaultUnlocked,
     unlockVault,
   } = useData();
   const {
@@ -70,6 +71,22 @@ const AccountPage: React.FC = () => {
     setShowAccountForm,
     setEditingAccount,
   } = useOutletContext<any>();
+
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [vaultPassword, setVaultPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+
+  const handleVaultUnlock = async () => {
+    if (!vaultPassword) return;
+    const success = await unlockVault(vaultPassword);
+    if (success) {
+      setShowUnlockModal(false);
+      setVaultPassword("");
+      setUnlockError("");
+    } else {
+      setUnlockError("Incorrect vault password.");
+    }
+  };
 
   const account = useMemo(
     () => accounts.find((a) => a.id === id),
@@ -556,17 +573,14 @@ const AccountPage: React.FC = () => {
                   Identity Details
                 </h4>
 
-                {typeof account.details === "string" &&
+                {!isVaultUnlocked &&
+                  typeof account.details === "string" &&
                   account.details.startsWith("ENC:") && (
                     <button
-                      onClick={async () => {
-                        const pass = window.prompt(
-                          "🔒 Please enter the password you created when enabling your Secure Vault:",
-                        );
-                        if (pass) {
-                          const success = await unlockVault(pass);
-                          if (!success) alert("Incorrect vault password.");
-                        }
+                      onClick={() => {
+                        setVaultPassword("");
+                        setUnlockError("");
+                        setShowUnlockModal(true);
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
                     >
@@ -576,7 +590,8 @@ const AccountPage: React.FC = () => {
                   )}
               </div>
 
-              {typeof account.details === "string" &&
+              {!isVaultUnlocked &&
+              typeof account.details === "string" &&
               account.details.startsWith("ENC:") ? (
                 <div className="py-8 text-center space-y-3">
                   <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto">
@@ -718,6 +733,54 @@ const AccountPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      <Modal
+        isOpen={showUnlockModal}
+        onClose={() => setShowUnlockModal(false)}
+        title="Unlock Vault"
+        description="Enter your vault password to view sensitive details."
+        icon={LockClosedIcon}
+        iconColor="text-indigo-400"
+        iconBgColor="bg-indigo-500/10"
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <input
+              type="password"
+              autoFocus
+              value={vaultPassword}
+              onChange={(e) => {
+                setVaultPassword(e.target.value);
+                setUnlockError("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleVaultUnlock();
+              }}
+              placeholder="Vault Password"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-gray-600"
+            />
+            {unlockError && (
+              <p className="text-[10px] text-rose-500 font-bold pl-1">
+                {unlockError}
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setShowUnlockModal(false)}
+              className="py-3 px-4 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10 text-gray-400 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleVaultUnlock}
+              className="py-3 px-4 rounded-xl font-bold text-sm bg-indigo-500 hover:bg-indigo-600 text-white transition-colors shadow-lg shadow-indigo-500/20"
+            >
+              Unlock
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

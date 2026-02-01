@@ -14,6 +14,7 @@ import {
   ArrowUpRightIcon,
   BanknotesIcon,
   LockClosedIcon,
+  FingerPrintIcon,
 } from "@heroicons/react/24/outline";
 import {
   Chart as ChartJS,
@@ -85,6 +86,26 @@ const AccountPage: React.FC = () => {
       setUnlockError("");
     } else {
       setUnlockError("Incorrect vault password.");
+    }
+  };
+
+  const handleBiometricUnlock = async () => {
+    const verified = await SecurityService.verifyWithBiometrics(
+      profile.biometricCredIds || profile.biometricCredId,
+    );
+    if (verified) {
+      const storedPass = localStorage.getItem("vault_password_remembered");
+      if (storedPass) {
+        const success = await unlockVault(storedPass);
+        if (success) {
+          setShowUnlockModal(false);
+          setUnlockError("");
+        } else {
+          setUnlockError("Biometric link expired. Please use password.");
+        }
+      } else {
+        setUnlockError("Vault key missing. Please use password once.");
+      }
     }
   };
 
@@ -573,25 +594,22 @@ const AccountPage: React.FC = () => {
                   Identity Details
                 </h4>
 
-                {typeof account.details === "string" &&
-                  account.details.startsWith("ENC:") && (
-                    <button
-                      onClick={() => {
-                        setVaultPassword("");
-                        setUnlockError("");
-                        setShowUnlockModal(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
-                    >
-                      <LockClosedIcon className="w-3.5 h-3.5" />
-                      Unlock
-                    </button>
-                  )}
+                {isVaultEnabled && !isVaultUnlocked && (
+                  <button
+                    onClick={() => {
+                      setVaultPassword("");
+                      setUnlockError("");
+                      setShowUnlockModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
+                  >
+                    <LockClosedIcon className="w-3.5 h-3.5" />
+                    Unlock Vault
+                  </button>
+                )}
               </div>
 
-              {account.details &&
-              typeof account.details === "string" &&
-              account.details.startsWith("ENC:") ? (
+              {isVaultEnabled && !isVaultUnlocked ? (
                 <div className="py-8 text-center space-y-3">
                   <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto">
                     <LockClosedIcon className="w-6 h-6 text-gray-500" />
@@ -602,7 +620,7 @@ const AccountPage: React.FC = () => {
                     </p>
                     <p className="text-[10px] text-gray-500 max-w-50 mx-auto leading-relaxed">
                       These details are encrypted. Click Unlock to decrypt using
-                      your vault password.
+                      your vault password or biometrics.
                     </p>
                   </div>
                 </div>
@@ -743,6 +761,17 @@ const AccountPage: React.FC = () => {
         iconBgColor="bg-indigo-500/10"
       >
         <div className="space-y-4">
+          {(SecurityService.isBiometricRegistered() ||
+            profile.biometricCredIds?.length ||
+            profile.biometricCredId) && (
+            <button
+              onClick={handleBiometricUnlock}
+              className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
+            >
+              <FingerPrintIcon className="w-5 h-5" />
+              Unlock with Biometrics
+            </button>
+          )}
           <div className="space-y-1.5">
             <input
               type="password"

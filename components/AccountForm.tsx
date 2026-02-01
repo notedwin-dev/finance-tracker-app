@@ -4,8 +4,10 @@ import {
   XMarkIcon,
   ChevronUpDownIcon,
   LockClosedIcon,
+  FingerPrintIcon,
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
+import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
 import Modal from "./Modal";
 
@@ -24,6 +26,7 @@ const AccountForm: React.FC<Props> = ({
   onDelete,
   onClose,
 }) => {
+  const { profile } = useAuth();
   const { isVaultEnabled, isVaultUnlocked, unlockVault } = useData();
   const [activeTab, setActiveTab] = useState<"PRESETS" | "CUSTOM">("PRESETS");
 
@@ -75,6 +78,26 @@ const AccountForm: React.FC<Props> = ({
       setUnlockError("");
     } else {
       setUnlockError("Incorrect vault password.");
+    }
+  };
+
+  const handleBiometricUnlock = async () => {
+    const verified = await SecurityService.verifyWithBiometrics(
+      profile.biometricCredIds || profile.biometricCredId,
+    );
+    if (verified) {
+      const storedPass = localStorage.getItem("vault_password_remembered");
+      if (storedPass) {
+        const success = await unlockVault(storedPass);
+        if (success) {
+          setShowUnlockModal(false);
+          setUnlockError("");
+        } else {
+          setUnlockError("Biometric link expired. Please use password.");
+        }
+      } else {
+        setUnlockError("Vault key missing. Please use password once.");
+      }
     }
   };
 
@@ -645,6 +668,17 @@ const AccountForm: React.FC<Props> = ({
         iconBgColor="bg-indigo-500/10"
       >
         <div className="space-y-4">
+          {(SecurityService.isBiometricRegistered() ||
+            profile.biometricCredIds?.length ||
+            profile.biometricCredId) && (
+            <button
+              onClick={handleBiometricUnlock}
+              className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
+            >
+              <FingerPrintIcon className="w-5 h-5" />
+              Unlock with Biometrics
+            </button>
+          )}
           <div className="space-y-1.5">
             <input
               type="password"

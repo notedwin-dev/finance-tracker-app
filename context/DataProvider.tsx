@@ -216,6 +216,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (localStorage.getItem("vault_password_remembered")) {
           localStorage.setItem("vault_password_remembered", encryptedPassword);
         }
+        await loadData(encryptedPassword);
         return true;
       }
     } catch (error) {
@@ -302,6 +303,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("vault_password_session");
     // We keep vault_password_remembered if they chose to "remember" for biometrics
     showToast("Vault locked", "info");
+    loadData(); // This will re-load accounts in their encrypted state
   };
 
   const disableVault = async () => {
@@ -465,12 +467,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadData = async () => {
+  const loadData = async (overridePass?: string) => {
     const storedAccounts = StorageService.getStoredAccounts();
     // Decrypt and normalize accounts
     const decryptedAccounts = await Promise.all(
       storedAccounts.map(async (a) => {
-        const decrypted = await decryptAccount(a);
+        const decrypted = await decryptAccount(a, overridePass);
         return normalizeAccount(decrypted);
       }),
     );

@@ -60,7 +60,7 @@ ZenFinance is built with a **Privacy-First** mindset:
 
    - `VITE_GOOGLE_API_KEY`: You only need to fill this in if you want to provide a limited daily free requests for Gemini AI for other users using your hosted application. If not, you are not required to fill this in. Instead, fill it in from the UI for the Gemini API key you have gotten from [https://aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)
    - `VITE_GOOGLE_CLIENT_ID`: You will need this for syncing your local data into cloud (Google Spreadsheets) so that you can access the same data from anywhere by logging in from multiple devices.
-   - `VITE_BACKEND_API_URL`: You have to clone the [Backend repository](https://github.com/notedwin-dev/finance-tracker-app-backend) and host it with Vercel or your preferred self-hosting providers to get this Backend URL.
+   - `VITE_BACKEND_API_URL`: You have to clone the [Backend repository](https://github.com/notedwin-dev/finance-tracker-app-backend) and host it with Vercel or your preferred self-hosting providers to get this Backend URL. If you're hosting it on your own local machine, the URL will be `https://localhost:3001`
 
 5. **Run the development server**
    ```bash

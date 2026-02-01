@@ -462,6 +462,21 @@ const Profile: React.FC<Props> = ({
             </div>
 
             <div className="space-y-3">
+              {(SecurityService.isBiometricRegistered() ||
+                profile.biometricCredIds?.length ||
+                profile.biometricCredId) && (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 mb-2">
+                  <p className="text-emerald-400 text-xs font-bold flex items-center gap-2">
+                    <FingerPrintIcon className="w-4 h-4" />
+                    Passkeys are active
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    You can create a new passkey specifically for this device if
+                    needed, or verify your existing one.
+                  </p>
+                </div>
+              )}
+
               <button
                 onClick={async () => {
                   const credId = await SecurityService.registerBiometrics(
@@ -487,7 +502,7 @@ const Profile: React.FC<Props> = ({
                     setShowBiometricManagement(false);
                   } else {
                     showToast(
-                      "Registration failed. Note: Passkeys are domain-specific.",
+                      "Registration failed. Passkeys are domain-specific.",
                       "alert",
                     );
                   }
@@ -495,38 +510,56 @@ const Profile: React.FC<Props> = ({
                 className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg shadow-emerald-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 <FingerPrintIcon className="w-5 h-5" />
-                Register This Device
+                Add New Passkey
               </button>
 
               {(SecurityService.isBiometricRegistered() ||
                 profile.biometricCredIds?.length ||
                 profile.biometricCredId) && (
-                <button
-                  onClick={() => {
-                    setConfirmationModal({
-                      isOpen: true,
-                      title: "Unlink Passkeys",
-                      description:
-                        "Unlink all security keys? You will need your vault password to unlock next time.",
-                      confirmLabel: "Unlink All",
-                      isDestructive: true,
-                      onConfirm: () => {
-                        localStorage.removeItem("biometric_cred_id");
-                        localStorage.removeItem("biometric_cred_ids");
-                        localStorage.removeItem("vault_password_remembered");
-                        onUpdate({
-                          biometricCredId: "",
-                          biometricCredIds: [],
-                        });
-                        showToast("Security links removed", "info");
-                        setShowBiometricManagement(false);
-                      },
-                    });
-                  }}
-                  className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
-                >
-                  Unlink All Passkeys
-                </button>
+                <>
+                  <button
+                    onClick={async () => {
+                      const success =
+                        await SecurityService.verifyWithBiometrics(
+                          profile.biometricCredIds || profile.biometricCredId,
+                        );
+                      if (success) {
+                        showToast("Passkey verified successfully!", "success");
+                      } else {
+                        showToast("Verification failed", "alert");
+                      }
+                    }}
+                    className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    Test Existing Passkey
+                  </button>
+                  <button
+                    onClick={() => {
+                      setConfirmationModal({
+                        isOpen: true,
+                        title: "Unlink Passkeys",
+                        description:
+                          "Unlink all security keys? You will need your vault password to unlock next time.",
+                        confirmLabel: "Unlink All",
+                        isDestructive: true,
+                        onConfirm: () => {
+                          localStorage.removeItem("biometric_cred_id");
+                          localStorage.removeItem("biometric_cred_ids");
+                          localStorage.removeItem("vault_password_remembered");
+                          onUpdate({
+                            biometricCredId: "",
+                            biometricCredIds: [],
+                          });
+                          showToast("Security links removed", "info");
+                          setShowBiometricManagement(false);
+                        },
+                      });
+                    }}
+                    className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    Unlink All Passkeys
+                  </button>
+                </>
               )}
 
               <button
@@ -642,13 +675,13 @@ const Profile: React.FC<Props> = ({
               description={
                 isVaultCreated
                   ? isVaultUnlocked
-                    ? "Vault is unlocked and active"
+                    ? "Vault is unlocked. Your data is decrypted."
                     : isVaultEnabled
-                      ? "Vault is locked. Tap to unlock."
-                      : "Vault is disabled. Tap to enable."
+                      ? "Vault is locked. Data is encrypted."
+                      : "Vault is disabled. Data is stored without encryption."
                   : "Enable a Secure Vault to protect sensitive details."
               }
-              color={isVaultEnabled ? "text-rose-400" : "text-gray-400"}
+              color={isVaultEnabled ? (isVaultUnlocked ? "text-emerald-400" : "text-rose-400") : "text-gray-400"}
               onClick={() => setShowVaultPrompt(true)}
               action={
                 isVaultEnabled ? (

@@ -103,7 +103,7 @@ export interface UserProfile extends UserCloudSettings {
   showAIAssistant?: boolean;
   geminiApiKey?: string;
   syncChatToSheets?: boolean;
-  offlineMode?: boolean; 
+  offlineMode?: boolean;
 }
 
 export interface Goal {

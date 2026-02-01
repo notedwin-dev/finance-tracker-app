@@ -539,10 +539,10 @@ export const saveProfile = (profile: UserProfile) => {
     devices,
     privacyMode,
   };
-  
+
   // Remove undefined values to avoid overwriting existing valid settings with undefined if full profile wasn't passed
   const cleanSecurity = Object.fromEntries(
-    Object.entries(securitySettings).filter(([_, v]) => v !== undefined)
+    Object.entries(securitySettings).filter(([_, v]) => v !== undefined),
   );
 
   if (Object.keys(cleanSecurity).length > 0) {

@@ -198,8 +198,9 @@ export async function verifyWithBiometrics(
  */
 export function isBiometricRegistered(): boolean {
   const settings = StorageService.getStoredSecuritySettings();
-  if (settings.biometricCredIds && settings.biometricCredIds.length > 0) return true;
-  
+  if (settings.biometricCredIds && settings.biometricCredIds.length > 0)
+    return true;
+
   return (
     !!localStorage.getItem("biometric_cred_ids") ||
     !!localStorage.getItem("biometric_cred_id")

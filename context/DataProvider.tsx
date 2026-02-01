@@ -117,7 +117,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const isVaultUnlocked = !!vaultPassword;
+  const isVaultUnlocked = !!vaultPassword && isVaultEnabled;
 
   const normalizeAccount = (acc: any): Account => {
     // If details is a string but not encrypted, parse it
@@ -180,6 +180,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const unlockVault = async (password: string): Promise<boolean> => {
     try {
       const encryptedPassword = await encryptVaultPassword(password);
+
       // Find the first encrypted account to verify the password
       const firstEncryptedAccount = accounts.find(
         (acc) =>
@@ -187,18 +188,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           typeof acc.details === "string" &&
           acc.details.startsWith("ENC:"),
       );
+
       if (
         !firstEncryptedAccount ||
         typeof firstEncryptedAccount.details !== "string"
       ) {
-        console.warn("No encrypted accounts found to verify the password.");
-        return false;
+        // If no encrypted accounts, we accept the password as is (first time or empty vault)
+        setVaultPassword(encryptedPassword);
+        localStorage.setItem("vault_password_session", encryptedPassword);
+        return true;
       }
+
       const decryptedDetails = await SecurityService.decryptData(
         firstEncryptedAccount.details,
         password,
         getVaultSalt(),
       );
+
       if (decryptedDetails) {
         setVaultPassword(encryptedPassword);
         localStorage.setItem("vault_password_session", encryptedPassword);

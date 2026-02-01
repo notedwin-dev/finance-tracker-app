@@ -191,6 +191,14 @@ const Profile: React.FC<Props> = ({
                           setIsSyncingLocal(true);
                           setVaultError("");
 
+                          // If we are unlocked, don't ask for password again
+                          if (isVaultUnlocked) {
+                            setShowVaultPrompt(false);
+                            setIsSyncingLocal(false);
+                            showToast("Vault is already unlocked", "info");
+                            return;
+                          }
+
                           const storedPass = localStorage.getItem(
                             "vault_password_remembered",
                           );

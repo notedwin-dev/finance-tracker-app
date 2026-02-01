@@ -61,6 +61,7 @@ const Profile: React.FC<Props> = ({
   const [name, setName] = useState(profile.name);
   const [vaultPass, setVaultPass] = useState("");
   const [showVaultPrompt, setShowVaultPrompt] = useState(false);
+  const [showBiometricManagement, setShowBiometricManagement] = useState(false);
   const [vaultError, setVaultError] = useState("");
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
 
@@ -344,6 +345,91 @@ const Profile: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Biometric Management Modal */}
+      {showBiometricManagement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-surface w-full max-w-sm rounded-3xl border border-gray-800 shadow-2xl p-6 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-400 mx-auto mb-4">
+                <FingerPrintIcon className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-white">Manage Passkeys</h3>
+              <p className="text-sm text-gray-500">
+                Register this device to access your vault instantly.
+                <br />
+                <span className="text-[10px] text-gray-600 mt-2 block italic">
+                  Note: Passkeys are tied to domains. If you registered on a
+                  different domain (e.g. localhost), you must register again for{" "}
+                  {window.location.host}.
+                </span>
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={async () => {
+                  const credId = await SecurityService.registerBiometrics(
+                    profile.name,
+                  );
+                  if (credId) {
+                    const currentPass = localStorage.getItem(
+                      "vault_password_session",
+                    );
+                    if (currentPass) {
+                      localStorage.setItem(
+                        "vault_password_remembered",
+                        currentPass,
+                      );
+                    }
+                    onUpdate({ biometricCredId: credId });
+                    showToast("New Passkey registered!", "success");
+                    setShowBiometricManagement(false);
+                  } else {
+                    showToast(
+                      "Registration failed. Note: Passkeys are domain-specific.",
+                      "alert",
+                    );
+                  }
+                }}
+                className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl shadow-lg shadow-emerald-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <FingerPrintIcon className="w-5 h-5" />
+                Register This Device
+              </button>
+
+              {(SecurityService.isBiometricRegistered() ||
+                profile.biometricCredId) && (
+                <button
+                  onClick={async () => {
+                    if (
+                      confirm(
+                        "Unlink security? You will need your vault password to unlock next time.",
+                      )
+                    ) {
+                      localStorage.removeItem("biometric_cred_id");
+                      localStorage.removeItem("vault_password_remembered");
+                      onUpdate({ biometricCredId: "" });
+                      showToast("Security links removed", "info");
+                      setShowBiometricManagement(false);
+                    }
+                  }}
+                  className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
+                >
+                  Unlink All Passkeys
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowBiometricManagement(false)}
+                className="w-full bg-gray-900 text-gray-500 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {profile.isLoggedIn ? (
         <div className="w-full space-y-2">
           {/* Profile Header */}
@@ -491,31 +577,7 @@ const Profile: React.FC<Props> = ({
                     ? "text-blue-400"
                     : "text-emerald-400"
               }
-              onClick={async () => {
-                if (
-                  SecurityService.isBiometricRegistered() ||
-                  profile.biometricCredId
-                ) {
-                  showToast("Biometrics already registered", "info");
-                  return;
-                }
-                const credId = await SecurityService.registerBiometrics(
-                  profile.name,
-                );
-                if (credId) {
-                  const currentPass = localStorage.getItem(
-                    "vault_password_session",
-                  );
-                  if (currentPass) {
-                    localStorage.setItem(
-                      "vault_password_remembered",
-                      currentPass,
-                    );
-                  }
-                  onUpdate({ biometricCredId: credId });
-                  showToast("Passkey registered!", "success");
-                } else showToast("Registration failed", "alert");
-              }}
+              onClick={() => setShowBiometricManagement(true)}
             />
             {onManageCategories && (
               <SettingItem

@@ -592,6 +592,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             updates.isVaultEnabled = cloudData.profile.isVaultEnabled;
           }
           if (
+            cloudData.profile.isVaultCreated !== undefined &&
+            cloudData.profile.isVaultCreated !== profile.isVaultCreated
+          ) {
+            updates.isVaultCreated = cloudData.profile.isVaultCreated;
+          }
+          if (
+            cloudData.profile.biometricCredId &&
+            cloudData.profile.biometricCredId !== profile.biometricCredId
+          ) {
+            updates.biometricCredId = cloudData.profile.biometricCredId;
+          }
+          if (
             cloudData.profile.vaultSalt &&
             cloudData.profile.vaultSalt !== profile.vaultSalt
           ) {
@@ -1102,6 +1114,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
     const cloudData = await SheetService.loadFromGoogleSheets();
     if (cloudData) {
+      if (cloudData.profile) {
+        const mergedProfile = { ...profile, ...cloudData.profile };
+        StorageService.saveProfile(mergedProfile);
+        updateProfile(cloudData.profile);
+      }
       // Note: we don't encrypt here because they are already encrypted in Sheets
       StorageService.saveAccounts(cloudData.accounts);
       StorageService.saveTransactions(cloudData.transactions);

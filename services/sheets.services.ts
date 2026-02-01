@@ -339,6 +339,22 @@ export const updateUser = async (email: string, updates: any) => {
     if (rows.length === 0) return false;
 
     const headers = rows[0];
+
+    // Migration: ensure headers include the fields we are trying to update
+    const updateKeys = Object.keys(updates);
+    const missingHeaders = updateKeys.filter((k) => !headers.includes(k));
+    if (missingHeaders.length > 0) {
+      const newHeaders = [...headers, ...missingHeaders];
+      await window.gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId: fileId,
+        range: `'Users'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
+        valueInputOption: "RAW",
+        resource: { values: [newHeaders] },
+      });
+      // Re-fetch to get new headers
+      return updateUser(email, updates);
+    }
+
     const emailIdx = headers.indexOf("email");
     const rowIndex = rows.findIndex((r) => r[emailIdx] === email);
     if (rowIndex === -1) return false;

@@ -573,8 +573,7 @@ const AccountPage: React.FC = () => {
                   Identity Details
                 </h4>
 
-                {!isVaultUnlocked &&
-                  typeof account.details === "string" &&
+                {typeof account.details === "string" &&
                   account.details.startsWith("ENC:") && (
                     <button
                       onClick={() => {
@@ -590,7 +589,7 @@ const AccountPage: React.FC = () => {
                   )}
               </div>
 
-              {!isVaultUnlocked &&
+              {account.details &&
               typeof account.details === "string" &&
               account.details.startsWith("ENC:") ? (
                 <div className="py-8 text-center space-y-3">

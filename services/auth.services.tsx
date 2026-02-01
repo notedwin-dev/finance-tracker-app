@@ -146,7 +146,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             ...(profile.biometricCredId ? [profile.biometricCredId] : []),
           ]),
         ).filter(Boolean),
-        devices: cloudUser?.devices ?? profile.devices ?? [],
+        devices: Array.from(
+          new Set([...(cloudUser?.devices || []), ...(profile.devices || [])]),
+        ),
       };
 
       StorageService.saveProfile(newProfile);
@@ -204,7 +206,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           ...(profile.biometricCredId ? [profile.biometricCredId] : []),
         ]),
       ).filter(Boolean),
-      devices: user.devices ?? profile.devices ?? [],
+      devices: Array.from(
+        new Set([...(user.devices || []), ...(profile.devices || [])]),
+      ),
     };
     StorageService.saveProfile(newProfile);
     setProfile(newProfile);

@@ -611,12 +611,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       showToast("Syncing with Google Sheets...", "info");
-      const cloudData = await SheetService.loadFromGoogleSheets();
+      const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
       if (cloudData) {
         // Sync Profile if available
         let activeProfile = { ...profile };
         if (cloudData.profile) {
           const updates: any = {};
+
+          // Scalar fields - prefer Cloud
           if (
             cloudData.profile.isVaultEnabled !== undefined &&
             cloudData.profile.isVaultEnabled !== profile.isVaultEnabled
@@ -630,29 +632,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             updates.isVaultCreated = cloudData.profile.isVaultCreated;
           }
           if (
-            cloudData.profile.biometricCredIds &&
-            JSON.stringify(cloudData.profile.biometricCredIds) !==
-              JSON.stringify(profile.biometricCredIds)
-          ) {
-            updates.biometricCredIds = cloudData.profile.biometricCredIds;
-            // Ensure local storage has the cloud IDs
-            if (cloudData.profile.biometricCredIds.length > 0) {
-              const localStored = localStorage.getItem("biometric_cred_ids");
-              const localIds: string[] = localStored
-                ? JSON.parse(localStored)
-                : [];
-              const merged = Array.from(
-                new Set([...localIds, ...cloudData.profile.biometricCredIds]),
-              );
-              localStorage.setItem(
-                "biometric_cred_ids",
-                JSON.stringify(merged),
-              );
-              // Also remove legacy
-              localStorage.removeItem("biometric_cred_id");
-            }
-          }
-          if (
             cloudData.profile.vaultSalt &&
             cloudData.profile.vaultSalt !== profile.vaultSalt
           ) {
@@ -664,18 +643,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           ) {
             updates.privacyMode = cloudData.profile.privacyMode;
           }
+
+          // Array fields - Merge Cloud and Local
+          const existingIds = profile.biometricCredIds || [];
+          const cloudIds = cloudData.profile.biometricCredIds || [];
+          const mergedBio = Array.from(new Set([...existingIds, ...cloudIds]));
+
           if (
-            cloudData.profile.devices &&
-            JSON.stringify(cloudData.profile.devices) !==
-              JSON.stringify(profile.devices)
+            mergedBio.length !== existingIds.length ||
+            !mergedBio.every((id) => existingIds.includes(id))
           ) {
-            updates.devices = cloudData.profile.devices;
+            updates.biometricCredIds = mergedBio;
+            // Ensure local storage has the cloud IDs
+            if (mergedBio.length > 0) {
+              localStorage.setItem(
+                "biometric_cred_ids",
+                JSON.stringify(mergedBio),
+              );
+              localStorage.removeItem("biometric_cred_id");
+            }
+          }
+
+          const existingDevices = profile.devices || [];
+          const cloudDevices = cloudData.profile.devices || [];
+          const mergedDevices = Array.from(
+            new Set([...existingDevices, ...cloudDevices]),
+          );
+
+          if (
+            mergedDevices.length !== existingDevices.length ||
+            !mergedDevices.every((d) => existingDevices.includes(d))
+          ) {
+            updates.devices = mergedDevices;
           }
 
           if (Object.keys(updates).length > 0) {
-            console.log("Updating local profile from cloud", updates);
+            console.log("Updating local profile from cloud merge", updates);
             activeProfile = { ...profile, ...updates };
-            updateProfile(updates, true); // Skip cloud since we just got it from there
+            updateProfile(updates, true);
           }
         }
 
@@ -1172,7 +1177,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
     localStorage.clear();
     keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
-    const cloudData = await SheetService.loadFromGoogleSheets();
+    const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
     if (cloudData) {
       if (cloudData.profile) {
         const mergedProfile = { ...profile, ...cloudData.profile };

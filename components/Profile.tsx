@@ -164,271 +164,281 @@ const Profile: React.FC<Props> = ({
             </div>
 
             <div className="space-y-4">
-              {(!isVaultEnabled || !isVaultUnlocked) && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
-                    Vault Password
-                  </label>
-                  <input
-                    type="password"
-                    value={vaultPass}
-                    disabled={isSyncingLocal}
-                    onChange={(e) => {
-                      setVaultPass(e.target.value);
-                      setVaultError("");
-                    }}
-                    placeholder="Enter password..."
-                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    autoFocus
-                  />
-                  {vaultError && (
-                    <p className="text-[10px] text-rose-500 font-bold pl-1">
-                      {vaultError}
-                    </p>
-                  )}
+              {isSyncingLocal ? (
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                  <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-gray-400 font-bold text-sm">
+                    Processing Security Request...
+                  </p>
                 </div>
-              )}
-
-              <div className="flex flex-col gap-2 pt-2">
-                {isVaultEnabled &&
-                  !isVaultUnlocked &&
-                  (SecurityService.isBiometricRegistered() ||
-                    profile.biometricCredIds?.length ||
-                    profile.biometricCredId) && (
-                    <button
-                      disabled={isSyncingLocal}
-                      onClick={async () => {
-                        const verified =
-                          await SecurityService.verifyWithBiometrics(
-                            profile.biometricCredIds || profile.biometricCredId,
-                          );
-                        if (verified) {
-                          setIsSyncingLocal(true);
+              ) : (
+                <>
+                  {(!isVaultEnabled || !isVaultUnlocked) && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
+                        Vault Password
+                      </label>
+                      <input
+                        type="password"
+                        value={vaultPass}
+                        disabled={isSyncingLocal}
+                        onChange={(e) => {
+                          setVaultPass(e.target.value);
                           setVaultError("");
+                        }}
+                        placeholder="Enter password..."
+                        className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        autoFocus
+                      />
+                      {vaultError && (
+                        <p className="text-[10px] text-rose-500 font-bold pl-1">
+                          {vaultError}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-                          // If we are unlocked, don't ask for password again
-                          if (isVaultUnlocked) {
-                            setShowVaultPrompt(false);
-                            setIsSyncingLocal(false);
-                            showToast("Vault is already unlocked", "info");
+                  <div className="flex flex-col gap-2 pt-2">
+                    {isVaultEnabled &&
+                      !isVaultUnlocked &&
+                      (SecurityService.isBiometricRegistered() ||
+                        profile.biometricCredIds?.length ||
+                        profile.biometricCredId) && (
+                        <button
+                          disabled={isSyncingLocal}
+                          onClick={async () => {
+                            const verified =
+                              await SecurityService.verifyWithBiometrics(
+                                profile.biometricCredIds ||
+                                  profile.biometricCredId,
+                              );
+                            if (verified) {
+                              setIsSyncingLocal(true);
+                              setVaultError("");
+
+                              // If we are unlocked, don't ask for password again
+                              if (isVaultUnlocked) {
+                                setShowVaultPrompt(false);
+                                setIsSyncingLocal(false);
+                                showToast("Vault is already unlocked", "info");
+                                return;
+                              }
+
+                              const storedPass = localStorage.getItem(
+                                "vault_password_remembered",
+                              );
+                              if (storedPass) {
+                                try {
+                                  const success = await unlockVault(storedPass);
+                                  if (success) {
+                                    // Important: Ensure vault is actually ENABLED if it was just unlocked
+                                    if (!isVaultEnabled) {
+                                      await enableVault(storedPass);
+                                    }
+                                    showToast(
+                                      "Vault unlocked with Biometrics!",
+                                      "success",
+                                    );
+                                    setShowVaultPrompt(false);
+                                  } else {
+                                    setVaultError(
+                                      "Biometric unlock failed. Please use password.",
+                                    );
+                                  }
+                                } catch (e) {
+                                  setVaultError(
+                                    "Unlock failed. Please try again.",
+                                  );
+                                }
+                              } else {
+                                const isTrusted =
+                                  profile.devices?.includes(getDeviceId());
+                                setVaultError(
+                                  isTrusted
+                                    ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
+                                    : "Security verification successful! However, since this is a new device, please enter your Vault Password once to link your security.",
+                                );
+                              }
+                              setIsSyncingLocal(false);
+                            }
+                          }}
+                          className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2 disabled:opacity-50"
+                        >
+                          <FingerPrintIcon className="w-5 h-5 text-emerald-400" />
+                          Unlock with Biometrics
+                        </button>
+                      )}
+                    {!isVaultCreated ? (
+                      <button
+                        disabled={isSyncingLocal}
+                        onClick={async () => {
+                          if (vaultPass.length < 4) {
+                            setVaultError("Password too short");
                             return;
                           }
+                          setIsSyncingLocal(true);
+                          const currentPass = vaultPass; // Capture for biometric setup
+                          try {
+                            await enableVault(currentPass);
+                            setVaultPass("");
+                            setShowVaultPrompt(false);
 
-                          const storedPass = localStorage.getItem(
-                            "vault_password_remembered",
-                          );
-                          if (storedPass) {
-                            try {
-                              const success = await unlockVault(storedPass);
-                              if (success) {
-                                // Important: Ensure vault is actually ENABLED if it was just unlocked
-                                if (!isVaultEnabled) {
-                                  await enableVault(storedPass);
-                                }
-                                showToast(
-                                  "Vault unlocked with Biometrics!",
-                                  "success",
-                                );
-                                setShowVaultPrompt(false);
-                              } else {
-                                setVaultError(
-                                  "Biometric unlock failed. Please use password.",
-                                );
-                              }
-                            } catch (e) {
-                              setVaultError("Unlock failed. Please try again.");
+                            // Check biometrics availability
+                            if (
+                              (await SecurityService.isBiometricAvailable()) &&
+                              !SecurityService.isBiometricRegistered()
+                            ) {
+                              setConfirmationModal({
+                                isOpen: true,
+                                title: "Enable Biometrics",
+                                description:
+                                  "Would you like to enable TouchID/FaceID for secure reveals on this device?",
+                                confirmLabel: "Enable Secure Access",
+                                onConfirm: async () => {
+                                  const credId =
+                                    await SecurityService.registerBiometrics(
+                                      profile.name || "User",
+                                    );
+                                  if (credId) {
+                                    localStorage.setItem(
+                                      "vault_password_remembered",
+                                      currentPass,
+                                    );
+                                    onUpdate({
+                                      biometricCredIds: Array.from(
+                                        new Set([
+                                          ...(profile.biometricCredIds || []),
+                                          credId,
+                                        ]),
+                                      ),
+                                      biometricCredId: credId,
+                                    });
+                                    showToast(
+                                      "Vault enabled with Biometrics!",
+                                      "success",
+                                    );
+                                  } else {
+                                    showToast(
+                                      "Biometric setup failed, but Vault is enabled.",
+                                      "alert",
+                                    );
+                                  }
+                                },
+                              });
+                            } else {
+                              showToast("Vault enabled!", "success");
                             }
-                          } else {
-                            const isTrusted =
-                              profile.devices?.includes(getDeviceId());
-                            setVaultError(
-                              isTrusted
-                                ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
-                                : "Security verification successful! However, since this is a new device, please enter your Vault Password once to link your security.",
-                            );
+                          } catch (e) {
+                            setVaultError("Failed to enable vault.");
+                          } finally {
+                            setIsSyncingLocal(false);
                           }
-                          setIsSyncingLocal(false);
-                        }
-                      }}
-                      className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2 disabled:opacity-50"
-                    >
-                      {isSyncingLocal ? (
-                        <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <FingerPrintIcon className="w-5 h-5 text-emerald-400" />
-                      )}
-                      {isSyncingLocal
-                        ? "Processing..."
-                        : "Unlock with Biometrics"}
-                    </button>
-                  )}
-                {!isVaultCreated ? (
-                  <button
-                    disabled={isSyncingLocal}
-                    onClick={async () => {
-                      if (vaultPass.length < 4) {
-                        setVaultError("Password too short");
-                        return;
-                      }
-                      setIsSyncingLocal(true);
-                      const currentPass = vaultPass; // Capture for biometric setup
-                      try {
-                        await enableVault(currentPass);
-                        setVaultPass("");
-                        setShowVaultPrompt(false);
+                        }}
+                        className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                      >
+                        {isSyncingLocal
+                          ? "Setting up..."
+                          : "Setup Vault Password"}
+                      </button>
+                    ) : !isVaultUnlocked ? (
+                      <button
+                        disabled={isSyncingLocal}
+                        onClick={async () => {
+                          setIsSyncingLocal(true);
+                          setVaultError("");
+                          try {
+                            const success = await unlockVault(vaultPass);
+                            if (success) {
+                              // Track this device in the trusted registry
+                              const deviceId = getDeviceId();
+                              const currentDevices = profile.devices || [];
+                              if (!currentDevices.includes(deviceId)) {
+                                onUpdate({
+                                  devices: [...currentDevices, deviceId],
+                                });
+                              }
 
-                        // Check biometrics availability
-                        if (
-                          (await SecurityService.isBiometricAvailable()) &&
-                          !SecurityService.isBiometricRegistered()
-                        ) {
-                          setConfirmationModal({
-                            isOpen: true,
-                            title: "Enable Biometrics",
-                            description:
-                              "Would you like to enable TouchID/FaceID for secure reveals on this device?",
-                            confirmLabel: "Enable Secure Access",
-                            onConfirm: async () => {
-                              const credId =
-                                await SecurityService.registerBiometrics(
-                                  profile.name || "User",
-                                );
-                              if (credId) {
+                              // Link biometrics to this password for future usage on this device
+                              if (
+                                SecurityService.isBiometricRegistered() ||
+                                profile.biometricCredIds?.length ||
+                                profile.biometricCredId
+                              ) {
                                 localStorage.setItem(
                                   "vault_password_remembered",
-                                  currentPass,
+                                  vaultPass,
                                 );
-                                onUpdate({
-                                  biometricCredIds: Array.from(
-                                    new Set([
-                                      ...(profile.biometricCredIds || []),
-                                      credId,
-                                    ]),
-                                  ),
-                                  biometricCredId: credId,
-                                });
-                                showToast(
-                                  "Vault enabled with Biometrics!",
-                                  "success",
-                                );
-                              } else {
-                                showToast(
-                                  "Biometric setup failed, but Vault is enabled.",
-                                  "alert",
-                                );
+                                if (
+                                  (profile.biometricCredIds?.length ||
+                                    profile.biometricCredId) &&
+                                  !localStorage.getItem("biometric_cred_ids")
+                                ) {
+                                  const ids = profile.biometricCredIds?.length
+                                    ? profile.biometricCredIds
+                                    : [profile.biometricCredId!];
+                                  localStorage.setItem(
+                                    "biometric_cred_ids",
+                                    JSON.stringify(ids),
+                                  );
+                                  localStorage.removeItem("biometric_cred_id");
+                                }
                               }
-                            },
-                          });
-                        } else {
-                          showToast("Vault enabled!", "success");
-                        }
-                      } catch (e) {
-                        setVaultError("Failed to enable vault.");
-                      } finally {
-                        setIsSyncingLocal(false);
-                      }
-                    }}
-                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {isSyncingLocal ? "Setting up..." : "Setup Vault Password"}
-                  </button>
-                ) : !isVaultUnlocked ? (
-                  <button
-                    disabled={isSyncingLocal}
-                    onClick={async () => {
-                      setIsSyncingLocal(true);
-                      setVaultError("");
-                      try {
-                        const success = await unlockVault(vaultPass);
-                        if (success) {
-                          // Track this device in the trusted registry
-                          const deviceId = getDeviceId();
-                          const currentDevices = profile.devices || [];
-                          if (!currentDevices.includes(deviceId)) {
-                            onUpdate({
-                              devices: [...currentDevices, deviceId],
-                            });
-                          }
 
-                          // Link biometrics to this password for future usage on this device
-                          if (
-                            SecurityService.isBiometricRegistered() ||
-                            profile.biometricCredIds?.length ||
-                            profile.biometricCredId
-                          ) {
-                            localStorage.setItem(
-                              "vault_password_remembered",
-                              vaultPass,
-                            );
-                            if (
-                              (profile.biometricCredIds?.length ||
-                                profile.biometricCredId) &&
-                              !localStorage.getItem("biometric_cred_ids")
-                            ) {
-                              const ids = profile.biometricCredIds?.length
-                                ? profile.biometricCredIds
-                                : [profile.biometricCredId!];
-                              localStorage.setItem(
-                                "biometric_cred_ids",
-                                JSON.stringify(ids),
-                              );
-                              localStorage.removeItem("biometric_cred_id");
+                              // If it was created but currently disabled, enable it
+                              if (!isVaultEnabled) {
+                                await enableVault(vaultPass);
+                              }
+                              setVaultPass("");
+                              showToast("Vault unlocked!", "success");
+                              setShowVaultPrompt(false);
+                            } else {
+                              setVaultError("Invalid password");
                             }
+                          } catch (e) {
+                            setVaultError("Unlock error.");
+                          } finally {
+                            setIsSyncingLocal(false);
                           }
-
-                          // If it was created but currently disabled, enable it
-                          if (!isVaultEnabled) {
-                            await enableVault(vaultPass);
+                        }}
+                        className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                      >
+                        {isSyncingLocal
+                          ? "Verifying..."
+                          : isVaultEnabled
+                            ? "Unlock Vault"
+                            : "Unlock & Enable Vault"}
+                      </button>
+                    ) : (
+                      <button
+                        disabled={isSyncingLocal}
+                        onClick={async () => {
+                          setIsSyncingLocal(true);
+                          try {
+                            await disableVault();
+                            setShowVaultPrompt(false);
+                            showToast("Vault disabled", "info");
+                          } finally {
+                            setIsSyncingLocal(false);
                           }
-                          setVaultPass("");
-                          showToast("Vault unlocked!", "success");
-                          setShowVaultPrompt(false);
-                        } else {
-                          setVaultError("Invalid password");
-                        }
-                      } catch (e) {
-                        setVaultError("Unlock error.");
-                      } finally {
-                        setIsSyncingLocal(false);
-                      }
-                    }}
-                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {isSyncingLocal
-                      ? "Verifying..."
-                      : isVaultEnabled
-                        ? "Unlock Vault"
-                        : "Unlock & Enable Vault"}
-                  </button>
-                ) : (
-                  <button
-                    disabled={isSyncingLocal}
-                    onClick={async () => {
-                      setIsSyncingLocal(true);
-                      try {
-                        await disableVault();
+                        }}
+                        className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                      >
+                        Disable Vault
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
                         setShowVaultPrompt(false);
-                        showToast("Vault disabled", "info");
-                      } finally {
-                        setIsSyncingLocal(false);
-                      }
-                    }}
-                    className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
-                  >
-                    {isSyncingLocal ? "Disabling..." : "Disable Vault"}
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setShowVaultPrompt(false);
-                    setVaultPass("");
-                    setVaultError("");
-                  }}
-                  className="w-full bg-gray-900 text-gray-500 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
+                        setVaultPass("");
+                        setVaultError("");
+                      }}
+                      className="w-full bg-gray-900 text-gray-500 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

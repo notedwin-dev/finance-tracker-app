@@ -244,10 +244,17 @@ export const findUser = async (email: string) => {
     const user: any = {};
     headers.forEach((h: string, i: number) => {
       let val = userRow[i];
+
+      // Handle empty cells
+      if (val === undefined || val === "") {
+        val = null;
+      }
+
       // Convert booleans and handle JSON
       if (typeof val === "string") {
-        if (val.toLowerCase() === "true") val = true;
-        else if (val.toLowerCase() === "false") val = false;
+        const lower = val.toLowerCase();
+        if (lower === "true") val = true;
+        else if (lower === "false") val = false;
       }
       if (
         typeof val === "string" &&
@@ -375,6 +382,58 @@ export const updateUser = async (email: string, updates: any) => {
     // 2. Prepare updated row based on headers
     const currentRow = rows[rowIndex];
     const updatedRow = headers.map((header, i) => {
+      // Smart Merging for Array fields to prevent overwrites from stale clients
+      if (
+        (header === "biometricCredIds" ||
+          header === "devices" ||
+          header === "biometricCredId") && // include legacy field if needed, or handle separately
+        updates[header] !== undefined
+      ) {
+        let currentVal = currentRow[i];
+        let currentArr: any[] = [];
+
+        // Parse current value
+        try {
+          if (currentVal && typeof currentVal === "string") {
+            if (currentVal.startsWith("[") && currentVal.endsWith("]")) {
+              currentArr = JSON.parse(currentVal);
+            } else if (header === "biometricCredId" && currentVal) {
+              currentArr = [currentVal];
+            }
+          }
+        } catch (e) {
+          console.warn(`Failed to parse existing ${header}`, e);
+        }
+
+        const updatesVal = updates[header];
+        let newArr: any[] = [];
+
+        if (Array.isArray(updatesVal)) {
+          newArr = updatesVal;
+        } else if (updatesVal) {
+          newArr = [updatesVal];
+        }
+
+        // Merge and Dedupe
+        // If the update intends to CLEAR (empty array passed), we should respect that?
+        // User asked: "replaces instead of adding".
+        // We will assume Set union for these fields unless explicit reset is detected (handle elsewhere if needed)
+        // Actually, if user clicks "Unlink all", they send empty array.
+        // We need to distinguish between "I added one" and "I cleared all".
+        // The `updateProfile` in auth service passes the whole new state.
+
+        // Strategy:
+        // If updates[header] is EMPTY, it might be a clear operation.
+        // If updates[header] has items, we MERGE with existing cloud items to ensure we don't lose other devices.
+        if (newArr.length > 0) {
+          const merged = Array.from(new Set([...currentArr, ...newArr]));
+          return JSON.stringify(merged);
+        }
+
+        // If empty array passed, it's likely a clear operation (Unlink All)
+        return JSON.stringify([]);
+      }
+
       if (updates[header] !== undefined) {
         // Basic check: stringify boolean/objects
         const val = updates[header];
@@ -790,7 +849,9 @@ export const syncWithGoogleSheets = async (
   await Promise.all(tasks);
 };
 
-export const loadFromGoogleSheets = async (): Promise<{
+export const loadFromGoogleSheets = async (
+  userEmail?: string,
+): Promise<{
   accounts: Account[];
   transactions: Transaction[];
   categories: Category[];
@@ -816,6 +877,19 @@ export const loadFromGoogleSheets = async (): Promise<{
   }
 
   const result: any = {};
+
+  // 1. Fetch User Profile if email provided
+  if (userEmail) {
+    try {
+      const userProfile = await findUser(userEmail);
+      if (userProfile) {
+        result.profile = userProfile;
+      }
+    } catch (e) {
+      console.warn("Failed to load user profile during sync", e);
+    }
+  }
+
   const sheets = [
     "Accounts",
     "Transactions",

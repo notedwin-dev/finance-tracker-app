@@ -97,7 +97,8 @@ export interface UserProfile {
   isVaultEnabled?: boolean;
   isVaultCreated?: boolean;
   vaultSalt?: string;
-  biometricCredId?: string; // Cloud-synced ID for cross-device Passkey identification
+  biometricCredId?: string; // Legacy field for single credential
+  biometricCredIds?: string[]; // Cloud-synced IDs for cross-device Passkey identification
   devices?: string[]; // List of trusted device IDs/Names
   offlineMode?: boolean; // If true, don't attempt cloud sync
 }

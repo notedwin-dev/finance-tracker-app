@@ -137,6 +137,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         vaultSalt: cloudUser?.vaultSalt ?? profile.vaultSalt,
         privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
         biometricCredId: cloudUser?.biometricCredId ?? profile.biometricCredId,
+        biometricCredIds: Array.from(
+          new Set([
+            ...(cloudUser?.biometricCredIds || []),
+            ...(profile.biometricCredIds || []),
+            ...(cloudUser?.biometricCredId ? [cloudUser.biometricCredId] : []),
+            ...(profile.biometricCredId ? [profile.biometricCredId] : []),
+          ]),
+        ).filter(Boolean),
         devices: cloudUser?.devices ?? profile.devices ?? [],
       };
 
@@ -187,6 +195,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       vaultSalt: user.vaultSalt ?? profile.vaultSalt,
       privacyMode: user.privacyMode ?? profile.privacyMode,
       biometricCredId: user.biometricCredId ?? profile.biometricCredId,
+      biometricCredIds: Array.from(
+        new Set([
+          ...(user.biometricCredIds || []),
+          ...(profile.biometricCredIds || []),
+          ...(user.biometricCredId ? [user.biometricCredId] : []),
+          ...(profile.biometricCredId ? [profile.biometricCredId] : []),
+        ]),
+      ).filter(Boolean),
       devices: user.devices ?? profile.devices ?? [],
     };
     StorageService.saveProfile(newProfile);

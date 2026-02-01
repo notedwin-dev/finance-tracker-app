@@ -172,62 +172,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     return acc;
   };
 
-  const unlockVault = async (password: string): Promise<boolean> => {
+  const encryptVaultPassword = async (password: string): Promise<string> => {
     const salt = getVaultSalt();
-    const storedAccounts = StorageService.getStoredAccounts();
+    return await SecurityService.encryptData(password, password, salt);
+  };
 
-    // Find the first encrypted account to verify the password
-    const firstEncrypted = storedAccounts.find(
-      (acc) =>
-        acc.details &&
-        typeof acc.details === "string" &&
-        acc.details.startsWith("ENC:"),
-    );
-
-    if (firstEncrypted) {
-      try {
-        await SecurityService.decryptData(
-          firstEncrypted.details as string,
-          password,
-          salt,
-        );
-      } catch (e) {
-        console.error("Vault unlock failed:", e);
-        return false;
-      }
-    }
-
-    setVaultPassword(password);
-    localStorage.setItem("vault_password_session", password);
-
-    const decryptedAccounts = await Promise.all(
-      storedAccounts.map(async (acc) => {
-        if (
+  const unlockVault = async (password: string): Promise<boolean> => {
+    try {
+      const encryptedPassword = await encryptVaultPassword(password);
+      // Find the first encrypted account to verify the password
+      const firstEncryptedAccount = accounts.find(
+        (acc) =>
           acc.details &&
           typeof acc.details === "string" &&
-          acc.details.startsWith("ENC:")
-        ) {
-          try {
-            const decryptedStr = await SecurityService.decryptData(
-              acc.details,
-              password,
-              salt,
-            );
-            return { ...acc, details: JSON.parse(decryptedStr) };
-          } catch (e) {
-            return acc;
-          }
-        }
-        return acc;
-      }),
-    );
-    setAccounts(decryptedAccounts);
-    return true;
+          acc.details.startsWith("ENC:"),
+      );
+      if (
+        !firstEncryptedAccount ||
+        typeof firstEncryptedAccount.details !== "string"
+      ) {
+        console.warn("No encrypted accounts found to verify the password.");
+        return false;
+      }
+      const decryptedDetails = await SecurityService.decryptData(
+        firstEncryptedAccount.details,
+        password,
+        getVaultSalt(),
+      );
+      if (decryptedDetails) {
+        setVaultPassword(encryptedPassword);
+        localStorage.setItem("vault_password_session", encryptedPassword);
+        return true;
+      }
+    } catch (error) {
+      console.error("Failed to unlock vault:", error);
+    }
+    return false;
   };
 
   const enableVault = async (password: string) => {
-    setVaultPassword(password);
-    localStorage.setItem("vault_password_session", password);
+    const encryptedPassword = await encryptVaultPassword(password);
+    setVaultPassword(encryptedPassword);
+    localStorage.setItem("vault_password_session", encryptedPassword);
     const deviceId = StorageService.getDeviceId();
     const currentDevices = profile.devices || [];
     const newDevices = currentDevices.includes(deviceId)
@@ -257,7 +243,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
     StorageService.saveAccounts(encryptedAccounts);
 
-    // Register biometrics if available
+    // RESTORE LOGIC: If we have credentials in cloud and we are trusted, restore local state
+    if (
+      (profile.biometricCredIds?.length || profile.biometricCredId) &&
+      profile.devices?.includes(StorageService.getDeviceId())
+    ) {
+      if (!localStorage.getItem("biometric_cred_ids")) {
+        const ids = profile.biometricCredIds?.length
+          ? profile.biometricCredIds
+          : profile.biometricCredId
+            ? [profile.biometricCredId]
+            : [];
+        if (ids.length > 0) {
+          localStorage.setItem("biometric_cred_ids", JSON.stringify(ids));
+        }
+      }
+      // Since we just enabled (created a password), update the remembered password
+      // This solves the issue of "First time login" message appearing on re-enable
+      localStorage.setItem("vault_password_remembered", password);
+    }
+
+    // Register biometrics if available and NOT already registered (or restored)
     if (
       (await SecurityService.isBiometricAvailable()) &&
       !SecurityService.isBiometricRegistered()
@@ -273,6 +279,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           localStorage.setItem("vault_password_remembered", password);
         }
       }
+    } else if (await SecurityService.isBiometricRegistered()) {
+      // If already registered (e.g. restored above), ensure password is updated
+      localStorage.setItem("vault_password_remembered", password);
     }
 
     if (isCloudEnabled) {
@@ -317,6 +326,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("vault_password_session");
     localStorage.removeItem("vault_password_remembered");
     localStorage.removeItem("biometric_cred_id");
+    localStorage.removeItem("biometric_cred_ids");
 
     setAccounts(decryptedAccounts);
     StorageService.saveAccounts(decryptedAccounts);
@@ -380,7 +390,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           if (!isRevealed && isSensitive && isVaultEnabled) {
             // Trigger biometric check for truly sensitive data reveal
             const verified = await SecurityService.verifyWithBiometrics(
-              profile.biometricCredId,
+              profile.biometricCredIds || profile.biometricCredId,
             );
             if (!verified) return;
           }
@@ -425,7 +435,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
           if (!isRevealed && isSensitive && isVaultEnabled) {
             const verified = await SecurityService.verifyWithBiometrics(
-              profile.biometricCredId,
+              profile.biometricCredIds || profile.biometricCredId,
             );
             if (!verified) return;
           }
@@ -628,16 +638,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             updates.isVaultCreated = cloudData.profile.isVaultCreated;
           }
           if (
-            cloudData.profile.biometricCredId &&
-            cloudData.profile.biometricCredId !== profile.biometricCredId
+            cloudData.profile.biometricCredIds &&
+            JSON.stringify(cloudData.profile.biometricCredIds) !==
+              JSON.stringify(profile.biometricCredIds)
           ) {
-            updates.biometricCredId = cloudData.profile.biometricCredId;
-            // Ensure local storage has it too for immediate biometric availability check
-            if (!localStorage.getItem("biometric_cred_id")) {
-              localStorage.setItem(
-                "biometric_cred_id",
-                cloudData.profile.biometricCredId,
+            updates.biometricCredIds = cloudData.profile.biometricCredIds;
+            // Ensure local storage has the cloud IDs
+            if (cloudData.profile.biometricCredIds.length > 0) {
+              const localStored = localStorage.getItem("biometric_cred_ids");
+              const localIds: string[] = localStored
+                ? JSON.parse(localStored)
+                : [];
+              const merged = Array.from(
+                new Set([...localIds, ...cloudData.profile.biometricCredIds]),
               );
+              localStorage.setItem(
+                "biometric_cred_ids",
+                JSON.stringify(merged),
+              );
+              // Also remove legacy
+              localStorage.removeItem("biometric_cred_id");
             }
           }
           if (

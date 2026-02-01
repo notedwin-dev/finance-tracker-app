@@ -216,7 +216,12 @@ export const findUser = async (email: string) => {
     const headers = rows[0];
 
     // Migration: If sheet doesn't have isVaultCreated or biometricCredId, add them by updating headers
-    const requiredHeaders = ["isVaultCreated", "biometricCredId", "devices"];
+    const requiredHeaders = [
+      "isVaultCreated",
+      "biometricCredId",
+      "biometricCredIds",
+      "devices",
+    ];
     const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
     if (missingHeaders.length > 0) {
       const newHeaders = [...headers, ...missingHeaders];
@@ -281,7 +286,7 @@ export const createUser = async (userData: any) => {
       // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:J1",
+        range: "'Users'!A1:K1",
         valueInputOption: "RAW",
         resource: {
           values: [
@@ -294,6 +299,7 @@ export const createUser = async (userData: any) => {
               "vaultSalt",
               "privacyMode",
               "biometricCredId",
+              "biometricCredIds",
               "isVaultCreated",
               "devices",
             ],
@@ -304,7 +310,7 @@ export const createUser = async (userData: any) => {
 
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A:J",
+      range: "'Users'!A:K",
       valueInputOption: "RAW",
       resource: {
         values: [
@@ -317,6 +323,7 @@ export const createUser = async (userData: any) => {
             userData.vaultSalt || "",
             userData.privacyMode || false,
             userData.biometricCredId || "",
+            JSON.stringify(userData.biometricCredIds || []),
             userData.isVaultCreated || false,
             JSON.stringify(userData.devices || []),
           ],

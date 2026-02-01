@@ -626,7 +626,8 @@ const AccountPage: React.FC = () => {
                             if (isVaultEnabled) {
                               const verified =
                                 await SecurityService.verifyWithBiometrics(
-                                  profile.biometricCredId,
+                                  profile.biometricCredIds ||
+                                    profile.biometricCredId,
                                 );
                               if (!verified) return;
                             }
@@ -659,7 +660,8 @@ const AccountPage: React.FC = () => {
                             if (isVaultEnabled) {
                               const verified =
                                 await SecurityService.verifyWithBiometrics(
-                                  profile.biometricCredId,
+                                  profile.biometricCredIds ||
+                                    profile.biometricCredId,
                                 );
                               if (!verified) return;
                             }

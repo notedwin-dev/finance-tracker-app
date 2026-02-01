@@ -155,12 +155,13 @@ const Profile: React.FC<Props> = ({
                   <input
                     type="password"
                     value={vaultPass}
+                    disabled={isSyncingLocal}
                     onChange={(e) => {
                       setVaultPass(e.target.value);
                       setVaultError("");
                     }}
                     placeholder="Enter password..."
-                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     autoFocus
                   />
                   {vaultError && (
@@ -175,27 +176,18 @@ const Profile: React.FC<Props> = ({
                 {isVaultEnabled &&
                   !isVaultUnlocked &&
                   (SecurityService.isBiometricRegistered() ||
+                    profile.biometricCredIds?.length ||
                     profile.biometricCredId) && (
                     <button
                       disabled={isSyncingLocal}
                       onClick={async () => {
                         const verified =
                           await SecurityService.verifyWithBiometrics(
-                            profile.biometricCredId,
+                            profile.biometricCredIds || profile.biometricCredId,
                           );
                         if (verified) {
                           setIsSyncingLocal(true);
                           setVaultError("");
-                          // If we have the ID but not in local storage, register this device locally
-                          if (
-                            profile.biometricCredId &&
-                            !localStorage.getItem("biometric_cred_id")
-                          ) {
-                            localStorage.setItem(
-                              "biometric_cred_id",
-                              profile.biometricCredId,
-                            );
-                          }
 
                           const storedPass = localStorage.getItem(
                             "vault_password_remembered",
@@ -222,7 +214,8 @@ const Profile: React.FC<Props> = ({
                               setVaultError("Unlock failed. Please try again.");
                             }
                           } else {
-                            const isTrusted = profile.devices?.includes(getDeviceId());
+                            const isTrusted =
+                              profile.devices?.includes(getDeviceId());
                             setVaultError(
                               isTrusted
                                 ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
@@ -239,7 +232,9 @@ const Profile: React.FC<Props> = ({
                       ) : (
                         <FingerPrintIcon className="w-5 h-5 text-emerald-400" />
                       )}
-                      {isSyncingLocal ? "Processing..." : "Unlock with Biometrics"}
+                      {isSyncingLocal
+                        ? "Processing..."
+                        : "Unlock with Biometrics"}
                     </button>
                   )}
                 {!isVaultCreated ? (
@@ -287,6 +282,7 @@ const Profile: React.FC<Props> = ({
                           // Link biometrics to this password for future usage on this device
                           if (
                             SecurityService.isBiometricRegistered() ||
+                            profile.biometricCredIds?.length ||
                             profile.biometricCredId
                           ) {
                             localStorage.setItem(
@@ -294,13 +290,18 @@ const Profile: React.FC<Props> = ({
                               vaultPass,
                             );
                             if (
-                              profile.biometricCredId &&
-                              !localStorage.getItem("biometric_cred_id")
+                              (profile.biometricCredIds?.length ||
+                                profile.biometricCredId) &&
+                              !localStorage.getItem("biometric_cred_ids")
                             ) {
+                              const ids = profile.biometricCredIds?.length
+                                ? profile.biometricCredIds
+                                : [profile.biometricCredId!];
                               localStorage.setItem(
-                                "biometric_cred_id",
-                                profile.biometricCredId,
+                                "biometric_cred_ids",
+                                JSON.stringify(ids),
                               );
+                              localStorage.removeItem("biometric_cred_id");
                             }
                           }
 
@@ -398,7 +399,12 @@ const Profile: React.FC<Props> = ({
                         currentPass,
                       );
                     }
-                    onUpdate({ biometricCredId: credId });
+                    onUpdate({
+                      biometricCredIds: Array.from(
+                        new Set([...(profile.biometricCredIds || []), credId]),
+                      ),
+                      biometricCredId: credId, // Keep legacy field updated too
+                    });
                     showToast("New Passkey registered!", "success");
                     setShowBiometricManagement(false);
                   } else {
@@ -415,17 +421,22 @@ const Profile: React.FC<Props> = ({
               </button>
 
               {(SecurityService.isBiometricRegistered() ||
+                profile.biometricCredIds?.length ||
                 profile.biometricCredId) && (
                 <button
                   onClick={async () => {
                     if (
                       confirm(
-                        "Unlink security? You will need your vault password to unlock next time.",
+                        "Unlink all security keys? You will need your vault password to unlock next time.",
                       )
                     ) {
                       localStorage.removeItem("biometric_cred_id");
+                      localStorage.removeItem("biometric_cred_ids");
                       localStorage.removeItem("vault_password_remembered");
-                      onUpdate({ biometricCredId: "" });
+                      onUpdate({
+                        biometricCredId: "",
+                        biometricCredIds: [],
+                      });
                       showToast("Security links removed", "info");
                       setShowBiometricManagement(false);
                     }
@@ -576,21 +587,21 @@ const Profile: React.FC<Props> = ({
               label={
                 SecurityService.isBiometricRegistered()
                   ? "Passkey Active"
-                  : profile.biometricCredId
+                  : profile.biometricCredIds?.length || profile.biometricCredId
                     ? "Passkey Available"
                     : "Register Passkey"
               }
               description={
                 SecurityService.isBiometricRegistered()
                   ? "Device identity linked"
-                  : profile.biometricCredId
+                  : profile.biometricCredIds?.length || profile.biometricCredId
                     ? "Stored in cloud (sync available)"
                     : "Use TouchID/FaceID for secure reveal"
               }
               color={
                 SecurityService.isBiometricRegistered()
                   ? "text-indigo-400"
-                  : profile.biometricCredId
+                  : profile.biometricCredIds?.length || profile.biometricCredId
                     ? "text-blue-400"
                     : "text-emerald-400"
               }

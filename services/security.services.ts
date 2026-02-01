@@ -111,7 +111,7 @@ export async function isBiometricAvailable(): Promise<boolean> {
  * Performs a biometric challenge (TouchID/FaceID) via WebAuthn.
  */
 export async function verifyWithBiometrics(
-  overrideCredId?: string,
+  overrideCredIds?: string | string[],
 ): Promise<boolean> {
   if (!(await isBiometricAvailable())) {
     return true;
@@ -121,10 +121,26 @@ export async function verifyWithBiometrics(
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
 
     // Priority: 1. Manual override (from cloud), 2. Local storage
-    const storedCredId =
-      overrideCredId || localStorage.getItem("biometric_cred_id");
+    let credIds: string[] = [];
+    if (overrideCredIds) {
+      credIds = Array.isArray(overrideCredIds)
+        ? overrideCredIds
+        : [overrideCredIds];
+    } else {
+      // Migrate legacy single ID to array if found
+      const legacy = localStorage.getItem("biometric_cred_id");
+      const stored = localStorage.getItem("biometric_cred_ids");
 
-    if (!storedCredId) {
+      if (stored) {
+        credIds = JSON.parse(stored);
+      } else if (legacy) {
+        credIds = [legacy];
+        localStorage.setItem("biometric_cred_ids", JSON.stringify(credIds));
+        localStorage.removeItem("biometric_cred_id");
+      }
+    }
+
+    if (credIds.length === 0) {
       return false;
     }
 
@@ -132,15 +148,29 @@ export async function verifyWithBiometrics(
       challenge,
       timeout: 60000,
       userVerification: "required",
-      allowCredentials: [
-        {
-          id: Uint8Array.from(atob(storedCredId), (c) => c.charCodeAt(0)),
-          type: "public-key",
-        },
-      ],
+      allowCredentials: credIds.map((id) => ({
+        id: Uint8Array.from(atob(id), (c) => c.charCodeAt(0)),
+        type: "public-key",
+      })),
     };
 
-    await window.navigator.credentials.get({ publicKey: options });
+    const assertion = (await window.navigator.credentials.get({
+      publicKey: options,
+    })) as any;
+
+    // Identify which credential was used and ensure it's in our local list
+    if (assertion?.rawId) {
+      const usedId = btoa(
+        String.fromCharCode(...new Uint8Array(assertion.rawId)),
+      );
+      const stored = localStorage.getItem("biometric_cred_ids");
+      const currentIds: string[] = stored ? JSON.parse(stored) : [];
+      if (!currentIds.includes(usedId)) {
+        currentIds.push(usedId);
+        localStorage.setItem("biometric_cred_ids", JSON.stringify(currentIds));
+      }
+    }
+
     return true;
   } catch (error) {
     console.warn("Biometric verification failed or cancelled:", error);
@@ -152,7 +182,10 @@ export async function verifyWithBiometrics(
  * Checks if biometrics are already registered for this device.
  */
 export function isBiometricRegistered(): boolean {
-  return !!localStorage.getItem("biometric_cred_id");
+  return (
+    !!localStorage.getItem("biometric_cred_ids") ||
+    !!localStorage.getItem("biometric_cred_id")
+  );
 }
 
 /**
@@ -190,7 +223,16 @@ export async function registerBiometrics(
     if (credential) {
       const rawId = new Uint8Array(credential.rawId);
       const base64Id = btoa(String.fromCharCode(...rawId));
-      localStorage.setItem("biometric_cred_id", base64Id);
+
+      const stored = localStorage.getItem("biometric_cred_ids");
+      const currentIds: string[] = stored ? JSON.parse(stored) : [];
+      if (!currentIds.includes(base64Id)) {
+        currentIds.push(base64Id);
+        localStorage.setItem("biometric_cred_ids", JSON.stringify(currentIds));
+      }
+      // Also remove legacy if exists
+      localStorage.removeItem("biometric_cred_id");
+
       return base64Id; // Return the ID so it can be synced to cloud
     }
     return null;

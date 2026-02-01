@@ -620,13 +620,16 @@ const TransactionForm: React.FC<Props> = ({
           <button
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] ${
+            className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
               isSubmitting
                 ? "bg-gray-600 cursor-not-allowed"
                 : "bg-primary hover:bg-primaryDark shadow-indigo-900/20"
             }`}
           >
-            {isSubmitting ? "Saving..." : "Save Record"}
+            {isSubmitting && (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            )}
+            {isSubmitting ? "Processing..." : "Save Record"}
           </button>
         </div>
       </div>

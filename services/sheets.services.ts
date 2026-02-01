@@ -214,6 +214,22 @@ export const findUser = async (email: string) => {
     if (rows.length <= 1) return null;
 
     const headers = rows[0];
+
+    // Migration: If sheet doesn't have isVaultCreated or biometricCredId, add them by updating headers
+    const requiredHeaders = ["isVaultCreated", "biometricCredId"];
+    const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
+    if (missingHeaders.length > 0) {
+      const newHeaders = [...headers, ...missingHeaders];
+      await window.gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId: fileId,
+        range: `'Users'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
+        valueInputOption: "RAW",
+        resource: { values: [newHeaders] },
+      });
+      // Re-fetch to get current state after header update
+      return findUser(email);
+    }
+
     const emailIdx = headers.indexOf("email");
     if (emailIdx === -1) return null;
 
@@ -261,7 +277,7 @@ export const createUser = async (userData: any) => {
       // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:H1",
+        range: "'Users'!A1:I1",
         valueInputOption: "RAW",
         resource: {
           values: [
@@ -274,6 +290,7 @@ export const createUser = async (userData: any) => {
               "vaultSalt",
               "privacyMode",
               "biometricCredId",
+              "isVaultCreated",
             ],
           ],
         },
@@ -282,7 +299,7 @@ export const createUser = async (userData: any) => {
 
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A:H",
+      range: "'Users'!A:I",
       valueInputOption: "RAW",
       resource: {
         values: [
@@ -295,6 +312,7 @@ export const createUser = async (userData: any) => {
             userData.vaultSalt || "",
             userData.privacyMode || false,
             userData.biometricCredId || "",
+            userData.isVaultCreated || false,
           ],
         ],
       },

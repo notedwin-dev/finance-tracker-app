@@ -50,6 +50,7 @@ const Profile: React.FC<Props> = ({
   const {
     maskText,
     isVaultEnabled,
+    isVaultCreated,
     isVaultUnlocked,
     unlockVault,
     enableVault,
@@ -61,6 +62,7 @@ const Profile: React.FC<Props> = ({
   const [vaultPass, setVaultPass] = useState("");
   const [showVaultPrompt, setShowVaultPrompt] = useState(false);
   const [vaultError, setVaultError] = useState("");
+  const [isSyncingLocal, setIsSyncingLocal] = useState(false);
 
   const handleSave = () => {
     onUpdate({ name });
@@ -127,17 +129,17 @@ const Profile: React.FC<Props> = ({
                 <LockClosedIcon className="w-8 h-8" />
               </div>
               <h3 className="text-xl font-black text-white">
-                {isVaultEnabled
+                {isVaultCreated
                   ? isVaultUnlocked
                     ? "Vault Active"
                     : "Unlock Vault"
                   : "Enable Secure Vault"}
               </h3>
               <p className="text-sm text-gray-500">
-                {isVaultEnabled
+                {isVaultCreated
                   ? isVaultUnlocked
                     ? "Your Secure Vault is active and protecting your sensitive data."
-                    : "Enter the custom encryption password you created when you first enabled the vault. This is NOT your Google password."
+                    : "Enter the custom encryption password you created. This is NOT your Google password."
                   : "Create a custom encryption password to protect your bank details. ZenFinance and Google do not have access to this password, so make sure to remember it!"}
               </p>
             </div>
@@ -173,12 +175,15 @@ const Profile: React.FC<Props> = ({
                   (SecurityService.isBiometricRegistered() ||
                     profile.biometricCredId) && (
                     <button
+                      disabled={isSyncingLocal}
                       onClick={async () => {
                         const verified =
                           await SecurityService.verifyWithBiometrics(
                             profile.biometricCredId,
                           );
                         if (verified) {
+                          setIsSyncingLocal(true);
+                          setVaultError("");
                           // If we have the ID but not in local storage, register this device locally
                           if (
                             profile.biometricCredId &&
@@ -194,73 +199,133 @@ const Profile: React.FC<Props> = ({
                             "vault_password_remembered",
                           );
                           if (storedPass) {
-                            const success = await unlockVault(storedPass);
-                            if (success) {
-                              setShowVaultPrompt(false);
-                              showToast(
-                                "Vault unlocked with Biometrics!",
-                                "success",
-                              );
-                            } else {
-                              setVaultError(
-                                "Biometric unlock failed. Please use password.",
-                              );
+                            try {
+                              const success = await unlockVault(storedPass);
+                              if (success) {
+                                showToast(
+                                  "Vault unlocked with Biometrics!",
+                                  "success",
+                                );
+                                setShowVaultPrompt(false);
+                              } else {
+                                setVaultError(
+                                  "Biometric unlock failed. Please use password.",
+                                );
+                              }
+                            } catch (e) {
+                              setVaultError("Unlock failed. Please try again.");
                             }
                           } else {
                             setVaultError(
                               "Biometrics verified! However, since this is a new device, please enter your Vault Password once to link your security.",
                             );
                           }
+                          setIsSyncingLocal(false);
                         }
                       }}
-                      className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
+                      className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2 disabled:opacity-50"
                     >
-                      <FingerPrintIcon className="w-5 h-5 text-emerald-400" />
-                      Unlock with Biometrics
+                      {isSyncingLocal ? (
+                        <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <FingerPrintIcon className="w-5 h-5 text-emerald-400" />
+                      )}
+                      {isSyncingLocal ? "Processing..." : "Unlock with Biometrics"}
                     </button>
                   )}
-                {!isVaultEnabled ? (
+                {!isVaultCreated ? (
                   <button
+                    disabled={isSyncingLocal}
                     onClick={async () => {
                       if (vaultPass.length < 4) {
                         setVaultError("Password too short");
                         return;
                       }
-                      await enableVault(vaultPass);
-                      setVaultPass("");
-                      setShowVaultPrompt(false);
-                      showToast("Vault enabled!", "success");
+                      setIsSyncingLocal(true);
+                      try {
+                        await enableVault(vaultPass);
+                        setVaultPass("");
+                        setShowVaultPrompt(false);
+                        showToast("Vault enabled!", "success");
+                      } catch (e) {
+                        setVaultError("Failed to enable vault.");
+                      } finally {
+                        setIsSyncingLocal(false);
+                      }
                     }}
-                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
-                    Enable Vault
+                    {isSyncingLocal ? "Setting up..." : "Setup Vault Password"}
                   </button>
                 ) : !isVaultUnlocked ? (
                   <button
+                    disabled={isSyncingLocal}
                     onClick={async () => {
-                      const success = await unlockVault(vaultPass);
-                      if (success) {
-                        setVaultPass("");
-                        setShowVaultPrompt(false);
-                        showToast("Vault unlocked!", "success");
-                      } else {
-                        setVaultError("Invalid password");
+                      setIsSyncingLocal(true);
+                      setVaultError("");
+                      try {
+                        const success = await unlockVault(vaultPass);
+                        if (success) {
+                          // Link biometrics to this password for future usage on this device
+                          if (
+                            SecurityService.isBiometricRegistered() ||
+                            profile.biometricCredId
+                          ) {
+                            localStorage.setItem(
+                              "vault_password_remembered",
+                              vaultPass,
+                            );
+                            if (
+                              profile.biometricCredId &&
+                              !localStorage.getItem("biometric_cred_id")
+                            ) {
+                              localStorage.setItem(
+                                "biometric_cred_id",
+                                profile.biometricCredId,
+                              );
+                            }
+                          }
+
+                          // If it was created but currently disabled, enable it
+                          if (!isVaultEnabled) {
+                            await enableVault(vaultPass);
+                          }
+                          setVaultPass("");
+                          showToast("Vault unlocked!", "success");
+                          setShowVaultPrompt(false);
+                        } else {
+                          setVaultError("Invalid password");
+                        }
+                      } catch (e) {
+                        setVaultError("Unlock error.");
+                      } finally {
+                        setIsSyncingLocal(false);
                       }
                     }}
-                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
-                    Unlock Vault
+                    {isSyncingLocal
+                      ? "Verifying..."
+                      : isVaultEnabled
+                        ? "Unlock Vault"
+                        : "Unlock & Enable Vault"}
                   </button>
                 ) : (
                   <button
+                    disabled={isSyncingLocal}
                     onClick={async () => {
-                      await disableVault();
-                      setShowVaultPrompt(false);
-                      showToast("Vault disabled", "info");
+                      setIsSyncingLocal(true);
+                      try {
+                        await disableVault();
+                        setShowVaultPrompt(false);
+                        showToast("Vault disabled", "info");
+                      } finally {
+                        setIsSyncingLocal(false);
+                      }
                     }}
-                    className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
+                    className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
                   >
-                    Disable Vault
+                    {isSyncingLocal ? "Disabling..." : "Disable Vault"}
                   </button>
                 )}
                 <button
@@ -342,7 +407,7 @@ const Profile: React.FC<Props> = ({
                     </p>
                   </div>
                   <div className="bg-primary/10 text-primary text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-wider border border-primary/20">
-                    Free Plan
+                    Free Forever
                   </div>
                 </div>
               )}
@@ -379,10 +444,12 @@ const Profile: React.FC<Props> = ({
               icon={LockClosedIcon}
               label="Secure Vault"
               description={
-                isVaultEnabled
+                isVaultCreated
                   ? isVaultUnlocked
                     ? "Vault is unlocked and active"
-                    : "Vault is locked. Tap to unlock."
+                    : isVaultEnabled
+                      ? "Vault is locked. Tap to unlock."
+                      : "Vault is disabled. Tap to enable."
                   : "Enable a Secure Vault to protect sensitive details."
               }
               color={isVaultEnabled ? "text-rose-400" : "text-gray-400"}

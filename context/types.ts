@@ -25,6 +25,7 @@ export interface DataContextType {
   privacyMode: boolean;
   setPrivacyMode: (value: boolean) => void;
   isVaultEnabled: boolean;
+  isVaultCreated: boolean;
   isVaultUnlocked: boolean;
   unlockVault: (password: string) => Promise<boolean>;
   enableVault: (password: string) => Promise<void>;

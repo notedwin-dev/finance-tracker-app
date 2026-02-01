@@ -62,6 +62,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const privacyMode = checkBool(profile.privacyMode);
   const isVaultEnabled = checkBool(profile.isVaultEnabled);
+  const isVaultCreated = checkBool(profile.isVaultCreated);
 
   const getVaultSalt = () => {
     if (profile.vaultSalt) return profile.vaultSalt;
@@ -220,7 +221,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const enableVault = async (password: string) => {
     setVaultPassword(password);
     localStorage.setItem("vault_password_session", password);
-    updateProfile({ isVaultEnabled: true });
+    updateProfile({ isVaultEnabled: true, isVaultCreated: true });
 
     // Encrypt all current accounts and save
     const encryptedAccounts = await Promise.all(
@@ -1132,6 +1133,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         privacyMode,
         setPrivacyMode,
         isVaultEnabled,
+        isVaultCreated,
         isVaultUnlocked,
         unlockVault,
         enableVault,

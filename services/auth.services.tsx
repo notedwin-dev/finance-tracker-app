@@ -131,8 +131,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         isLoggedIn: true,
         // Sync cloud settings if they exist
         isVaultEnabled: cloudUser?.isVaultEnabled ?? profile.isVaultEnabled,
+        isVaultCreated: cloudUser?.isVaultCreated ?? profile.isVaultCreated,
         vaultSalt: cloudUser?.vaultSalt ?? profile.vaultSalt,
         privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
+        biometricCredId: cloudUser?.biometricCredId ?? profile.biometricCredId,
       };
 
       StorageService.saveProfile(newProfile);
@@ -178,8 +180,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       email: user.email,
       isLoggedIn: true,
       isVaultEnabled: user.isVaultEnabled ?? profile.isVaultEnabled,
+      isVaultCreated: user.isVaultCreated ?? profile.isVaultCreated,
       vaultSalt: user.vaultSalt ?? profile.vaultSalt,
       privacyMode: user.privacyMode ?? profile.privacyMode,
+      biometricCredId: user.biometricCredId ?? profile.biometricCredId,
     };
     StorageService.saveProfile(newProfile);
     setProfile(newProfile);

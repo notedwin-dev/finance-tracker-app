@@ -95,6 +95,7 @@ export interface UserProfile {
   syncChatToSheets?: boolean;
   privacyMode?: boolean;
   isVaultEnabled?: boolean;
+  isVaultCreated?: boolean;
   vaultSalt?: string;
   biometricCredId?: string; // Cloud-synced ID for cross-device Passkey identification
 }

@@ -92,8 +92,10 @@ const MainLayout: React.FC = () => {
   }
 
   const handleLogout = async () => {
-    logout();
     navigate("/", { replace: true });
+    setTimeout(() => {
+      logout();
+    }, 100);
   };
 
   return (

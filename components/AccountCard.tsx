@@ -137,17 +137,17 @@ const AccountCard: React.FC<Props> = ({
 
       <div className="relative z-10 flex justify-between items-start">
         <div className="flex items-center gap-4 min-w-0">
-          <div className="w-14 h-14 shrink-0 rounded-[1.25rem] bg-white/5 border border-white/10 flex items-center justify-center text-3xl shadow-2xl group-hover:border-emerald-500/30 transition-colors">
-            {account.iconType === "IMAGE" ? (
-              <img
-                src={account.iconValue}
-                className="w-9 h-9 object-contain"
-                alt=""
-              />
-            ) : (
-              <span className="scale-110">{account.iconValue}</span>
-            )}
-          </div>
+          {account.iconType === "IMAGE" ? (
+            <img
+              src={account.iconValue}
+              className="w-14 h-14 object-contain shrink-0 rounded-2xl bg-white p-1 flex items-center justify-center shadow-2xl border border-white/10 transition-transform group-hover:scale-110"
+              alt=""
+            />
+          ) : (
+            <span className="w-14 h-14 shrink-0 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-3xl shadow-2xl transition-all group-hover:scale-110 group-hover:border-indigo-500/40">
+              {account.iconValue}
+            </span>
+          )}
           <div className="space-y-0.5 min-w-0">
             <h4 className="font-bold text-lg text-white tracking-tight truncate">
               {maskText(account.name)}

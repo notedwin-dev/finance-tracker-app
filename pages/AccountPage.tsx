@@ -322,7 +322,7 @@ const AccountPage: React.FC = () => {
               <img
                 src={account.iconValue}
                 alt="icon"
-                className="w-14 h-14 sm:w-20 sm:h-20 object-contain bg-white rounded-2xl sm:rounded-3xl p-2 shadow-2xl shrink-0"
+                className="w-14 h-14 sm:w-20 sm:h-20 object-contain bg-white rounded-2xl sm:rounded-3xl p-1.5 shadow-2xl shrink-0"
               />
             ) : (
               <div className="w-14 h-14 sm:w-20 sm:h-20 bg-indigo-500/10 rounded-2xl sm:rounded-3xl flex items-center justify-center text-3xl sm:text-5xl border border-indigo-500/20 shadow-2xl shrink-0">

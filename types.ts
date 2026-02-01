@@ -20,6 +20,15 @@ export interface ExchangeRateData {
   }[];
 }
 
+export interface AccountDetails {
+  accountNumber?: string;
+  cardNumber?: string;
+  holderName?: string;
+  expiry?: string;
+  cvv?: string;
+  note?: string;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -32,14 +41,7 @@ export interface Account {
   updatedAt?: number; // Timestamp for sync
   userId: string; // User ID owner
   providerId?: string;
-  details?: {
-    accountNumber?: string;
-    cardNumber?: string;
-    holderName?: string;
-    expiry?: string;
-    cvv?: string;
-    note?: string;
-  };
+  details?: AccountDetails | string;
 }
 
 export interface Category {
@@ -92,6 +94,8 @@ export interface UserProfile {
   geminiApiKey?: string;
   syncChatToSheets?: boolean;
   privacyMode?: boolean;
+  isVaultEnabled?: boolean;
+  vaultSalt?: string;
 }
 
 export interface Goal {

@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import { useData } from "../context/DataContext";
+import * as SecurityService from "../services/security.services";
 import {
   ChevronLeftIcon,
   CreditCardIcon,
@@ -24,7 +25,7 @@ import {
   ScriptableContext,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { TransactionType } from "../types";
+import { AccountDetails, TransactionType } from "../types";
 import { normalizeDate } from "../helpers/transactions.helper";
 
 // Register ChartJS components
@@ -54,6 +55,7 @@ const AccountPage: React.FC = () => {
     maskAmount,
     maskText,
     privacyMode,
+    isVaultEnabled,
   } = useData();
   const {
     setShowAddModal,
@@ -539,7 +541,7 @@ const AccountPage: React.FC = () => {
           )}
 
           {/* Account Identity Details */}
-          {account.details && (
+          {account.details && typeof account.details === "object" && (
             <div className="bg-surface/40 backdrop-blur-3xl p-6 sm:p-8 rounded-4xl sm:rounded-[2.5rem] border border-white/5 shadow-2xl space-y-5 sm:space-y-6">
               <h4 className="font-extrabold sm:font-black text-white uppercase tracking-[0.2em] text-[10px] sm:text-xs flex items-center gap-2">
                 <CreditCardIcon className="w-5 h-5 text-indigo-400" /> Identity
@@ -547,32 +549,72 @@ const AccountPage: React.FC = () => {
               </h4>
 
               <div className="space-y-5 sm:space-y-6">
-                {account.details.holderName && (
+                {(account.details as AccountDetails).holderName && (
                   <div className="space-y-1">
                     <label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest">
                       Account Holder
                     </label>
                     <p className="font-mono text-gray-200 text-sm sm:text-sm">
-                      {maskText(account.details.holderName)}
+                      {maskText(
+                        (account.details as AccountDetails).holderName!,
+                        true,
+                      )}
                     </p>
                   </div>
                 )}
-                {account.details.accountNumber && (
+                {(account.details as AccountDetails).accountNumber && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest block">
                       Account Number
                     </label>
                     <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group">
                       <p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
-                        {privacyMode
-                          ? "**** **** **** " +
-                            account.details.accountNumber.slice(-4)
-                          : account.details.accountNumber}
+                        {maskText(
+                          (account.details as AccountDetails).accountNumber!,
+                          true,
+                        )}
                       </p>
                       <button
-                        onClick={() =>
-                          copyToClipboard(account.details?.accountNumber)
-                        }
+                        onClick={async () => {
+                          if (isVaultEnabled) {
+                            const verified =
+                              await SecurityService.verifyWithBiometrics();
+                            if (!verified) return;
+                          }
+                          copyToClipboard(
+                            (account.details as AccountDetails).accountNumber,
+                          );
+                        }}
+                        className="text-gray-500 hover:text-white transition-colors shrink-0"
+                      >
+                        <ClipboardDocumentIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {(account.details as AccountDetails).cardNumber && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest block">
+                      Card Number
+                    </label>
+                    <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group">
+                      <p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
+                        {maskText(
+                          (account.details as AccountDetails).cardNumber!,
+                          true,
+                        )}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          if (isVaultEnabled) {
+                            const verified =
+                              await SecurityService.verifyWithBiometrics();
+                            if (!verified) return;
+                          }
+                          copyToClipboard(
+                            (account.details as AccountDetails).cardNumber,
+                          );
+                        }}
                         className="text-gray-500 hover:text-white transition-colors shrink-0"
                       >
                         <ClipboardDocumentIcon className="w-5 h-5" />
@@ -581,32 +623,38 @@ const AccountPage: React.FC = () => {
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">
-                  {account.details.expiry && (
+                  {(account.details as AccountDetails).expiry && (
                     <div className="space-y-1">
                       <label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest">
                         Expiry Date
                       </label>
                       <p className="font-mono text-gray-200 text-sm sm:text-sm">
-                        {privacyMode ? "**/**" : account.details.expiry}
+                        {maskText(
+                          (account.details as AccountDetails).expiry!,
+                          true,
+                        )}
                       </p>
                     </div>
                   )}
-                  {account.details.cvv && (
+                  {(account.details as AccountDetails).cvv && (
                     <div className="space-y-1">
                       <label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest">
                         CVV Code
                       </label>
                       <p className="font-mono text-gray-200 text-sm sm:text-sm">
-                        ***
+                        {maskText(
+                          (account.details as AccountDetails).cvv!,
+                          true,
+                        )}
                       </p>
                     </div>
                   )}
                 </div>
 
-                {account.details.note && (
+                {(account.details as AccountDetails).note && (
                   <div className="pt-4 border-t border-white/5">
                     <p className="text-[10px] text-gray-500 italic leading-relaxed">
-                      {account.details.note}
+                      {(account.details as AccountDetails).note}
                     </p>
                   </div>
                 )}

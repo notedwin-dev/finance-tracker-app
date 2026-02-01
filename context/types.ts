@@ -24,14 +24,23 @@ export interface DataContextType {
   setDisplayCurrency: (currency: "MYR" | "USD") => void;
   privacyMode: boolean;
   setPrivacyMode: (value: boolean) => void;
-  maskAmount: (amount: number | string, currency?: string) => React.ReactNode;
-  maskText: (text: string) => React.ReactNode;
+  isVaultEnabled: boolean;
+  isVaultUnlocked: boolean;
+  unlockVault: (password: string) => Promise<boolean>;
+  enableVault: (password: string) => Promise<void>;
+  disableVault: () => Promise<void>;
+  maskAmount: (
+    amount: number | string,
+    currency?: string,
+    isSensitive?: boolean,
+  ) => React.ReactNode;
+  maskText: (text: string, isSensitive?: boolean) => React.ReactNode;
   exchangeRate: ExchangeRateData | null;
   isSyncing: boolean;
   toast: { message: string; type: "success" | "alert" | "info" } | null;
   showToast: (message: string, type: "success" | "alert" | "info") => void;
   syncData: () => Promise<void>;
-  loadData: () => void;
+  loadData: () => Promise<void>;
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;

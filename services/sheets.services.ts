@@ -221,7 +221,20 @@ export const findUser = async (email: string) => {
     if (!userRow) return null;
 
     const user: any = {};
-    headers.forEach((h: string, i: number) => (user[h] = userRow[i]));
+    headers.forEach((h: string, i: number) => {
+      let val = userRow[i];
+      // Convert booleans and handle JSON
+      if (val === "true") val = true;
+      if (val === "false") val = false;
+      if (typeof val === "string" && val.startsWith("{") && val.endsWith("}")) {
+        try {
+          val = JSON.parse(val);
+        } catch {
+          /* ignore */
+        }
+      }
+      user[h] = val;
+    });
     return user;
   } catch (e) {
     return null;
@@ -243,18 +256,30 @@ export const createUser = async (userData: any) => {
           requests: [{ addSheet: { properties: { title: "Users" } } }],
         },
       });
-      // Add headers
+      // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:D1",
+        range: "'Users'!A1:G1",
         valueInputOption: "RAW",
-        resource: { values: [["email", "password", "name", "createdAt"]] },
+        resource: {
+          values: [
+            [
+              "email",
+              "password",
+              "name",
+              "createdAt",
+              "isVaultEnabled",
+              "vaultSalt",
+              "privacyMode",
+            ],
+          ],
+        },
       });
     }
 
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A:D",
+      range: "'Users'!A:G",
       valueInputOption: "RAW",
       resource: {
         values: [
@@ -263,6 +288,9 @@ export const createUser = async (userData: any) => {
             userData.password,
             userData.name,
             new Date().toISOString(),
+            userData.isVaultEnabled || false,
+            userData.vaultSalt || "",
+            userData.privacyMode || false,
           ],
         ],
       },
@@ -270,6 +298,52 @@ export const createUser = async (userData: any) => {
     return true;
   } catch (e) {
     console.error("Failed to create user", e);
+    return false;
+  }
+};
+
+export const updateUser = async (email: string, updates: any) => {
+  if (!gapiInited || !hasAccessToken) return false;
+  try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return false;
+
+    // 1. Get current user data
+    const res = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: "'Users'!A:Z",
+    });
+    const rows = res.result.values || [];
+    if (rows.length === 0) return false;
+
+    const headers = rows[0];
+    const emailIdx = headers.indexOf("email");
+    const rowIndex = rows.findIndex((r) => r[emailIdx] === email);
+    if (rowIndex === -1) return false;
+
+    // 2. Prepare updated row based on headers
+    const currentRow = rows[rowIndex];
+    const updatedRow = headers.map((header, i) => {
+      if (updates[header] !== undefined) {
+        // Basic check: stringify boolean/objects
+        const val = updates[header];
+        if (typeof val === "boolean") return val.toString();
+        if (typeof val === "object" && val !== null) return JSON.stringify(val);
+        return val;
+      }
+      return currentRow[i] ?? "";
+    });
+
+    // 3. Update the row
+    await window.gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: fileId,
+      range: `'Users'!A${rowIndex + 1}`,
+      valueInputOption: "USER_ENTERED",
+      resource: { values: [updatedRow] },
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to update user", e);
     return false;
   }
 };
@@ -380,7 +454,20 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
     if (hasId) headerSet.add("id");
 
     combinedData.forEach((item) => {
-      Object.keys(item).forEach((key) => headerSet.add(key));
+      Object.keys(item).forEach((key) => {
+        // Security check: Never allow sensitive account details to become top-level columns
+        const sensitiveFields = [
+          "accountNumber",
+          "cardNumber",
+          "cvv",
+          "expiry",
+          "holderName",
+        ];
+        if (sheetName === "Accounts" && sensitiveFields.includes(key)) {
+          return;
+        }
+        headerSet.add(key);
+      });
     });
     const headers = Array.from(headerSet);
 
@@ -396,6 +483,11 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 
     const values = [headers, ...rowsToUpdate];
 
+    // Security: If we are saving Accounts, we want to make sure old sensitive columns are wiped.
+    // If headers decreased in width, we should clear the wider range.
+    const maxCols = Math.max(headers.length, (rows[0] || []).length);
+    const clearRange = `'${sheetName}'!A1:${getColumnLetter(maxCols - 1)}${Math.max(totalExistingRows, values.length)}`;
+
     // Write new data starting from A1
     await window.gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: fileId,
@@ -404,12 +496,26 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
       resource: { values },
     });
 
-    // If new data is shorter than old data, clear the bottom rows
-    if (totalExistingRows > values.length) {
-      await window.gapi.client.sheets.spreadsheets.values.clear({
-        spreadsheetId: fileId,
-        range: `'${sheetName}'!A${values.length + 1}:Z${totalExistingRows}`,
-      });
+    // If new data is shorter or narrower than old data, clear the remainders
+    if (
+      totalExistingRows > values.length ||
+      (rows[0] || []).length > headers.length
+    ) {
+      // Clear anything from the end of our new data to the end of the old data range
+      // This is a bit complex with A1 notation, so we'll just clear the specific rows/cols if needed.
+      if (totalExistingRows > values.length) {
+        await window.gapi.client.sheets.spreadsheets.values.clear({
+          spreadsheetId: fileId,
+          range: `'${sheetName}'!A${values.length + 1}:${getColumnLetter(maxCols - 1)}${totalExistingRows + 10}`,
+        });
+      }
+      if ((rows[0] || []).length > headers.length) {
+        // Clear columns to the right
+        await window.gapi.client.sheets.spreadsheets.values.clear({
+          spreadsheetId: fileId,
+          range: `'${sheetName}'!${getColumnLetter(headers.length)}1:${getColumnLetter(maxCols - 1)}${values.length}`,
+        });
+      }
     }
 
     console.log(`Saved ${sheetName} to Google Sheets`);
@@ -641,6 +747,7 @@ export const loadFromGoogleSheets = async (): Promise<{
   subscriptions: Subscription[];
   pots: Pot[];
   chatSessions: ChatSession[];
+  profile?: any;
 } | null> => {
   if (!gapiInited) {
     console.error("GAPI not initialized");
@@ -786,6 +893,12 @@ export const loadFromGoogleSheets = async (): Promise<{
     return migratedPot;
   });
 
+  // Load profile from Users sheet if we have an ID
+  let cloudProfile = undefined;
+  if (currentUserId) {
+    cloudProfile = await findUser(currentUserId);
+  }
+
   return {
     accounts: result.accounts || [],
     transactions: result.transactions || [],
@@ -794,5 +907,6 @@ export const loadFromGoogleSheets = async (): Promise<{
     subscriptions: result.subscriptions || [],
     pots,
     chatSessions: result.chatsessions || [],
+    profile: cloudProfile,
   };
 };

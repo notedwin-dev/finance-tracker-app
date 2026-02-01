@@ -17,6 +17,7 @@ import {
   ExchangeRateData,
 } from "../types";
 import { DataContext } from "./DataContext";
+import * as SecurityService from "../services/security.services";
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -44,21 +45,238 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     type: "success" | "alert" | "info";
   } | null>(null);
 
+  // Vault/Security State
+  const [vaultPassword, setVaultPassword] = useState<string | null>(
+    localStorage.getItem("vault_password_session") || null,
+  );
+
   const privacyMode = profile.privacyMode || false;
+  const isVaultEnabled = profile.isVaultEnabled || false;
+
+  const getVaultSalt = () => {
+    if (profile.vaultSalt) return profile.vaultSalt;
+    const newSalt = Math.random().toString(36).substring(2, 15);
+    updateProfile({ vaultSalt: newSalt });
+    return newSalt;
+  };
+
   const setPrivacyMode = (value: boolean) => {
     updateProfile({ privacyMode: value });
   };
 
-  const maskAmount = (amount: number | string, currency?: string) => {
+  const encryptAccount = async (acc: Account): Promise<Account> => {
+    if (!isVaultEnabled || !vaultPassword || !acc.details) return acc;
+    const salt = getVaultSalt();
+    try {
+      const encryptedDetails = await SecurityService.encryptData(
+        JSON.stringify(acc.details),
+        vaultPassword,
+        salt,
+      );
+      return { ...acc, details: encryptedDetails as any };
+    } catch (e) {
+      console.error("Encryption failed", e);
+      return acc;
+    }
+  };
+
+  const isVaultUnlocked = !!vaultPassword;
+
+  const normalizeAccount = (acc: any): Account => {
+    // Migration: If sensitive fields are at top level, move them to details if details is empty
+    const sensitiveFields = [
+      "accountNumber",
+      "cardNumber",
+      "cvv",
+      "expiry",
+      "holderName",
+      "note",
+    ];
+    let hasSensitiveAtTop = false;
+    const details = (
+      typeof acc.details === "object" ? { ...acc.details } : {}
+    ) as any;
+
+    sensitiveFields.forEach((f) => {
+      if (acc[f]) {
+        if (!details[f]) details[f] = acc[f];
+        delete acc[f];
+        hasSensitiveAtTop = true;
+      }
+    });
+
+    if (hasSensitiveAtTop && Object.keys(details).length > 0) {
+      return { ...acc, details };
+    }
+    return acc;
+  };
+
+  const unlockVault = async (password: string): Promise<boolean> => {
+    // To verify the password, we could try to decrypt a test string or just set it
+    // For now, let's just set it and trigger a reload/re-decrypt
+    setVaultPassword(password);
+    localStorage.setItem("vault_password_session", password);
+
+    // Attempt to re-load data with the new password
+    const storedAccounts = StorageService.getStoredAccounts();
+    const decryptedAccounts = await Promise.all(
+      storedAccounts.map(async (acc) => {
+        if (
+          acc.details &&
+          typeof acc.details === "string" &&
+          acc.details.startsWith("ENC:")
+        ) {
+          const salt = getVaultSalt();
+          try {
+            const decryptedStr = await SecurityService.decryptData(
+              acc.details,
+              password,
+              salt,
+            );
+            return { ...acc, details: JSON.parse(decryptedStr) };
+          } catch (e) {
+            return acc;
+          }
+        }
+        return acc;
+      }),
+    );
+    setAccounts(decryptedAccounts);
+    return true;
+  };
+
+  const enableVault = async (password: string) => {
+    setVaultPassword(password);
+    localStorage.setItem("vault_password_session", password);
+    updateProfile({ isVaultEnabled: true });
+
+    // Encrypt all current accounts and save
+    const encryptedAccounts = await Promise.all(
+      accounts.map(async (acc) => {
+        if (acc.details && typeof acc.details === "object") {
+          const salt = getVaultSalt();
+          const encryptedStr = await SecurityService.encryptData(
+            JSON.stringify(acc.details),
+            password,
+            salt,
+          );
+          return { ...acc, details: encryptedStr as any };
+        }
+        return acc;
+      }),
+    );
+    StorageService.saveAccounts(encryptedAccounts);
+
+    // Register biometrics if available
+    if (await SecurityService.isBiometricAvailable()) {
+      const wantBiometrics = window.confirm(
+        "Would you like to enable TouchID/FaceID for secure reveals?",
+      );
+      if (wantBiometrics) {
+        await SecurityService.registerBiometrics(profile.name || "User");
+      }
+    }
+
+    if (SheetService.isClientReady()) {
+      await SheetService.syncWithGoogleSheets(
+        encryptedAccounts,
+        transactions,
+        categories,
+        goals,
+        subscriptions,
+        pots,
+        profile.syncChatToSheets ? chatSessions : undefined,
+      );
+    }
+  };
+
+  const disableVault = async () => {
+    // Decrypt all before disabling
+    const decryptedAccounts = await Promise.all(
+      accounts.map(async (acc) => {
+        if (
+          acc.details &&
+          typeof acc.details === "string" &&
+          acc.details.startsWith("ENC:")
+        ) {
+          const salt = getVaultSalt();
+          try {
+            const decryptedStr = await SecurityService.decryptData(
+              acc.details,
+              vaultPassword || "",
+              salt,
+            );
+            return { ...acc, details: JSON.parse(decryptedStr) };
+          } catch (e) {
+            return acc;
+          }
+        }
+        return acc;
+      }),
+    );
+    updateProfile({ isVaultEnabled: false });
+    setVaultPassword(null);
+    localStorage.removeItem("vault_password_session");
+
+    setAccounts(decryptedAccounts);
+    StorageService.saveAccounts(decryptedAccounts);
+    if (SheetService.isClientReady()) {
+      await SheetService.syncWithGoogleSheets(
+        decryptedAccounts,
+        transactions,
+        categories,
+        goals,
+        subscriptions,
+        pots,
+        profile.syncChatToSheets ? chatSessions : undefined,
+      );
+    }
+  };
+
+  const decryptAccount = async (acc: Account): Promise<Account> => {
+    if (
+      !acc.details ||
+      typeof acc.details !== "string" ||
+      !acc.details.startsWith("ENC:")
+    )
+      return acc;
+    if (!vaultPassword) return acc;
+
+    const salt = getVaultSalt();
+    try {
+      const decryptedStr = await SecurityService.decryptData(
+        acc.details,
+        vaultPassword,
+        salt,
+      );
+      return { ...acc, details: JSON.parse(decryptedStr) };
+    } catch (e) {
+      console.error("Decryption failed", e);
+      return acc;
+    }
+  };
+
+  const maskAmount = (
+    amount: number | string,
+    currency?: string,
+    isSensitive: boolean = false,
+  ) => {
     const formatted = `${currency ? currency + " " : ""}${amount}`;
     if (!privacyMode) return formatted;
     return (
       <span
         className="group/mask inline-flex cursor-pointer transition-all duration-300"
-        onClick={(e) => {
+        onClick={async (e) => {
           e.stopPropagation();
           const target = e.currentTarget;
           const isRevealed = target.getAttribute("data-revealed") === "true";
+
+          if (!isRevealed && isSensitive && isVaultEnabled) {
+            // Trigger biometric check for truly sensitive data reveal
+            const verified = await SecurityService.verifyWithBiometrics();
+            if (!verified) return;
+          }
+
           target.setAttribute("data-revealed", isRevealed ? "false" : "true");
         }}
       >
@@ -72,15 +290,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  const maskText = (text: string) => {
+  const maskText = (text: string, isSensitive: boolean = false) => {
     if (!privacyMode || !text) return text;
     return (
       <span
         className="group/mask inline-flex cursor-pointer transition-all duration-300"
-        onClick={(e) => {
+        onClick={async (e) => {
           e.stopPropagation();
           const target = e.currentTarget;
           const isRevealed = target.getAttribute("data-revealed") === "true";
+
+          if (!isRevealed && isSensitive && isVaultEnabled) {
+            const verified = await SecurityService.verifyWithBiometrics();
+            if (!verified) return;
+          }
+
           target.setAttribute("data-revealed", isRevealed ? "false" : "true");
         }}
       >
@@ -99,8 +323,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadData = () => {
-    setAccounts(StorageService.getStoredAccounts());
+  const loadData = async () => {
+    const storedAccounts = StorageService.getStoredAccounts();
+    // Decrypt and normalize accounts
+    const decryptedAccounts = await Promise.all(
+      storedAccounts.map(async (a) => {
+        const decrypted = await decryptAccount(a);
+        return normalizeAccount(decrypted);
+      }),
+    );
+    setAccounts(decryptedAccounts);
+
     const loadedTxs = StorageService.getStoredTransactions();
     setTransactions(loadedTxs);
     setCategories(StorageService.getStoredCategories());
@@ -242,6 +475,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       showToast("Syncing with Google Sheets...", "info");
       const cloudData = await SheetService.loadFromGoogleSheets();
       if (cloudData) {
+        // Sync Profile if available
+        if (cloudData.profile) {
+          const updates: any = {};
+          if (
+            cloudData.profile.isVaultEnabled !== undefined &&
+            cloudData.profile.isVaultEnabled !== profile.isVaultEnabled
+          ) {
+            updates.isVaultEnabled = cloudData.profile.isVaultEnabled;
+          }
+          if (
+            cloudData.profile.vaultSalt &&
+            cloudData.profile.vaultSalt !== profile.vaultSalt
+          ) {
+            updates.vaultSalt = cloudData.profile.vaultSalt;
+          }
+          if (
+            cloudData.profile.privacyMode !== undefined &&
+            cloudData.profile.privacyMode !== profile.privacyMode
+          ) {
+            updates.privacyMode = cloudData.profile.privacyMode;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            console.log("Updating local profile from cloud", updates);
+            updateProfile(updates);
+          }
+        }
+
         const merge = <T extends { id: string; updatedAt?: number }>(
           local: T[],
           cloud: T[],
@@ -258,12 +519,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return Array.from(map.values());
         };
 
-        const mergedAccounts = merge(
-          StorageService.getStoredAccounts(),
-          cloudData.accounts,
+        const cloudAccounts = await Promise.all(
+          (cloudData.accounts || []).map(async (a: Account) => {
+            const decrypted = await decryptAccount(a);
+            return normalizeAccount(decrypted);
+          }),
         );
+
+        const localAccountsRaw = StorageService.getStoredAccounts();
+        const localAccounts = await Promise.all(
+          localAccountsRaw.map(async (a) => {
+            const decrypted = await decryptAccount(a);
+            return normalizeAccount(decrypted);
+          }),
+        );
+
+        const mergedAccounts = merge(localAccounts, cloudAccounts);
         setAccounts(mergedAccounts);
-        StorageService.saveAccounts(mergedAccounts);
+
+        // Encrypt for storage
+        const encryptedAccounts = await Promise.all(
+          mergedAccounts.map((a) => encryptAccount(a)),
+        );
+        StorageService.saveAccounts(encryptedAccounts);
 
         const mergedCategories = merge(
           StorageService.getStoredCategories(),
@@ -307,8 +585,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setChatSessions(mergedChatSessions);
         StorageService.saveChatSessions(mergedChatSessions);
 
+        const accountsToSync = await Promise.all(
+          mergedAccounts.map((a) => encryptAccount(a)),
+        );
+
         await SheetService.syncWithGoogleSheets(
-          mergedAccounts,
+          accountsToSync,
           mergedTransactions,
           mergedCategories,
           mergedGoals,
@@ -332,25 +614,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       ...acc,
       userId: profile.id || "local",
     } as Account;
+
+    // Encrypt for external storage
+    const encryptedAccount = await encryptAccount(accountWithUser);
+
     let updated;
     if (isNew) {
       updated = [...accounts, accountWithUser];
       if (SheetService.isClientReady())
-        await SheetService.insertOne("Accounts", accountWithUser);
+        await SheetService.insertOne("Accounts", encryptedAccount);
     } else {
       updated = accounts.map((a) => (a.id === acc.id ? accountWithUser : a));
       if (SheetService.isClientReady())
-        await SheetService.updateOne("Accounts", acc.id, accountWithUser);
+        await SheetService.updateOne("Accounts", acc.id, encryptedAccount);
     }
     setAccounts(updated);
-    StorageService.saveAccounts(updated);
+
+    // Save encrypted to local storage
+    const encryptedAccounts = await Promise.all(
+      updated.map((a) => encryptAccount(a)),
+    );
+    StorageService.saveAccounts(encryptedAccounts);
     showToast("Account saved", "success");
   };
 
   const handleAccountDelete = async (id: string) => {
     const updated = accounts.filter((a) => a.id !== id);
     setAccounts(updated);
-    StorageService.saveAccounts(updated);
+
+    const encryptedAccounts = await Promise.all(
+      updated.map((a) => encryptAccount(a)),
+    );
+    StorageService.saveAccounts(encryptedAccounts);
+
     if (SheetService.isClientReady())
       await SheetService.deleteOne("Accounts", id);
     showToast("Account deleted", "success");
@@ -688,6 +984,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
     const cloudData = await SheetService.loadFromGoogleSheets();
     if (cloudData) {
+      // Note: we don't encrypt here because they are already encrypted in Sheets
       StorageService.saveAccounts(cloudData.accounts);
       StorageService.saveTransactions(cloudData.transactions);
       StorageService.saveCategories(cloudData.categories);
@@ -717,6 +1014,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setDisplayCurrency,
         privacyMode,
         setPrivacyMode,
+        isVaultEnabled,
+        isVaultUnlocked,
+        unlockVault,
+        enableVault,
+        disableVault,
         maskAmount,
         maskText,
         exchangeRate,

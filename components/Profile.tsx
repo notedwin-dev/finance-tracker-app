@@ -7,16 +7,18 @@ import {
   ArrowRightOnRectangleIcon,
   CloudArrowUpIcon,
   ArrowPathIcon,
-  TrashIcon,
   InboxArrowDownIcon,
-  AdjustmentsHorizontalIcon,
   KeyIcon,
   TagIcon,
   CalendarDaysIcon,
   DocumentArrowDownIcon,
   SparklesIcon,
+  LockClosedIcon,
+  FingerPrintIcon,
+  EyeSlashIcon,
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
+import * as SecurityService from "../services/security.services";
 
 interface Props {
   profile: UserProfile;
@@ -45,9 +47,20 @@ const Profile: React.FC<Props> = ({
   onResetSync,
   isSyncing = false,
 }) => {
-  const { maskText } = useData();
+  const {
+    maskText,
+    isVaultEnabled,
+    isVaultUnlocked,
+    unlockVault,
+    enableVault,
+    disableVault,
+    showToast,
+  } = useData();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(profile.name);
+  const [vaultPass, setVaultPass] = useState("");
+  const [showVaultPrompt, setShowVaultPrompt] = useState(false);
+  const [vaultError, setVaultError] = useState("");
 
   const handleSave = () => {
     onUpdate({ name });
@@ -105,6 +118,116 @@ const Profile: React.FC<Props> = ({
 
   return (
     <div className="flex flex-col h-full max-w-2xl mx-auto animate-fadeIn pb-20">
+      {/* Vault Modal */}
+      {showVaultPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-surface w-full max-w-sm rounded-3xl border border-gray-800 shadow-2xl p-6 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto mb-4">
+                <LockClosedIcon className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-white">
+                {isVaultEnabled
+                  ? isVaultUnlocked
+                    ? "Vault Active"
+                    : "Unlock Vault"
+                  : "Enable Secure Vault"}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {isVaultEnabled
+                  ? isVaultUnlocked
+                    ? "You can disable the vault or change your password."
+                    : "Enter your vault password to decrypt sensitive data."
+                  : "Create a password to encrypt bank details. This password is never stored."}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {(!isVaultEnabled || !isVaultUnlocked) && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
+                    Vault Password
+                  </label>
+                  <input
+                    type="password"
+                    value={vaultPass}
+                    onChange={(e) => {
+                      setVaultPass(e.target.value);
+                      setVaultError("");
+                    }}
+                    placeholder="Enter password..."
+                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                    autoFocus
+                  />
+                  {vaultError && (
+                    <p className="text-[10px] text-rose-500 font-bold pl-1">
+                      {vaultError}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-2">
+                {!isVaultEnabled ? (
+                  <button
+                    onClick={async () => {
+                      if (vaultPass.length < 4) {
+                        setVaultError("Password too short");
+                        return;
+                      }
+                      await enableVault(vaultPass);
+                      setVaultPass("");
+                      setShowVaultPrompt(false);
+                      showToast("Vault enabled!", "success");
+                    }}
+                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+                  >
+                    Enable Vault
+                  </button>
+                ) : !isVaultUnlocked ? (
+                  <button
+                    onClick={async () => {
+                      const success = await unlockVault(vaultPass);
+                      if (success) {
+                        setVaultPass("");
+                        setShowVaultPrompt(false);
+                        showToast("Vault unlocked!", "success");
+                      } else {
+                        setVaultError("Invalid password");
+                      }
+                    }}
+                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+                  >
+                    Unlock Vault
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      await disableVault();
+                      setShowVaultPrompt(false);
+                      showToast("Vault disabled", "info");
+                    }}
+                    className="w-full bg-rose-500/10 text-rose-500 border border-rose-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    Disable Vault
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowVaultPrompt(false);
+                    setVaultPass("");
+                    setVaultError("");
+                  }}
+                  className="w-full bg-gray-900 text-gray-500 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {profile.isLoggedIn ? (
         <div className="w-full space-y-2">
           {/* Profile Header */}
@@ -177,6 +300,65 @@ const Profile: React.FC<Props> = ({
 
           <div className="bg-surface sm:rounded-3xl border border-gray-800 divide-y divide-gray-800/50 overflow-hidden">
             <SectionHeader title="App Preferences" />
+            <SettingItem
+              icon={EyeSlashIcon}
+              label="Privacy Mode"
+              description="Mask balances and text throughout the app"
+              color="text-indigo-400"
+              action={
+                <button
+                  onClick={() =>
+                    onUpdate({ privacyMode: !profile.privacyMode })
+                  }
+                  className={`w-11 h-6 rounded-full transition-colors relative ${
+                    profile.privacyMode ? "bg-primary" : "bg-gray-800"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                      profile.privacyMode ? "left-6" : "left-1"
+                    }`}
+                  />
+                </button>
+              }
+            />
+
+            <SectionHeader title="Security & Biometrics" />
+            <SettingItem
+              icon={LockClosedIcon}
+              label="Secure Vault"
+              description={
+                isVaultEnabled
+                  ? isVaultUnlocked
+                    ? "Vault is unlocked and active"
+                    : "Vault is locked. Tap to unlock."
+                  : "Encrypt sensitive account details"
+              }
+              color={isVaultEnabled ? "text-rose-400" : "text-gray-400"}
+              onClick={() => setShowVaultPrompt(true)}
+              action={
+                isVaultEnabled && (
+                  <div
+                    className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${isVaultUnlocked ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}
+                  >
+                    {isVaultUnlocked ? "Unlocked" : "Locked"}
+                  </div>
+                )
+              }
+            />
+            <SettingItem
+              icon={FingerPrintIcon}
+              label="Register Biometrics"
+              description="Use TouchID/FaceID for secure reveal"
+              color="text-emerald-400"
+              onClick={async () => {
+                const ok = await SecurityService.registerBiometrics(
+                  profile.name,
+                );
+                if (ok) showToast("Biometrics registered!", "success");
+                else showToast("Registration failed", "alert");
+              }}
+            />
             {onManageCategories && (
               <SettingItem
                 icon={TagIcon}

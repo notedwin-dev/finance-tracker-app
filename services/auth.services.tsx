@@ -108,15 +108,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       const userInfo = await userInfoRes.json();
 
-      SheetService.setSheetUser(userInfo.sub || userInfo.email);
+      const userId = userInfo.sub || userInfo.email;
+      SheetService.setSheetUser(userId);
+
+      // Ensure user exists in the Users sheet for settings sync
+      let cloudUser = await SheetService.findUser(userInfo.email);
+      if (!cloudUser) {
+        await SheetService.createUser({
+          email: userInfo.email,
+          password: "GOOGLE_AUTH",
+          name: userInfo.name,
+        });
+        cloudUser = await SheetService.findUser(userInfo.email);
+      }
 
       const newProfile: UserProfile = {
         ...profile,
-        id: userInfo.sub || userInfo.email,
+        id: userId,
         name: userInfo.name,
         email: userInfo.email,
         photoUrl: userInfo.picture,
         isLoggedIn: true,
+        // Sync cloud settings if they exist
+        isVaultEnabled: cloudUser?.isVaultEnabled ?? profile.isVaultEnabled,
+        vaultSalt: cloudUser?.vaultSalt ?? profile.vaultSalt,
+        privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
       };
 
       StorageService.saveProfile(newProfile);
@@ -206,10 +222,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         emailLogin,
         emailSignup,
         logout,
-        updateProfile: (u) => {
+        updateProfile: async (u) => {
           const p = { ...profile, ...u };
           setProfile(p);
           StorageService.saveProfile(p);
+
+          // Sync with Google Sheets if logged in and ready
+          if (SheetService.isClientReady() && p.email) {
+            try {
+              await SheetService.updateUser(p.email, u);
+            } catch (err) {
+              console.warn("Failed to sync profile update to sheets", err);
+            }
+          }
         },
         isInitialized,
       }}

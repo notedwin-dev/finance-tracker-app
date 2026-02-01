@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Account, ASSET_PROVIDERS } from "../types";
-import { XMarkIcon, ChevronUpDownIcon } from "@heroicons/react/24/outline";
+import { Account, ASSET_PROVIDERS, AccountDetails } from "../types";
+import {
+  XMarkIcon,
+  ChevronUpDownIcon,
+  LockClosedIcon,
+} from "@heroicons/react/24/outline";
+import { useData } from "../context/DataContext";
+import * as SecurityService from "../services/security.services";
 
 interface Props {
   initialAccount?: Account;
@@ -17,6 +23,7 @@ const AccountForm: React.FC<Props> = ({
   onDelete,
   onClose,
 }) => {
+  const { isVaultEnabled, isVaultUnlocked, unlockVault } = useData();
   const [activeTab, setActiveTab] = useState<"PRESETS" | "CUSTOM">("PRESETS");
 
   // Form State
@@ -95,12 +102,21 @@ const AccountForm: React.FC<Props> = ({
     setIconValue(acc.iconValue);
     setSelectedProviderId(acc.providerId || null);
 
-    setAccountNumber(acc.details?.accountNumber || "");
-    setCardNumber(acc.details?.cardNumber || "");
-    setHolderName(acc.details?.holderName || "");
-    setExpiry(acc.details?.expiry || "");
-    setCvv(acc.details?.cvv || "");
-    setNote(acc.details?.note || "");
+    if (acc.details && typeof acc.details === "object") {
+      setAccountNumber(acc.details.accountNumber || "");
+      setCardNumber(acc.details.cardNumber || "");
+      setHolderName(acc.details.holderName || "");
+      setExpiry(acc.details.expiry || "");
+      setCvv(acc.details.cvv || "");
+      setNote(acc.details.note || "");
+    } else {
+      setAccountNumber("");
+      setCardNumber("");
+      setHolderName("");
+      setExpiry("");
+      setCvv("");
+      setNote("");
+    }
 
     // Auto switch tab based on icon type
     if (acc.providerId) setActiveTab("PRESETS");
@@ -184,6 +200,26 @@ const AccountForm: React.FC<Props> = ({
 
     setIsSubmitting(true);
     try {
+      // If vault is enabled but locked, and we're editing an existing account,
+      // preserve the encrypted details string so we don't overwrite with empty object.
+      let finalDetails: AccountDetails | string | undefined = {
+        accountNumber,
+        cardNumber,
+        holderName,
+        expiry,
+        cvv,
+        note,
+      };
+
+      if (
+        isVaultEnabled &&
+        !isVaultUnlocked &&
+        initialAccount?.details &&
+        typeof initialAccount.details === "string"
+      ) {
+        finalDetails = initialAccount.details;
+      }
+
       await onSave({
         id: editingId || crypto.randomUUID(),
         name,
@@ -194,14 +230,7 @@ const AccountForm: React.FC<Props> = ({
         iconType,
         iconValue,
         providerId: selectedProviderId || undefined,
-        details: {
-          accountNumber,
-          cardNumber,
-          holderName,
-          expiry,
-          cvv,
-          note,
-        },
+        details: finalDetails,
       });
       onClose();
     } finally {
@@ -399,75 +428,113 @@ const AccountForm: React.FC<Props> = ({
 
             {/* Account Details Section */}
             <div className="border-t border-gray-800 pt-4 mt-2">
-              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                <span className="bg-surface p-1 rounded border border-gray-700 text-xs">
-                  🔒
-                </span>
-                Account & Card Details
-              </h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span className="bg-surface p-1 rounded border border-gray-700 text-xs">
+                    🔒
+                  </span>
+                  Account & Card Details
+                </h3>
 
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  value={holderName}
-                  onChange={(e) => setHolderName(e.target.value)}
-                  className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white text-sm focus:border-primary focus:outline-none"
-                  placeholder="Account Holder Name (Optional)"
-                />
+                {isVaultEnabled && !isVaultUnlocked && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const password = window.prompt(
+                        "Enter Vault Password to reveal details:",
+                      );
+                      if (password) {
+                        const success = await unlockVault(password);
+                        if (!success) alert("Incorrect password");
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
+                  >
+                    <LockClosedIcon className="w-3.5 h-3.5" />
+                    Unlock Vault
+                  </button>
+                )}
+              </div>
 
-                {/* Banking Section */}
-                <div className="bg-surface/50 p-3 rounded-xl border border-gray-700/50">
-                  <label className="text-[10px] uppercase text-gray-500 font-bold mb-2 block">
-                    Banking Details (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
-                    className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none font-mono"
-                    placeholder="Account Number"
-                  />
-                </div>
-
-                {/* Card Section */}
-                <div className="bg-surface/50 p-3 rounded-xl border border-gray-700/50 space-y-3">
-                  <label className="text-[10px] uppercase text-gray-500 font-bold block">
-                    Card Details (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={cardNumber}
-                    onChange={handleCardNumberChange}
-                    className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none font-mono"
-                    placeholder="0000 0000 0000 0000"
-                  />
-                  <div className="grid grid-cols-2 gap-4">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={expiry}
-                      onChange={handleExpiryChange}
-                      className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none"
-                      placeholder="Expiry (MM/YY)"
-                    />
-                    <input
-                      type="password"
-                      value={cvv}
-                      onChange={(e) => setCvv(e.target.value)}
-                      className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none"
-                      placeholder="CVV"
-                    />
+              {isVaultEnabled && !isVaultUnlocked ? (
+                <div className="bg-surface/30 border border-gray-800 rounded-2xl p-6 text-center space-y-3">
+                  <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mx-auto">
+                    <LockClosedIcon className="w-6 h-6 text-gray-500" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-gray-300">
+                      Vault is Locked
+                    </p>
+                    <p className="text-[10px] text-gray-500 max-w-50 mx-auto leading-relaxed">
+                      Sensitive details are encrypted. Unlock the vault to view
+                      or edit them.
+                    </p>
                   </div>
                 </div>
+              ) : (
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    value={holderName}
+                    onChange={(e) => setHolderName(e.target.value)}
+                    className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white text-sm focus:border-primary focus:outline-none"
+                    placeholder="Account Holder Name (Optional)"
+                  />
 
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white text-sm focus:border-primary focus:outline-none"
-                  placeholder="Additional Notes..."
-                  rows={2}
-                />
-              </div>
+                  {/* Banking Section */}
+                  <div className="bg-surface/50 p-3 rounded-xl border border-gray-700/50">
+                    <label className="text-[10px] uppercase text-gray-500 font-bold mb-2 block">
+                      Banking Details (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value)}
+                      className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none font-mono"
+                      placeholder="Account Number"
+                    />
+                  </div>
+
+                  {/* Card Section */}
+                  <div className="bg-surface/50 p-3 rounded-xl border border-gray-700/50 space-y-3">
+                    <label className="text-[10px] uppercase text-gray-500 font-bold block">
+                      Card Details (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={cardNumber}
+                      onChange={handleCardNumberChange}
+                      className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none font-mono"
+                      placeholder="0000 0000 0000 0000"
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={expiry}
+                        onChange={handleExpiryChange}
+                        className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none"
+                        placeholder="Expiry (MM/YY)"
+                      />
+                      <input
+                        type="password"
+                        value={cvv}
+                        onChange={(e) => setCvv(e.target.value)}
+                        className="w-full bg-background border border-gray-700 rounded-lg p-3 text-white text-sm focus:border-primary focus:outline-none"
+                        placeholder="CVV"
+                      />
+                    </div>
+                  </div>
+
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white text-sm focus:border-primary focus:outline-none"
+                    placeholder="Additional Notes..."
+                    rows={2}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

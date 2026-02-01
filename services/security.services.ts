@@ -1,3 +1,5 @@
+import * as StorageService from "./storage.services";
+
 const ALGORITHM = "AES-GCM";
 const IV_LENGTH = 12;
 
@@ -120,23 +122,35 @@ export async function verifyWithBiometrics(
   try {
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
 
-    // Priority: 1. Manual override (from cloud), 2. Local storage
+    // Priority: 1. Manual override (from cloud), 2. Local storage (Security Settings), 3. Legacy keys
     let credIds: string[] = [];
     if (overrideCredIds) {
       credIds = Array.isArray(overrideCredIds)
         ? overrideCredIds
         : [overrideCredIds];
     } else {
-      // Migrate legacy single ID to array if found
+      // Migrate legacy if found
       const legacy = localStorage.getItem("biometric_cred_id");
-      const stored = localStorage.getItem("biometric_cred_ids");
+      const legacyArr = localStorage.getItem("biometric_cred_ids");
 
-      if (stored) {
-        credIds = JSON.parse(stored);
-      } else if (legacy) {
-        credIds = [legacy];
-        localStorage.setItem("biometric_cred_ids", JSON.stringify(credIds));
+      if (legacy || legacyArr) {
+        const settings = StorageService.getStoredSecuritySettings();
+        const currentIds = new Set(settings.biometricCredIds || []);
+        if (legacy) currentIds.add(legacy);
+        if (legacyArr) {
+          try {
+            JSON.parse(legacyArr).forEach((id: string) => currentIds.add(id));
+          } catch {}
+        }
+        const merged = Array.from(currentIds);
+        StorageService.saveSecuritySettings({ biometricCredIds: merged });
+        // Clean up legacy
         localStorage.removeItem("biometric_cred_id");
+        localStorage.removeItem("biometric_cred_ids");
+        credIds = merged;
+      } else {
+        const settings = StorageService.getStoredSecuritySettings();
+        credIds = settings.biometricCredIds || [];
       }
     }
 
@@ -163,11 +177,12 @@ export async function verifyWithBiometrics(
       const usedId = btoa(
         String.fromCharCode(...new Uint8Array(assertion.rawId)),
       );
-      const stored = localStorage.getItem("biometric_cred_ids");
-      const currentIds: string[] = stored ? JSON.parse(stored) : [];
+      const settings = StorageService.getStoredSecuritySettings();
+      const currentIds = settings.biometricCredIds || [];
       if (!currentIds.includes(usedId)) {
-        currentIds.push(usedId);
-        localStorage.setItem("biometric_cred_ids", JSON.stringify(currentIds));
+        StorageService.saveSecuritySettings({
+          biometricCredIds: [...currentIds, usedId],
+        });
       }
     }
 
@@ -182,6 +197,9 @@ export async function verifyWithBiometrics(
  * Checks if biometrics are already registered for this device.
  */
 export function isBiometricRegistered(): boolean {
+  const settings = StorageService.getStoredSecuritySettings();
+  if (settings.biometricCredIds && settings.biometricCredIds.length > 0) return true;
+  
   return (
     !!localStorage.getItem("biometric_cred_ids") ||
     !!localStorage.getItem("biometric_cred_id")

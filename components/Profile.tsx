@@ -368,19 +368,16 @@ const Profile: React.FC<Props> = ({
                                   "vault_password_remembered",
                                   vaultPass,
                                 );
+                                // Sync local biometrics if profile has them but local storage doesn't (migration)
                                 if (
                                   (profile.biometricCredIds?.length ||
                                     profile.biometricCredId) &&
-                                  !localStorage.getItem("biometric_cred_ids")
+                                  !SecurityService.isBiometricRegistered()
                                 ) {
                                   const ids = profile.biometricCredIds?.length
                                     ? profile.biometricCredIds
                                     : [profile.biometricCredId!];
-                                  localStorage.setItem(
-                                    "biometric_cred_ids",
-                                    JSON.stringify(ids),
-                                  );
-                                  localStorage.removeItem("biometric_cred_id");
+                                  onUpdate({ biometricCredIds: ids });
                                 }
                               }
 

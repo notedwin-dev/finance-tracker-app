@@ -654,14 +654,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             !mergedBio.every((id) => existingIds.includes(id))
           ) {
             updates.biometricCredIds = mergedBio;
-            // Ensure local storage has the cloud IDs
-            if (mergedBio.length > 0) {
-              localStorage.setItem(
-                "biometric_cred_ids",
-                JSON.stringify(mergedBio),
-              );
-              localStorage.removeItem("biometric_cred_id");
-            }
           }
 
           const existingDevices = profile.devices || [];

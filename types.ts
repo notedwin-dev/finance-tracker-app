@@ -83,7 +83,17 @@ export interface Transaction {
   potId?: string; // Linked Spending Pot / Limit
 }
 
-export interface UserProfile {
+export interface UserCloudSettings {
+  isVaultEnabled?: boolean;
+  isVaultCreated?: boolean;
+  vaultSalt?: string;
+  biometricCredId?: string; // Legacy
+  biometricCredIds?: string[];
+  devices?: string[];
+  privacyMode?: boolean;
+}
+
+export interface UserProfile extends UserCloudSettings {
   id?: string;
   name: string;
   email: string;
@@ -93,14 +103,7 @@ export interface UserProfile {
   showAIAssistant?: boolean;
   geminiApiKey?: string;
   syncChatToSheets?: boolean;
-  privacyMode?: boolean;
-  isVaultEnabled?: boolean;
-  isVaultCreated?: boolean;
-  vaultSalt?: string;
-  biometricCredId?: string; // Legacy field for single credential
-  biometricCredIds?: string[]; // Cloud-synced IDs for cross-device Passkey identification
-  devices?: string[]; // List of trusted device IDs/Names
-  offlineMode?: boolean; // If true, don't attempt cloud sync
+  offlineMode?: boolean; 
 }
 
 export interface Goal {

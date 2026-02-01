@@ -4,6 +4,7 @@ import {
   Transaction,
   Goal,
   UserProfile,
+  UserCloudSettings,
   Subscription,
   Pot,
   ChatSession,
@@ -17,6 +18,7 @@ export const KEYS = {
   CATEGORIES: "zenfinance_categories_v2",
   GOALS: "zenfinance_goals_v2",
   PROFILE: "zenfinance_profile_v2",
+  SECURITY: "zenfinance_security_settings_v1",
   SUBSCRIPTIONS: "zenfinance_subscriptions_v2",
   POTS: "zenfinance_pots_v2",
   CHATS: "zenfinance_chats_v2",
@@ -465,21 +467,35 @@ export const saveChatSessions = (sessions: ChatSession[]) => {
   localStorage.setItem(getKey(KEYS.CHATS), JSON.stringify(sessions));
 };
 
+export const getStoredSecuritySettings = (): UserCloudSettings => {
+  const stored = localStorage.getItem(KEYS.SECURITY);
+  return stored ? JSON.parse(stored) : {};
+};
+
+export const saveSecuritySettings = (settings: UserCloudSettings) => {
+  const current = getStoredSecuritySettings();
+  const merged = { ...current, ...settings };
+  localStorage.setItem(KEYS.SECURITY, JSON.stringify(merged));
+};
+
 export const getStoredProfile = (): UserProfile => {
   const stored = localStorage.getItem(KEYS.PROFILE);
   const profile = stored
     ? JSON.parse(stored)
     : { name: "", email: "", isLoggedIn: false };
 
+  const security = getStoredSecuritySettings();
+  const fullProfile = { ...profile, ...security };
+
   // Set defaults for newly added fields
-  if (profile.syncChatToSheets === undefined) {
-    profile.syncChatToSheets = true;
+  if (fullProfile.syncChatToSheets === undefined) {
+    fullProfile.syncChatToSheets = true;
   }
-  if (profile.showAIAssistant === undefined) {
-    profile.showAIAssistant = true;
+  if (fullProfile.showAIAssistant === undefined) {
+    fullProfile.showAIAssistant = true;
   }
-  if (profile.privacyMode === undefined) {
-    profile.privacyMode = false;
+  if (fullProfile.privacyMode === undefined) {
+    fullProfile.privacyMode = false;
   }
 
   // Normalize booleans that might come as strings from Sheets
@@ -492,14 +508,46 @@ export const getStoredProfile = (): UserProfile => {
     return val;
   };
 
-  profile.isVaultEnabled = normalizeBool(profile.isVaultEnabled);
-  profile.privacyMode = normalizeBool(profile.privacyMode);
+  fullProfile.isVaultEnabled = normalizeBool(fullProfile.isVaultEnabled);
+  fullProfile.privacyMode = normalizeBool(fullProfile.privacyMode);
 
-  return profile;
+  return fullProfile;
 };
 
 export const saveProfile = (profile: UserProfile) => {
-  localStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
+  // Separate security settings from profile
+  const {
+    isVaultEnabled,
+    isVaultCreated,
+    vaultSalt,
+    biometricCredId,
+    biometricCredIds,
+    devices,
+    privacyMode,
+    ...pureProfile
+  } = profile;
+
+  localStorage.setItem(KEYS.PROFILE, JSON.stringify(pureProfile));
+
+  // Save security settings separately
+  const securitySettings: UserCloudSettings = {
+    isVaultEnabled,
+    isVaultCreated,
+    vaultSalt,
+    biometricCredId,
+    biometricCredIds,
+    devices,
+    privacyMode,
+  };
+  
+  // Remove undefined values to avoid overwriting existing valid settings with undefined if full profile wasn't passed
+  const cleanSecurity = Object.fromEntries(
+    Object.entries(securitySettings).filter(([_, v]) => v !== undefined)
+  );
+
+  if (Object.keys(cleanSecurity).length > 0) {
+    saveSecuritySettings(cleanSecurity);
+  }
 };
 
 // Full Sync Operation

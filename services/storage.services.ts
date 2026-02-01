@@ -313,6 +313,15 @@ export const getStoredAccounts = (): Account[] => {
   return stored ? JSON.parse(stored) : [];
 };
 
+export const getDeviceId = (): string => {
+  let id = localStorage.getItem("device_id");
+  if (!id) {
+    id = `device_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
+    localStorage.setItem("device_id", id);
+  }
+  return id;
+};
+
 export const saveAccounts = async (accounts: Account[]) => {
   localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(accounts));
   if (isLoggedIn()) {

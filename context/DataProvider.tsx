@@ -221,7 +221,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const enableVault = async (password: string) => {
     setVaultPassword(password);
     localStorage.setItem("vault_password_session", password);
-    updateProfile({ isVaultEnabled: true, isVaultCreated: true });
+    const deviceId = StorageService.getDeviceId();
+    const currentDevices = profile.devices || [];
+    const newDevices = currentDevices.includes(deviceId)
+      ? currentDevices
+      : [...currentDevices, deviceId];
+
+    updateProfile({
+      isVaultEnabled: true,
+      isVaultCreated: true,
+      devices: newDevices,
+    });
 
     // Encrypt all current accounts and save
     const encryptedAccounts = await Promise.all(
@@ -1106,6 +1116,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       "google_access_token",
       "google_token_expiry",
       "google_refresh_token",
+      "encrypted_vault_key",
+      "device_id",
       StorageService.KEYS.PROFILE,
     ];
     const saved: any = {};

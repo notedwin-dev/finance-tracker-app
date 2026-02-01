@@ -216,7 +216,7 @@ export const findUser = async (email: string) => {
     const headers = rows[0];
 
     // Migration: If sheet doesn't have isVaultCreated or biometricCredId, add them by updating headers
-    const requiredHeaders = ["isVaultCreated", "biometricCredId"];
+    const requiredHeaders = ["isVaultCreated", "biometricCredId", "devices"];
     const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
     if (missingHeaders.length > 0) {
       const newHeaders = [...headers, ...missingHeaders];
@@ -244,7 +244,11 @@ export const findUser = async (email: string) => {
         if (val.toLowerCase() === "true") val = true;
         else if (val.toLowerCase() === "false") val = false;
       }
-      if (typeof val === "string" && val.startsWith("{") && val.endsWith("}")) {
+      if (
+        typeof val === "string" &&
+        ((val.startsWith("{") && val.endsWith("}")) ||
+          (val.startsWith("[") && val.endsWith("]")))
+      ) {
         try {
           val = JSON.parse(val);
         } catch {
@@ -277,7 +281,7 @@ export const createUser = async (userData: any) => {
       // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:I1",
+        range: "'Users'!A1:J1",
         valueInputOption: "RAW",
         resource: {
           values: [
@@ -291,6 +295,7 @@ export const createUser = async (userData: any) => {
               "privacyMode",
               "biometricCredId",
               "isVaultCreated",
+              "devices",
             ],
           ],
         },
@@ -299,7 +304,7 @@ export const createUser = async (userData: any) => {
 
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A:I",
+      range: "'Users'!A:J",
       valueInputOption: "RAW",
       resource: {
         values: [
@@ -313,6 +318,7 @@ export const createUser = async (userData: any) => {
             userData.privacyMode || false,
             userData.biometricCredId || "",
             userData.isVaultCreated || false,
+            JSON.stringify(userData.devices || []),
           ],
         ],
       },

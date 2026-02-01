@@ -19,6 +19,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
 import * as SecurityService from "../services/security.services";
+import { getDeviceId } from "../services/storage.services";
 
 interface Props {
   profile: UserProfile;
@@ -221,8 +222,11 @@ const Profile: React.FC<Props> = ({
                               setVaultError("Unlock failed. Please try again.");
                             }
                           } else {
+                            const isTrusted = profile.devices?.includes(getDeviceId());
                             setVaultError(
-                              "Biometrics verified! However, since this is a new device, please enter your Vault Password once to link your security.",
+                              isTrusted
+                                ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
+                                : "Security verification successful! However, since this is a new device, please enter your Vault Password once to link your security.",
                             );
                           }
                           setIsSyncingLocal(false);
@@ -271,6 +275,15 @@ const Profile: React.FC<Props> = ({
                       try {
                         const success = await unlockVault(vaultPass);
                         if (success) {
+                          // Track this device in the trusted registry
+                          const deviceId = getDeviceId();
+                          const currentDevices = profile.devices || [];
+                          if (!currentDevices.includes(deviceId)) {
+                            onUpdate({
+                              devices: [...currentDevices, deviceId],
+                            });
+                          }
+
                           // Link biometrics to this password for future usage on this device
                           if (
                             SecurityService.isBiometricRegistered() ||

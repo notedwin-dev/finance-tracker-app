@@ -98,6 +98,7 @@ export interface UserProfile {
   isVaultCreated?: boolean;
   vaultSalt?: string;
   biometricCredId?: string; // Cloud-synced ID for cross-device Passkey identification
+  devices?: string[]; // List of trusted device IDs/Names
 }
 
 export interface Goal {

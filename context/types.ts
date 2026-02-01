@@ -34,7 +34,11 @@ export interface DataContextType {
     currency?: string,
     isSensitive?: boolean,
   ) => React.ReactNode;
-  maskText: (text: string, isSensitive?: boolean) => React.ReactNode;
+  maskText: (
+    text: string,
+    isSensitive?: boolean,
+    permanentMask?: boolean,
+  ) => React.ReactNode;
   exchangeRate: ExchangeRateData | null;
   isSyncing: boolean;
   toast: { message: string; type: "success" | "alert" | "info" } | null;

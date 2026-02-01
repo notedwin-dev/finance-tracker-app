@@ -127,16 +127,10 @@ export async function verifyWithBiometrics(): Promise<boolean> {
     // As a shortcut for this demo, we'll use the native `window.confirm` or a custom UI if WebAuthn fails.
 
     // For real Passkey verification, we need a stored credential ID.
-    // If no credential ID is stored, we just ask the user.
     const storedCredId = localStorage.getItem("biometric_cred_id");
 
     if (!storedCredId) {
-      // First time? We might want to "Register" the device.
-      // For now, let's just use a simple mock that returns true after a delay to simulate interaction.
-      return new Promise((resolve) => {
-        // In a real app, you'd show a modal or trigger registration.
-        setTimeout(() => resolve(true), 500);
-      });
+      return false;
     }
 
     const options: PublicKeyCredentialRequestOptions = {
@@ -157,6 +151,13 @@ export async function verifyWithBiometrics(): Promise<boolean> {
     console.warn("Biometric verification failed or cancelled:", error);
     return false;
   }
+}
+
+/**
+ * Checks if biometrics are already registered for this device.
+ */
+export function isBiometricRegistered(): boolean {
+  return !!localStorage.getItem("biometric_cred_id");
 }
 
 /**

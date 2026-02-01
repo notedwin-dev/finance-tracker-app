@@ -168,6 +168,31 @@ const Profile: React.FC<Props> = ({
               )}
 
               <div className="flex flex-col gap-2 pt-2">
+                {isVaultEnabled && !isVaultUnlocked && SecurityService.isBiometricRegistered() && (
+                  <button
+                    onClick={async () => {
+                      const verified = await SecurityService.verifyWithBiometrics();
+                      if (verified) {
+                        const storedPass = localStorage.getItem("vault_password_remembered");
+                        if (storedPass) {
+                          const success = await unlockVault(storedPass);
+                          if (success) {
+                            setShowVaultPrompt(false);
+                            showToast("Vault unlocked with Biometrics!", "success");
+                          } else {
+                            setVaultError("Biometric unlock failed. Please use password.");
+                          }
+                        } else {
+                          setVaultError("Password not remembered. Please Register Biometrics again.");
+                        }
+                      }
+                    }}
+                    className="w-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
+                  >
+                    <FingerPrintIcon className="w-5 h-5" />
+                    Unlock with Biometrics
+                  </button>
+                )}
                 {!isVaultEnabled ? (
                   <button
                     onClick={async () => {
@@ -352,15 +377,41 @@ const Profile: React.FC<Props> = ({
             />
             <SettingItem
               icon={FingerPrintIcon}
-              label="Register Biometrics"
-              description="Use TouchID/FaceID for secure reveal"
-              color="text-emerald-400"
+              label={
+                SecurityService.isBiometricRegistered()
+                  ? "Biometrics Active"
+                  : "Register Biometrics"
+              }
+              description={
+                SecurityService.isBiometricRegistered()
+                  ? "Your device is set up for Passkeys"
+                  : "Use TouchID/FaceID for secure reveal"
+              }
+              color={
+                SecurityService.isBiometricRegistered()
+                  ? "text-indigo-400"
+                  : "text-emerald-400"
+              }
               onClick={async () => {
+                if (SecurityService.isBiometricRegistered()) {
+                  showToast("Biometrics already registered", "info");
+                  return;
+                }
                 const ok = await SecurityService.registerBiometrics(
                   profile.name,
                 );
-                if (ok) showToast("Biometrics registered!", "success");
-                else showToast("Registration failed", "alert");
+                if (ok) {
+                  const currentPass = localStorage.getItem(
+                    "vault_password_session",
+                  );
+                  if (currentPass) {
+                    localStorage.setItem(
+                      "vault_password_remembered",
+                      currentPass,
+                    );
+                  }
+                  showToast("Biometrics registered!", "success");
+                } else showToast("Registration failed", "alert");
               }}
             />
             {onManageCategories && (

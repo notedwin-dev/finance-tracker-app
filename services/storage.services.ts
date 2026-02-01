@@ -473,6 +473,19 @@ export const getStoredProfile = (): UserProfile => {
     profile.privacyMode = false;
   }
 
+  // Normalize booleans that might come as strings from Sheets
+  const normalizeBool = (val: any) => {
+    if (typeof val === "string") {
+      const lower = val.toLowerCase();
+      if (lower === "true") return true;
+      if (lower === "false") return false;
+    }
+    return val;
+  };
+
+  profile.isVaultEnabled = normalizeBool(profile.isVaultEnabled);
+  profile.privacyMode = normalizeBool(profile.privacyMode);
+
   return profile;
 };
 

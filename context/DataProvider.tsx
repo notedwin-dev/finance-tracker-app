@@ -50,8 +50,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.getItem("vault_password_session") || null,
   );
 
-  const privacyMode = profile.privacyMode || false;
-  const isVaultEnabled = !!profile.isVaultEnabled;
+  const checkBool = (val: any) => {
+    if (typeof val === "boolean") return val;
+    if (typeof val === "string") {
+      const lower = val.toLowerCase();
+      if (lower === "true") return true;
+      if (lower === "false") return false;
+    }
+    return !!val;
+  };
+
+  const privacyMode = checkBool(profile.privacyMode);
+  const isVaultEnabled = checkBool(profile.isVaultEnabled);
 
   const getVaultSalt = () => {
     if (profile.vaultSalt) return profile.vaultSalt;
@@ -230,12 +240,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     StorageService.saveAccounts(encryptedAccounts);
 
     // Register biometrics if available
-    if (await SecurityService.isBiometricAvailable()) {
+    if (
+      (await SecurityService.isBiometricAvailable()) &&
+      !SecurityService.isBiometricRegistered()
+    ) {
       const wantBiometrics = window.confirm(
         "Would you like to enable TouchID/FaceID for secure reveals?",
       );
       if (wantBiometrics) {
-        await SecurityService.registerBiometrics(profile.name || "User");
+        const ok = await SecurityService.registerBiometrics(
+          profile.name || "User",
+        );
+        if (ok) {
+          localStorage.setItem("vault_password_remembered", password);
+        }
       }
     }
 
@@ -279,6 +297,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     updateProfile({ isVaultEnabled: false });
     setVaultPassword(null);
     localStorage.removeItem("vault_password_session");
+    localStorage.removeItem("vault_password_remembered");
+    localStorage.removeItem("biometric_cred_id");
 
     setAccounts(decryptedAccounts);
     StorageService.saveAccounts(decryptedAccounts);

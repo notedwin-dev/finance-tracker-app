@@ -110,24 +110,19 @@ export async function isBiometricAvailable(): Promise<boolean> {
 /**
  * Performs a biometric challenge (TouchID/FaceID) via WebAuthn.
  */
-export async function verifyWithBiometrics(): Promise<boolean> {
+export async function verifyWithBiometrics(
+  overrideCredId?: string,
+): Promise<boolean> {
   if (!(await isBiometricAvailable())) {
-    // If not available, we could fallback to password or just return true if we're in a non-secure environment
-    // But for this request, we'll try to trigger it.
     return true;
   }
 
   try {
-    // Generate a random challenge
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
 
-    // Create a dummy credential request to trigger the biometric prompt
-    // This doesn't require a public key if the browser supports "Platform Authenticator"
-    // Note: In some browsers, this requires a previously registered credential.
-    // As a shortcut for this demo, we'll use the native `window.confirm` or a custom UI if WebAuthn fails.
-
-    // For real Passkey verification, we need a stored credential ID.
-    const storedCredId = localStorage.getItem("biometric_cred_id");
+    // Priority: 1. Manual override (from cloud), 2. Local storage
+    const storedCredId =
+      overrideCredId || localStorage.getItem("biometric_cred_id");
 
     if (!storedCredId) {
       return false;
@@ -163,7 +158,9 @@ export function isBiometricRegistered(): boolean {
 /**
  * Registers the current device for biometric authentication.
  */
-export async function registerBiometrics(username: string): Promise<boolean> {
+export async function registerBiometrics(
+  username: string,
+): Promise<string | null> {
   try {
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
     const userId = window.crypto.getRandomValues(new Uint8Array(16));
@@ -182,7 +179,7 @@ export async function registerBiometrics(username: string): Promise<boolean> {
       ],
       authenticatorSelection: {
         userVerification: "required",
-        authenticatorAttachment: "platform",
+        // Removing 'platform' constraint to allow Cross-Device (QR code) and Synced Passkeys
       },
       timeout: 60000,
     };
@@ -194,11 +191,11 @@ export async function registerBiometrics(username: string): Promise<boolean> {
       const rawId = new Uint8Array(credential.rawId);
       const base64Id = btoa(String.fromCharCode(...rawId));
       localStorage.setItem("biometric_cred_id", base64Id);
-      return true;
+      return base64Id; // Return the ID so it can be synced to cloud
     }
-    return false;
+    return null;
   } catch (error) {
     console.error("Biometric registration failed:", error);
-    return false;
+    return null;
   }
 }

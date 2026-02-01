@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import { useData } from "../context/DataContext";
+import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
 import {
   ChevronLeftIcon,
@@ -47,6 +48,7 @@ ChartJS.register(
 const AccountPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const {
     transactions,
     categories,
@@ -623,7 +625,9 @@ const AccountPage: React.FC = () => {
                           onClick={async () => {
                             if (isVaultEnabled) {
                               const verified =
-                                await SecurityService.verifyWithBiometrics();
+                                await SecurityService.verifyWithBiometrics(
+                                  profile.biometricCredId,
+                                );
                               if (!verified) return;
                             }
                             copyToClipboard(
@@ -654,7 +658,9 @@ const AccountPage: React.FC = () => {
                           onClick={async () => {
                             if (isVaultEnabled) {
                               const verified =
-                                await SecurityService.verifyWithBiometrics();
+                                await SecurityService.verifyWithBiometrics(
+                                  profile.biometricCredId,
+                                );
                               if (!verified) return;
                             }
                             copyToClipboard(

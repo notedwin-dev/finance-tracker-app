@@ -96,6 +96,7 @@ export interface UserProfile {
   privacyMode?: boolean;
   isVaultEnabled?: boolean;
   vaultSalt?: string;
+  biometricCredId?: string; // Cloud-synced ID for cross-device Passkey identification
 }
 
 export interface Goal {

@@ -360,7 +360,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
           if (!isRevealed && isSensitive && isVaultEnabled) {
             // Trigger biometric check for truly sensitive data reveal
-            const verified = await SecurityService.verifyWithBiometrics();
+            const verified = await SecurityService.verifyWithBiometrics(
+              profile.biometricCredId,
+            );
             if (!verified) return;
           }
 
@@ -403,7 +405,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           const isRevealed = target.getAttribute("data-revealed") === "true";
 
           if (!isRevealed && isSensitive && isVaultEnabled) {
-            const verified = await SecurityService.verifyWithBiometrics();
+            const verified = await SecurityService.verifyWithBiometrics(
+              profile.biometricCredId,
+            );
             if (!verified) return;
           }
 

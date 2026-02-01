@@ -261,7 +261,7 @@ export const createUser = async (userData: any) => {
       // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:G1",
+        range: "'Users'!A1:H1",
         valueInputOption: "RAW",
         resource: {
           values: [
@@ -273,6 +273,7 @@ export const createUser = async (userData: any) => {
               "isVaultEnabled",
               "vaultSalt",
               "privacyMode",
+              "biometricCredId",
             ],
           ],
         },
@@ -281,7 +282,7 @@ export const createUser = async (userData: any) => {
 
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A:G",
+      range: "'Users'!A:H",
       valueInputOption: "RAW",
       resource: {
         values: [
@@ -293,6 +294,7 @@ export const createUser = async (userData: any) => {
             userData.isVaultEnabled || false,
             userData.vaultSalt || "",
             userData.privacyMode || false,
+            userData.biometricCredId || "",
           ],
         ],
       },

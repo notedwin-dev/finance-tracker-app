@@ -6,10 +6,22 @@ A sophisticated personal finance management application built with **React 19**,
 
 - 📊 **Dynamic Dashboard**: Visualize your accounts, transactions, and spending patterns.
 - ☁️ **Google Sheets Sync**: Real-time synchronization. Your data is stored safely in your own Google Drive.
+- 🔐 **Secure Vault**: End-to-end encrypted storage for sensitive bank details. Protected by a user-defined password and hardware-level biometrics.
 - 🤖 **AI Insights**: Integrated with Google Gemini to provide personalized financial advice and analysis.
 - 🍯 **Saving Pots**: Create virtual buckets within your accounts to track specific savings goals without moving actual money.
 - 📉 **Rich Visualizations**: Interactive charts to track balance history and expense distribution.
+- 🌐 **Offline First**: Full functionality without an internet connection. Data syncs automatically once you go back online.
 - 📱 **Mobile First**: responsive design optimized for both desktop and mobile use.
+
+## 🔐 Privacy & Security
+
+ZenFinance is built with a **Privacy-First** mindset:
+
+- **End-to-End Encryption (E2EE)**: Sensitive data (like account numbers) are encrypted in your browser using AES-GCM before being sent to Google Sheets.
+- **Biometric Authentication**: Support for modern Passkeys (TouchID, FaceID, or hardware keys) via WebAuthn for secure and seamless unlocking.
+- **Multi-Device Sync**: Register your secure cryptographic keys across multiple devices to maintain access to your encrypted data anywhere.
+- **Privacy Mode**: One-tap toggle to hide balances and sensitive information from prying eyes.
+- **Zero-Knowledge**: Your vault password never leaves your browser. Even if Google is compromised, your sensitive data remains encrypted.
 
 ## 🚀 Getting Started
 
@@ -70,6 +82,7 @@ The integrated AI assistant provides:
 - **Bundler**: Vite
 - **Styling**: Tailwind CSS v4
 - **Charts**: Chart.js & React-Chartjs-2
-- **Auth**: Google OAuth 2.0
+- **Auth**: Google OAuth 2.0 & WebAuthn (Passkeys)
+- **Encryption**: Web Crypto API (AES-GCM, PBKDF2)
 - **Storage**: Browser LocalStorage + Google Sheets API
 - **AI**: Google Generative AI (Gemini)

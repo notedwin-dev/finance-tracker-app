@@ -177,6 +177,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       name: user.name,
       email: user.email,
       isLoggedIn: true,
+      isVaultEnabled: user.isVaultEnabled ?? profile.isVaultEnabled,
+      vaultSalt: user.vaultSalt ?? profile.vaultSalt,
+      privacyMode: user.privacyMode ?? profile.privacyMode,
     };
     StorageService.saveProfile(newProfile);
     setProfile(newProfile);
@@ -205,6 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = () => {
     googleLogout();
     SheetService.clearGapiAccessToken();
+    localStorage.removeItem("vault_password_session");
     const emptyProfile: UserProfile = {
       name: "",
       email: "",

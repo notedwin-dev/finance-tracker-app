@@ -224,8 +224,10 @@ export const findUser = async (email: string) => {
     headers.forEach((h: string, i: number) => {
       let val = userRow[i];
       // Convert booleans and handle JSON
-      if (val === "true") val = true;
-      if (val === "false") val = false;
+      if (typeof val === "string") {
+        if (val.toLowerCase() === "true") val = true;
+        else if (val.toLowerCase() === "false") val = false;
+      }
       if (typeof val === "string" && val.startsWith("{") && val.endsWith("}")) {
         try {
           val = JSON.parse(val);

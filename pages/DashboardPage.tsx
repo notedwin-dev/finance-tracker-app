@@ -21,6 +21,7 @@ import {
   groupTransactions,
   normalizeDate,
   GroupedTransaction,
+  formatDateReadable,
 } from "../helpers/transactions.helper";
 import { TransactionType } from "../types";
 
@@ -71,13 +72,13 @@ const DashboardPage: React.FC = () => {
       const allDates = transactions.map((t) => new Date(t.date).getTime());
       if (allDates.length > 0) start = new Date(Math.min(...allDates));
       else start = new Date(0);
-    } else if (timeframe === "CUSTOM") {
-      return `${new Date(customRange.start).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })} - ${new Date(customRange.end).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })}`;
     }
 
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" });
-    return `${fmt(start)} - ${fmt(end)}`;
+    if (timeframe === "CUSTOM") {
+      return `${formatDateReadable(new Date(customRange.start))} - ${formatDateReadable(new Date(customRange.end))}`;
+    }
+
+    return `${formatDateReadable(start)} - ${formatDateReadable(end)}`;
   }, [timeframe, customRange, transactions]);
 
   // Calculate total balance in selected display currency
@@ -238,12 +239,7 @@ const DashboardPage: React.FC = () => {
           balanceAtPoint += txValueInBase;
       }
 
-      resultLabels.push(
-        pointDate.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "2-digit",
-        }),
-      );
+      resultLabels.push(formatDateReadable(pointDate));
       resultData.push(balanceAtPoint);
     }
 
@@ -326,6 +322,7 @@ const DashboardPage: React.FC = () => {
                 weekday: "long",
                 month: "short",
                 day: "numeric",
+                year: "numeric",
               })}
             </span>
           </div>
@@ -334,6 +331,7 @@ const DashboardPage: React.FC = () => {
               weekday: "long",
               day: "numeric",
               month: "short",
+              year: "numeric",
             })}
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">

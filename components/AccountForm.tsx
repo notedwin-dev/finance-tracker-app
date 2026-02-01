@@ -109,6 +109,13 @@ const AccountForm: React.FC<Props> = ({
       setExpiry(acc.details.expiry || "");
       setCvv(acc.details.cvv || "");
       setNote(acc.details.note || "");
+    } else if (
+      acc.details &&
+      typeof acc.details === "string" &&
+      acc.details.startsWith("ENC:")
+    ) {
+      // Data is locked - we should probably encourage unlocking
+      console.log("Form: Initializing with locked data");
     } else {
       setAccountNumber("");
       setCardNumber("");
@@ -143,11 +150,23 @@ const AccountForm: React.FC<Props> = ({
 
   useEffect(() => {
     if (initialAccount) {
+      // If the vault was just unlocked, try to find the decrypted version of this account
+      if (
+        isVaultUnlocked &&
+        typeof initialAccount.details === "string" &&
+        initialAccount.details.startsWith("ENC:")
+      ) {
+        const freshAcc = accounts.find((a) => a.id === initialAccount.id);
+        if (freshAcc && typeof freshAcc.details === "object") {
+          loadAccountData(freshAcc);
+          return;
+        }
+      }
       loadAccountData(initialAccount);
     } else {
       resetForm();
     }
-  }, [initialAccount]);
+  }, [initialAccount, isVaultUnlocked, accounts]);
 
   const handleAssetSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -441,11 +460,11 @@ const AccountForm: React.FC<Props> = ({
                     type="button"
                     onClick={async () => {
                       const password = window.prompt(
-                        "Enter Vault Password to reveal details:",
+                        "🔒 Please enter the password you created when enabling your Secure Vault:",
                       );
                       if (password) {
                         const success = await unlockVault(password);
-                        if (!success) alert("Incorrect password");
+                        if (!success) alert("Incorrect vault password.");
                       }
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
@@ -470,6 +489,21 @@ const AccountForm: React.FC<Props> = ({
                       or edit them.
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const pass = window.prompt(
+                        "🔒 Please enter the password you created when enabling your Secure Vault:",
+                      );
+                      if (pass) {
+                        const success = await unlockVault(pass);
+                        if (!success) alert("Incorrect vault password.");
+                      }
+                    }}
+                    className="mt-4 w-full bg-primary/10 text-primary border border-primary/20 text-xs font-black py-2.5 rounded-xl active:scale-[0.98] transition-all"
+                  >
+                    Unlock Identity Details
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-4">

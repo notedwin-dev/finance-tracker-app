@@ -252,7 +252,7 @@ export const NetWorthChart: React.FC<Props> = ({
             if (!labels) return "";
             const [y, m, d] = labels.split("-").map(Number);
             const dateObj = new Date(y, m - 1, d);
-            return `${dateObj.getDate()} ${dateObj.toLocaleString("default", { month: "short" })}`;
+            return `${dateObj.getDate()} ${dateObj.toLocaleString("default", { month: "short", year: "2-digit" })}`;
           },
         },
         border: {
@@ -327,7 +327,9 @@ export const RevenueChart: React.FC<Props> = ({
       const m = String(d.getMonth() + 1).padStart(2, "0");
       const monthStr = `${y}-${m}`;
 
-      labels.push(d.toLocaleString("default", { month: "short" }));
+      labels.push(
+        d.toLocaleString("default", { month: "short", year: "numeric" }),
+      );
 
       const income = transactions
         .filter(
@@ -437,7 +439,7 @@ export const RevenueChart: React.FC<Props> = ({
               label += new Intl.NumberFormat("en-US", {
                 style: "currency",
                 currency: displayCurrency,
-                maximumFractionDigits: 0,
+                maximumFractionDigits: 2,
               }).format(context.parsed.y);
             }
             return label;
@@ -849,7 +851,7 @@ export const MonthlyBreakdown: React.FC<Props> = ({
                 <td className="px-4 py-4 text-xs font-bold text-emerald-400">
                   {maskAmount(
                     s.income.toLocaleString(undefined, {
-                      minimumFractionDigits: 0,
+                      minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     }),
                     displayCurrency === "MYR" ? "RM" : "$",
@@ -858,7 +860,7 @@ export const MonthlyBreakdown: React.FC<Props> = ({
                 <td className="px-4 py-4 text-xs font-bold text-rose-400">
                   {maskAmount(
                     s.expense.toLocaleString(undefined, {
-                      minimumFractionDigits: 0,
+                      minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     }),
                     displayCurrency === "MYR" ? "RM" : "$",
@@ -869,7 +871,7 @@ export const MonthlyBreakdown: React.FC<Props> = ({
                 >
                   {maskAmount(
                     s.net.toLocaleString(undefined, {
-                      minimumFractionDigits: 0,
+                      minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     }),
                     displayCurrency === "MYR" ? "RM" : "$",

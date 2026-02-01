@@ -51,7 +51,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const privacyMode = profile.privacyMode || false;
-  const isVaultEnabled = profile.isVaultEnabled || false;
+  const isVaultEnabled = !!profile.isVaultEnabled;
 
   const getVaultSalt = () => {
     if (profile.vaultSalt) return profile.vaultSalt;
@@ -65,7 +65,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const encryptAccount = async (acc: Account): Promise<Account> => {
-    if (!isVaultEnabled || !vaultPassword || !acc.details) return acc;
+    if (!isVaultEnabled || !acc.details) return acc;
+
+    // If already encrypted, don't double encrypt
+    if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
+      return acc;
+    }
+
+    // If vault is enabled but we have no password, we are in a dangerous state.
+    // If we have a plain object, we MUST NOT return it as is, otherwise it leaks to Sheets.
+    if (!vaultPassword) {
+      console.warn(
+        "Vault is enabled but no password set. Preserving plain data locally only, but masking for sync safety.",
+      );
+      // For sync safety, if we're about to return this for a sheet save,
+      // we might want to return something that isn't the full object if we can't encrypt it.
+      // However, the real fix is to make sure we don't save to sheets if not encrypted.
+      // For now, let's just return the object and we will handle the "isEncrypted" check in the save handlers.
+      return acc;
+    }
+
     const salt = getVaultSalt();
     try {
       const encryptedDetails = await SecurityService.encryptData(
@@ -83,6 +102,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const isVaultUnlocked = !!vaultPassword;
 
   const normalizeAccount = (acc: any): Account => {
+    // If details is a string but not encrypted, parse it
+    if (
+      typeof acc.details === "string" &&
+      acc.details.trim().startsWith("{") &&
+      !acc.details.startsWith("ENC:")
+    ) {
+      try {
+        acc = { ...acc, details: JSON.parse(acc.details) };
+      } catch (e) {
+        console.warn("Failed to parse raw details JSON", e);
+      }
+    }
+
+    // Ensure details is either an object or an encrypted string
+    if (
+      acc.details &&
+      typeof acc.details === "string" &&
+      !acc.details.startsWith("ENC:")
+    ) {
+      acc.details = {};
+    } else if (!acc.details) {
+      acc.details = {};
+    }
+
     // Migration: If sensitive fields are at top level, move them to details if details is empty
     const sensitiveFields = [
       "accountNumber",
@@ -112,13 +155,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const unlockVault = async (password: string): Promise<boolean> => {
-    // To verify the password, we could try to decrypt a test string or just set it
-    // For now, let's just set it and trigger a reload/re-decrypt
+    const salt = getVaultSalt();
+    const storedAccounts = StorageService.getStoredAccounts();
+
+    // Find the first encrypted account to verify the password
+    const firstEncrypted = storedAccounts.find(
+      (acc) =>
+        acc.details &&
+        typeof acc.details === "string" &&
+        acc.details.startsWith("ENC:"),
+    );
+
+    if (firstEncrypted) {
+      try {
+        await SecurityService.decryptData(
+          firstEncrypted.details as string,
+          password,
+          salt,
+        );
+      } catch (e) {
+        console.error("Vault unlock failed:", e);
+        return false;
+      }
+    }
+
     setVaultPassword(password);
     localStorage.setItem("vault_password_session", password);
 
-    // Attempt to re-load data with the new password
-    const storedAccounts = StorageService.getStoredAccounts();
     const decryptedAccounts = await Promise.all(
       storedAccounts.map(async (acc) => {
         if (
@@ -126,7 +189,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           typeof acc.details === "string" &&
           acc.details.startsWith("ENC:")
         ) {
-          const salt = getVaultSalt();
           try {
             const decryptedStr = await SecurityService.decryptData(
               acc.details,
@@ -233,20 +295,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const decryptAccount = async (acc: Account): Promise<Account> => {
+  const decryptAccount = async (
+    acc: Account,
+    customPass?: string,
+  ): Promise<Account> => {
     if (
       !acc.details ||
       typeof acc.details !== "string" ||
       !acc.details.startsWith("ENC:")
     )
       return acc;
-    if (!vaultPassword) return acc;
+
+    const passToUse = customPass || vaultPassword;
+    if (!passToUse) return acc;
 
     const salt = getVaultSalt();
     try {
       const decryptedStr = await SecurityService.decryptData(
         acc.details,
-        vaultPassword,
+        passToUse,
         salt,
       );
       return { ...acc, details: JSON.parse(decryptedStr) };
@@ -290,8 +357,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  const maskText = (text: string, isSensitive: boolean = false) => {
-    if (!privacyMode || !text) return text;
+  const maskText = (
+    text: string,
+    isSensitive: boolean = false,
+    permanentMask: boolean = false,
+  ) => {
+    if (!text) return text;
+
+    // Fixed mask for Bank/Card details (always show last 4 if long enough)
+    const getPermanentMask = (val: string) => {
+      if (val.length <= 4) return "****";
+      return "****" + val.slice(-4);
+    };
+
+    const displayText = permanentMask ? getPermanentMask(text) : text;
+
+    if (!privacyMode || !text) return displayText;
+
     return (
       <span
         className="group/mask inline-flex cursor-pointer transition-all duration-300"
@@ -309,10 +391,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         }}
       >
         <span className="inline group-hover/mask:hidden group-data-[revealed=true]/mask:hidden whitespace-nowrap opacity-80">
-          {text[0]}****
+          {text.length > 8 ? text.slice(0, 2) + "********" : "******"}
         </span>
         <span className="hidden group-hover/mask:inline group-data-[revealed=true]/mask:inline whitespace-nowrap animate-fadeIn">
-          {text}
+          {displayText}
         </span>
       </span>
     );
@@ -521,7 +603,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const cloudAccounts = await Promise.all(
           (cloudData.accounts || []).map(async (a: Account) => {
-            const decrypted = await decryptAccount(a);
+            // Using a helper variable for the password since state might be stale
+            const currentPass =
+              vaultPassword || localStorage.getItem("vault_password_session");
+            const decrypted = await decryptAccount(a, currentPass || undefined);
             return normalizeAccount(decrypted);
           }),
         );
@@ -618,14 +703,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     // Encrypt for external storage
     const encryptedAccount = await encryptAccount(accountWithUser);
 
+    // CRITICAL: Safety check. If vault is enabled, we should NOT save to Sheets
+    // if the details are still in plain object form.
+    const isActuallyEncrypted =
+      !isVaultEnabled ||
+      !encryptedAccount.details ||
+      (typeof encryptedAccount.details === "string" &&
+        encryptedAccount.details.startsWith("ENC:"));
+
     let updated;
     if (isNew) {
       updated = [...accounts, accountWithUser];
-      if (SheetService.isClientReady())
+      if (SheetService.isClientReady() && isActuallyEncrypted)
         await SheetService.insertOne("Accounts", encryptedAccount);
     } else {
       updated = accounts.map((a) => (a.id === acc.id ? accountWithUser : a));
-      if (SheetService.isClientReady())
+      if (SheetService.isClientReady() && isActuallyEncrypted)
         await SheetService.updateOne("Accounts", acc.id, encryptedAccount);
     }
     setAccounts(updated);

@@ -136,9 +136,9 @@ const Profile: React.FC<Props> = ({
               <p className="text-sm text-gray-500">
                 {isVaultEnabled
                   ? isVaultUnlocked
-                    ? "You can disable the vault or change your password."
-                    : "Enter your vault password to decrypt sensitive data."
-                  : "Create a password to encrypt bank details. This password is never stored."}
+                    ? "Your Secure Vault is active and protecting your sensitive data."
+                    : "Enter the custom encryption password you created when you first enabled the vault. This is NOT your Google password."
+                  : "Create a custom encryption password to protect your bank details. ZenFinance and Google do not have access to this password, so make sure to remember it!"}
               </p>
             </div>
 
@@ -332,16 +332,20 @@ const Profile: React.FC<Props> = ({
                   ? isVaultUnlocked
                     ? "Vault is unlocked and active"
                     : "Vault is locked. Tap to unlock."
-                  : "Encrypt sensitive account details"
+                  : "Enable a Secure Vault to protect sensitive details."
               }
               color={isVaultEnabled ? "text-rose-400" : "text-gray-400"}
               onClick={() => setShowVaultPrompt(true)}
               action={
-                isVaultEnabled && (
+                isVaultEnabled ? (
                   <div
                     className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${isVaultUnlocked ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}
                   >
                     {isVaultUnlocked ? "Unlocked" : "Locked"}
+                  </div>
+                ) : (
+                  <div className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-gray-800 text-gray-500">
+                    Off
                   </div>
                 )
               }

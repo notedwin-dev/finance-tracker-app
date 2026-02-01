@@ -63,7 +63,8 @@ export const groupTransactions = (
       if (partner) {
         // Double check symmetric account relationship
         const isActuallySymmetric =
-          partner.accountId === t.toAccountId || t.accountId === partner.toAccountId;
+          partner.accountId === t.toAccountId ||
+          t.accountId === partner.toAccountId;
 
         if (isActuallySymmetric) {
           const main =
@@ -117,4 +118,27 @@ export const parseDateSafe = (date: string | number | undefined): Date => {
 export const normalizeDate = (date: string | number): string => {
   const d = parseDateSafe(date);
   return d.toLocaleDateString("en-CA");
+};
+
+export const getOrdinal = (n: number): string => {
+  if (n > 3 && n < 21) return "th";
+  switch (n % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+};
+
+export const formatDateReadable = (date: Date | string | number): string => {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "Invalid Date";
+  const day = d.getDate();
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  const year = d.getFullYear();
+  return `${month} ${day}${getOrdinal(day)}, ${year}`;
 };

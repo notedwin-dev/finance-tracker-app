@@ -12,6 +12,7 @@ import {
   GroupedTransaction,
   normalizeDate,
   parseDateSafe,
+  formatDateReadable,
 } from "../helpers/transactions.helper";
 import { useData } from "../context/DataContext";
 
@@ -105,11 +106,7 @@ const History: React.FC<Props> = ({
     if (finalDateStr === todayStr) return "Today";
     if (finalDateStr === yesterdayStr) return "Yesterday";
 
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return formatDateReadable(date);
   };
 
   return (

@@ -11,7 +11,7 @@ interface AuthContextType {
   emailLogin: (email: string, pass: string) => Promise<void>;
   emailSignup: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (updates: Partial<UserProfile>) => void;
+  updateProfile: (updates: Partial<UserProfile>, skipCloud?: boolean) => void;
   isInitialized: boolean;
 }
 
@@ -232,13 +232,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         emailLogin,
         emailSignup,
         logout,
-        updateProfile: async (u) => {
+        updateProfile: async (u, skipCloud = false) => {
           const p = { ...profile, ...u };
           setProfile(p);
           StorageService.saveProfile(p);
 
           // Sync with Google Sheets if logged in and ready
-          if (SheetService.isClientReady() && p.email) {
+          if (!skipCloud && SheetService.isClientReady() && p.email) {
             try {
               await SheetService.updateUser(p.email, u);
             } catch (err) {

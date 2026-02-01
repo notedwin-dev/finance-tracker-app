@@ -75,17 +75,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     updateProfile({ privacyMode: value });
   };
 
-  const encryptAccount = async (acc: Account): Promise<Account> => {
-    if (!isVaultEnabled || !acc.details) return acc;
+  const encryptAccount = async (
+    acc: Account,
+    customPass?: string,
+    customSalt?: string,
+  ): Promise<Account> => {
+    if (!profile.isVaultEnabled || !acc.details) return acc;
 
     // If already encrypted, don't double encrypt
     if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
       return acc;
     }
 
+    const passToUse = customPass || vaultPassword;
     // If vault is enabled but we have no password, we are in a dangerous state.
     // If we have a plain object, we MUST NOT return it as is, otherwise it leaks to Sheets.
-    if (!vaultPassword) {
+    if (!passToUse) {
       console.warn(
         "Vault is enabled but no password set. Preserving plain data locally only, but masking for sync safety.",
       );
@@ -96,11 +101,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       return acc;
     }
 
-    const salt = getVaultSalt();
+    const salt = customSalt || getVaultSalt();
     try {
       const encryptedDetails = await SecurityService.encryptData(
         JSON.stringify(acc.details),
-        vaultPassword,
+        passToUse,
         salt,
       );
       return { ...acc, details: encryptedDetails as any };
@@ -329,6 +334,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const decryptAccount = async (
     acc: Account,
     customPass?: string,
+    customSalt?: string,
   ): Promise<Account> => {
     if (
       !acc.details ||
@@ -340,7 +346,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const passToUse = customPass || vaultPassword;
     if (!passToUse) return acc;
 
-    const salt = getVaultSalt();
+    const salt = customSalt || getVaultSalt();
     try {
       const decryptedStr = await SecurityService.decryptData(
         acc.details,
@@ -593,6 +599,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const cloudData = await SheetService.loadFromGoogleSheets();
       if (cloudData) {
         // Sync Profile if available
+        let activeProfile = { ...profile };
         if (cloudData.profile) {
           const updates: any = {};
           if (
@@ -612,6 +619,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             cloudData.profile.biometricCredId !== profile.biometricCredId
           ) {
             updates.biometricCredId = cloudData.profile.biometricCredId;
+            // Ensure local storage has it too for immediate biometric availability check
+            if (!localStorage.getItem("biometric_cred_id")) {
+              localStorage.setItem(
+                "biometric_cred_id",
+                cloudData.profile.biometricCredId,
+              );
+            }
           }
           if (
             cloudData.profile.vaultSalt &&
@@ -625,10 +639,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           ) {
             updates.privacyMode = cloudData.profile.privacyMode;
           }
+          if (
+            cloudData.profile.devices &&
+            JSON.stringify(cloudData.profile.devices) !==
+              JSON.stringify(profile.devices)
+          ) {
+            updates.devices = cloudData.profile.devices;
+          }
 
           if (Object.keys(updates).length > 0) {
             console.log("Updating local profile from cloud", updates);
-            updateProfile(updates);
+            activeProfile = { ...profile, ...updates };
+            updateProfile(updates, true); // Skip cloud since we just got it from there
           }
         }
 
@@ -648,12 +670,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return Array.from(map.values());
         };
 
+        const currentPass =
+          vaultPassword || localStorage.getItem("vault_password_session");
+        const currentSalt = activeProfile.vaultSalt;
+
         const cloudAccounts = await Promise.all(
           (cloudData.accounts || []).map(async (a: Account) => {
-            // Using a helper variable for the password since state might be stale
-            const currentPass =
-              vaultPassword || localStorage.getItem("vault_password_session");
-            const decrypted = await decryptAccount(a, currentPass || undefined);
+            const decrypted = await decryptAccount(
+              a,
+              currentPass || undefined,
+              currentSalt,
+            );
             return normalizeAccount(decrypted);
           }),
         );
@@ -661,7 +688,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const localAccountsRaw = StorageService.getStoredAccounts();
         const localAccounts = await Promise.all(
           localAccountsRaw.map(async (a) => {
-            const decrypted = await decryptAccount(a);
+            const decrypted = await decryptAccount(
+              a,
+              currentPass || undefined,
+              currentSalt,
+            );
             return normalizeAccount(decrypted);
           }),
         );
@@ -671,7 +702,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
         // Encrypt for storage
         const encryptedAccounts = await Promise.all(
-          mergedAccounts.map((a) => encryptAccount(a)),
+          mergedAccounts.map((a) =>
+            encryptAccount(a, currentPass || undefined, currentSalt),
+          ),
         );
         StorageService.saveAccounts(encryptedAccounts);
 
@@ -717,12 +750,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setChatSessions(mergedChatSessions);
         StorageService.saveChatSessions(mergedChatSessions);
 
-        const accountsToSync = await Promise.all(
-          mergedAccounts.map((a) => encryptAccount(a)),
-        );
-
         await SheetService.syncWithGoogleSheets(
-          accountsToSync,
+          encryptedAccounts,
           mergedTransactions,
           mergedCategories,
           mergedGoals,
@@ -735,7 +764,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } catch (e) {
       console.error("Sync failed", e);
-      showToast("Cloud sync failed", "alert");
+      showToast("Cloud sync failed. Working offline.", "info");
     }
     setIsSyncing(false);
   };

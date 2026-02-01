@@ -203,6 +203,10 @@ const Profile: React.FC<Props> = ({
                             try {
                               const success = await unlockVault(storedPass);
                               if (success) {
+                                // Important: Ensure vault is actually ENABLED if it was just unlocked
+                                if (!isVaultEnabled) {
+                                  await enableVault(storedPass);
+                                }
                                 showToast(
                                   "Vault unlocked with Biometrics!",
                                   "success",

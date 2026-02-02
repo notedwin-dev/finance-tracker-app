@@ -134,31 +134,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     !!vaultPassword && isVaultEnabled && !isVaultLockedSetting;
 
   const normalizeAccount = (acc: any): Account => {
-    // If details is a string but not encrypted, parse it
-    if (
-      typeof acc.details === "string" &&
-      acc.details.trim().startsWith("{") &&
-      !acc.details.startsWith("ENC:")
-    ) {
+    // 1. If details is an encrypted string, don't touch it
+    if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
+      return acc;
+    }
+
+    // 2. If details is a JSON string (unencrypted), parse it
+    if (typeof acc.details === "string" && acc.details.trim().startsWith("{")) {
       try {
-        acc = { ...acc, details: JSON.parse(acc.details) };
+        const parsed = JSON.parse(acc.details);
+        return normalizeAccount({ ...acc, details: parsed });
       } catch (e) {
         console.warn("Failed to parse raw details JSON", e);
       }
     }
 
-    // Ensure details is either an object or an encrypted string
-    if (
-      acc.details &&
-      typeof acc.details === "string" &&
-      !acc.details.startsWith("ENC:")
-    ) {
-      acc.details = {};
-    } else if (!acc.details) {
-      acc.details = {};
-    }
+    // 3. Ensure details is an object
+    const details = (
+      typeof acc.details === "object" && acc.details !== null
+        ? { ...acc.details }
+        : {}
+    ) as any;
 
-    // Migration: If sensitive fields are at top level, move them to details if details is empty
+    // 4. Migration: If sensitive fields are at top level, move them to details
     const sensitiveFields = [
       "accountNumber",
       "cardNumber",
@@ -168,9 +166,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       "note",
     ];
     let hasSensitiveAtTop = false;
-    const details = (
-      typeof acc.details === "object" ? { ...acc.details } : {}
-    ) as any;
 
     sensitiveFields.forEach((f) => {
       if (acc[f]) {
@@ -180,7 +175,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     });
 
-    if (hasSensitiveAtTop && Object.keys(details).length > 0) {
+    if (hasSensitiveAtTop || typeof acc.details !== "object") {
       return { ...acc, details };
     }
     return acc;
@@ -189,12 +184,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const unlockVault = async (password: string): Promise<boolean> => {
     try {
       const salt = getVaultSalt();
-      // Ensure we are working with a hashed version for storage/session
-      const passToUse = password.startsWith("HASHED:")
+      const hashedPass = password.startsWith("HASHED:")
         ? password
         : await SecurityService.hashPassword(password, salt);
 
-      // Find the first encrypted account to verify the password
+      // We might have data encrypted with the RAW password (legacy)
+      // or the HASHED password (new).
       const firstEncryptedAccount = accounts.find(
         (acc) =>
           acc.details &&
@@ -202,35 +197,89 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           acc.details.startsWith("ENC:"),
       );
 
-      if (
-        !firstEncryptedAccount ||
-        typeof firstEncryptedAccount.details !== "string"
-      ) {
-        // If no encrypted accounts, we accept the password as is (first time or empty vault)
-        setVaultPassword(passToUse);
-        sessionStorage.setItem("vault_password_session", passToUse);
-        // Also save to remembered if user chooses (this should be tied to a 'remember me' logic)
-        // For now, we update it if it exists to keep it sync'd
+      if (!firstEncryptedAccount) {
+        // No encrypted data, just accept the password
+        setVaultPassword(hashedPass);
+        sessionStorage.setItem("vault_password_session", hashedPass);
         if (localStorage.getItem("vault_password_remembered")) {
-          localStorage.setItem("vault_password_remembered", passToUse);
+          localStorage.setItem("vault_password_remembered", hashedPass);
         }
         updateProfile({ isVaultLocked: false });
         return true;
       }
 
-      const decryptedDetails = await SecurityService.decryptData(
-        firstEncryptedAccount.details,
-        passToUse,
+      // Try decrypting with the hashed password first
+      let decryptedStr = await SecurityService.decryptData(
+        firstEncryptedAccount.details as string,
+        hashedPass,
         salt,
       );
+      let workingPass = hashedPass;
 
-      if (decryptedDetails) {
-        setVaultPassword(passToUse);
-        sessionStorage.setItem("vault_password_session", passToUse);
-        if (localStorage.getItem("vault_password_remembered")) {
-          localStorage.setItem("vault_password_remembered", passToUse);
+      // If hashed pass failed, and we have a raw password, try the raw one
+      if (!decryptedStr && !password.startsWith("HASHED:")) {
+        decryptedStr = await SecurityService.decryptData(
+          firstEncryptedAccount.details as string,
+          password,
+          salt,
+        );
+        if (decryptedStr) {
+          workingPass = password;
+          console.log("Legacy decryption successful, migration pending...");
         }
-        await loadData(passToUse);
+      }
+
+      if (decryptedStr) {
+        // Double check it's valid JSON to avoid false positives
+        try {
+          JSON.parse(decryptedStr);
+        } catch (e) {
+          console.error("Decrypted data is not valid JSON", e);
+          return false;
+        }
+
+        // Successfully unlocked!
+        setVaultPassword(hashedPass);
+        sessionStorage.setItem("vault_password_session", hashedPass);
+        if (localStorage.getItem("vault_password_remembered")) {
+          localStorage.setItem("vault_password_remembered", hashedPass);
+        }
+
+        // Use the working password to load data for this session
+        await loadData(workingPass);
+
+        // MIGRATION: If we used the raw password, convert everything to hashed password immediately
+        if (workingPass !== hashedPass) {
+          const loadedAccounts = StorageService.getStoredAccounts();
+          const migratedAccounts = await Promise.all(
+            loadedAccounts.map(async (acc) => {
+              const decrypted = await decryptAccount(acc, workingPass);
+              if (decrypted.details && typeof decrypted.details === "object") {
+                const reEncrypted = await SecurityService.encryptData(
+                  JSON.stringify(decrypted.details),
+                  hashedPass,
+                  salt,
+                );
+                return { ...acc, details: reEncrypted as any };
+              }
+              return acc;
+            }),
+          );
+          setAccounts(migratedAccounts);
+          StorageService.saveAccounts(migratedAccounts);
+          if (isCloudEnabled) {
+            await SheetService.syncWithGoogleSheets(
+              migratedAccounts,
+              transactions,
+              categories,
+              goals,
+              subscriptions,
+              pots,
+              profile.syncChatToSheets ? chatSessions : undefined,
+            );
+          }
+        }
+
         updateProfile({ isVaultLocked: false });
         return true;
       }
@@ -393,6 +442,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         passToUse,
         salt,
       );
+      if (!decryptedStr) return acc;
       return { ...acc, details: JSON.parse(decryptedStr) };
     } catch (e) {
       console.error("Decryption failed", e);

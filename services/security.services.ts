@@ -89,9 +89,9 @@ export async function decryptData(
 
     return new TextDecoder().decode(decrypted);
   } catch (error) {
-    console.error("Decryption failed:", error);
-    // Return original if decryption fails (might be wrong password)
-    return encryptedBase64;
+    // Return null on failure instead of the original string
+    // this prevents JSON.parse errors in callers
+    return null;
   }
 }
 

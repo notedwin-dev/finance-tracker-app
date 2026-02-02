@@ -239,6 +239,8 @@ export const findUser = async (email: string) => {
       "devices",
       "privacyMode",
       "vaultSalt",
+      "showAIAssistant",
+      "syncChatToSheets",
     ];
     const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
     if (missingHeaders.length > 0) {
@@ -259,38 +261,45 @@ export const findUser = async (email: string) => {
     const userRow = rows.find((row: any[]) => row[emailIdx] === email);
     if (!userRow) return null;
 
-    const user: any = {};
-    headers.forEach((h: string, i: number) => {
-      let val = userRow[i];
-
-      // Handle empty cells
-      if (val === undefined || val === "") {
-        val = null;
-      }
-
-      // Convert booleans and handle JSON
-      if (typeof val === "string") {
-        const lower = val.toLowerCase();
-        if (lower === "true") val = true;
-        else if (lower === "false") val = false;
-      }
-      if (
-        typeof val === "string" &&
-        ((val.startsWith("{") && val.endsWith("}")) ||
-          (val.startsWith("[") && val.endsWith("]")))
-      ) {
-        try {
-          val = JSON.parse(val);
-        } catch {
-          /* ignore */
-        }
-      }
-      user[h] = val;
-    });
-    return user;
+    return parseUserRow(headers, userRow);
   } catch (e) {
     return null;
   }
+};
+
+/**
+ * Helper to parse a raw user row into a structured object.
+ */
+const parseUserRow = (headers: string[], userRow: any[]) => {
+  const user: any = {};
+  headers.forEach((h: string, i: number) => {
+    let val = userRow[i];
+
+    // Handle empty cells
+    if (val === undefined || val === "") {
+      val = null;
+    }
+
+    // Convert booleans and handle JSON
+    if (typeof val === "string") {
+      const lower = val.toLowerCase();
+      if (lower === "true") val = true;
+      else if (lower === "false") val = false;
+    }
+    if (
+      typeof val === "string" &&
+      ((val.startsWith("{") && val.endsWith("}")) ||
+        (val.startsWith("[") && val.endsWith("]")))
+    ) {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        /* ignore */
+      }
+    }
+    user[h] = val;
+  });
+  return user;
 };
 
 export const createUser = async (userData: any) => {
@@ -328,6 +337,8 @@ export const createUser = async (userData: any) => {
               "biometricCredId",
               "biometricCredIds",
               "devices",
+              "showAIAssistant",
+              "syncChatToSheets",
             ],
           ],
         },
@@ -350,6 +361,8 @@ export const createUser = async (userData: any) => {
       if (h === "isVaultLocked") return userData.isVaultLocked || true;
       if (h === "vaultSalt") return userData.vaultSalt || "";
       if (h === "privacyMode") return userData.privacyMode || false;
+      if (h === "showAIAssistant") return userData.showAIAssistant !== false;
+      if (h === "syncChatToSheets") return userData.syncChatToSheets !== false;
       if (h === "biometricCredId") return userData.biometricCredId || "";
       if (h === "biometricCredIds")
         return JSON.stringify(userData.biometricCredIds || []);
@@ -864,6 +877,7 @@ export const syncWithGoogleSheets = async (
   subscriptions?: Subscription[],
   pots?: Pot[],
   chatSessions?: ChatSession[],
+  profile?: any,
 ) => {
   const tasks = [];
   if (accounts) tasks.push(saveToSheet("Accounts", accounts));
@@ -873,6 +887,11 @@ export const syncWithGoogleSheets = async (
   if (subscriptions) tasks.push(saveToSheet("Subscriptions", subscriptions));
   if (pots) tasks.push(saveToSheet("Pots", pots));
   if (chatSessions) tasks.push(saveToSheet("ChatSessions", chatSessions));
+
+  // Sync profile/security settings
+  if (profile && profile.email) {
+    tasks.push(updateUser(profile.email, profile));
+  }
 
   await Promise.all(tasks);
 };
@@ -906,18 +925,6 @@ export const loadFromGoogleSheets = async (
 
   const result: any = {};
 
-  // 1. Fetch User Profile if email provided
-  if (userEmail) {
-    try {
-      const userProfile = await findUser(userEmail);
-      if (userProfile) {
-        result.profile = userProfile;
-      }
-    } catch (e) {
-      console.warn("Failed to load user profile during sync", e);
-    }
-  }
-
   const sheetNamesToLoad = [
     "Accounts",
     "Transactions",
@@ -926,6 +933,7 @@ export const loadFromGoogleSheets = async (
     "Subscriptions",
     "Pots",
     "ChatSessions",
+    "Users",
   ];
 
   const names = await getSheetNames(fileId);
@@ -955,6 +963,19 @@ export const loadFromGoogleSheets = async (
 
       const headers = rows[0] as string[];
       const dataRows = rows.slice(1);
+
+      // Handle Users sheet differently (lookup single user)
+      if (sheetName === "Users") {
+        const emailIdx = headers.indexOf("email");
+        if (emailIdx !== -1) {
+          const emailToFind = userEmail || currentUserId;
+          const userRow = dataRows.find((r) => r[emailIdx] === emailToFind);
+          if (userRow) {
+            result.profile = parseUserRow(headers, userRow);
+          }
+        }
+        return;
+      }
 
       result[sheetName.toLowerCase()] = dataRows
         .map((row: any[]) => {
@@ -1021,12 +1042,6 @@ export const loadFromGoogleSheets = async (
     return migratedPot;
   });
 
-  // Load profile from Users sheet if we have an ID
-  let cloudProfile = undefined;
-  if (currentUserId) {
-    cloudProfile = await findUser(currentUserId);
-  }
-
   return {
     accounts: result.accounts || [],
     transactions: result.transactions || [],
@@ -1035,6 +1050,6 @@ export const loadFromGoogleSheets = async (
     subscriptions: result.subscriptions || [],
     pots,
     chatSessions: result.chatsessions || [],
-    profile: cloudProfile,
+    profile: result.profile,
   };
 };

@@ -84,6 +84,52 @@ const Profile: React.FC<Props> = ({
     confirmLabel: "Confirm",
   });
 
+  const handleBiometricUnlock = async () => {
+    const verified = await SecurityService.verifyWithBiometrics(
+      profile.biometricCredIds || profile.biometricCredId,
+    );
+    if (verified) {
+      setIsSyncingLocal(true);
+      setVaultError("");
+
+      // If we are unlocked, don't ask for password again
+      if (isVaultUnlocked) {
+        setShowVaultPrompt(false);
+        setIsSyncingLocal(false);
+        showToast("Vault is already unlocked", "info");
+        return;
+      }
+
+      const storedPass = localStorage.getItem("vault_password_remembered");
+      if (storedPass) {
+        // Migration: if storedPass is encrypted (legacy bug), it's invalid
+        if (storedPass.startsWith("ENC:")) {
+          localStorage.removeItem("vault_password_remembered");
+          setVaultError("Vault link expired. Please use password once.");
+          setIsSyncingLocal(false);
+          return;
+        }
+
+        try {
+          await unlockVault(storedPass);
+
+          showToast("Vault unlocked with Biometrics!", "success");
+          setShowVaultPrompt(false);
+        } catch (e) {
+          setVaultError("Unlock failed. Please try again.");
+        }
+      } else {
+        const isTrusted = profile.devices?.includes(getDeviceId());
+        setVaultError(
+          isTrusted
+            ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
+            : "Security verification successful! However, since this is a new device, please enter your Vault Password once to link your security.",
+        );
+      }
+      setIsSyncingLocal(false);
+    }
+  };
+
   const handleSave = () => {
     onUpdate({ name });
     setIsEditing(false);
@@ -207,64 +253,15 @@ const Profile: React.FC<Props> = ({
                         profile.biometricCredId) && (
                         <button
                           disabled={isSyncingLocal}
-                          onClick={async () => {
-                            const verified =
-                              await SecurityService.verifyWithBiometrics(
-                                profile.biometricCredIds ||
-                                  profile.biometricCredId,
-                              );
-                            if (verified) {
-                              setIsSyncingLocal(true);
-                              setVaultError("");
-
-                              // If we are unlocked, don't ask for password again
-                              if (isVaultUnlocked) {
-                                setShowVaultPrompt(false);
-                                setIsSyncingLocal(false);
-                                showToast("Vault is already unlocked", "info");
-                                return;
-                              }
-
-                              const storedPass = localStorage.getItem(
-                                "vault_password_remembered",
-                              );
-                              if (storedPass) {
-                                // Migration: if storedPass is encrypted (legacy bug), it's invalid
-                                if (storedPass.startsWith("ENC:")) {
-                                  localStorage.removeItem(
-                                    "vault_password_remembered",
-                                  );
-                                  setVaultError(
-                                    "Vault link expired. Please use password once.",
-                                  );
-                                  setIsSyncingLocal(false);
-                                  return;
-                                }
-
-                                try {
-                                  await unlockVault(storedPass);
-
-                                  showToast(
-                                    "Vault unlocked with Biometrics!",
-                                    "success",
-                                  );
-                                  setShowVaultPrompt(false);
-                                } catch (e) {
-                                  setVaultError(
-                                    "Unlock failed. Please try again.",
-                                  );
-                                }
-                              } else {
-                                const isTrusted =
-                                  profile.devices?.includes(getDeviceId());
-                                setVaultError(
-                                  isTrusted
-                                    ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
-                                    : "Security verification successful! However, since this is a new device, please enter your Vault Password once to link your security.",
-                                );
-                              }
-                              setIsSyncingLocal(false);
-                            }
+                          onClick={() => {
+                            setConfirmationModal({
+                              isOpen: true,
+                              title: "Biometric Unlock",
+                              description:
+                                "Are you sure you want to use TouchID/FaceID to unlock your private vault data?",
+                              confirmLabel: "Verify Identity",
+                              onConfirm: handleBiometricUnlock,
+                            });
                           }}
                           className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2 disabled:opacity-50"
                         >
@@ -304,10 +301,17 @@ const Profile: React.FC<Props> = ({
                                       profile.name || "User",
                                     );
                                   if (credId) {
-                                    localStorage.setItem(
-                                      "vault_password_remembered",
-                                      currentPass,
-                                    );
+                                    // Use the already hashed password from system storage or session
+                                    const currentHashed =
+                                      sessionStorage.getItem(
+                                        "vault_password_session",
+                                      );
+                                    if (currentHashed) {
+                                      localStorage.setItem(
+                                        "vault_password_remembered",
+                                        currentHashed,
+                                      );
+                                    }
                                     onUpdate({
                                       biometricCredIds: Array.from(
                                         new Set([
@@ -368,10 +372,15 @@ const Profile: React.FC<Props> = ({
                                 profile.biometricCredIds?.length ||
                                 profile.biometricCredId
                               ) {
-                                localStorage.setItem(
-                                  "vault_password_remembered",
-                                  vaultPass,
+                                const currentHashed = sessionStorage.getItem(
+                                  "vault_password_session",
                                 );
+                                if (currentHashed) {
+                                  localStorage.setItem(
+                                    "vault_password_remembered",
+                                    currentHashed,
+                                  );
+                                }
                                 // Sync local biometrics if profile has them but local storage doesn't (migration)
                                 if (
                                   (profile.biometricCredIds?.length ||
@@ -509,13 +518,13 @@ const Profile: React.FC<Props> = ({
                     profile.name,
                   );
                   if (credId) {
-                    const currentPass =
+                    const currentHashed =
                       sessionStorage.getItem("vault_password_session") ||
                       localStorage.getItem("vault_password_session");
-                    if (currentPass) {
+                    if (currentHashed) {
                       localStorage.setItem(
                         "vault_password_remembered",
-                        currentPass,
+                        currentHashed,
                       );
                     }
                     onUpdate({

@@ -668,6 +668,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (cloudData.profile) {
           const updates: any = {};
 
+          if (
+            cloudData.profile.name &&
+            cloudData.profile.name !== profile.name
+          ) {
+            updates.name = cloudData.profile.name;
+          }
+
           // Scalar fields - prefer Cloud
           if (
             cloudData.profile.isVaultEnabled !== undefined &&
@@ -698,6 +705,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             cloudData.profile.privacyMode !== profile.privacyMode
           ) {
             updates.privacyMode = cloudData.profile.privacyMode;
+          }
+          if (
+            cloudData.profile.showAIAssistant !== undefined &&
+            cloudData.profile.showAIAssistant !== profile.showAIAssistant
+          ) {
+            updates.showAIAssistant = cloudData.profile.showAIAssistant;
+          }
+          if (
+            cloudData.profile.syncChatToSheets !== undefined &&
+            cloudData.profile.syncChatToSheets !== profile.syncChatToSheets
+          ) {
+            updates.syncChatToSheets = cloudData.profile.syncChatToSheets;
           }
 
           // Array fields - Merge Cloud and Local
@@ -838,6 +857,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           mergedSubs,
           mergedPots,
           profile.syncChatToSheets ? mergedChatSessions : undefined,
+          activeProfile,
         );
         processSubscriptions(mergedSubs, mergedTransactions);
         showToast("Cloud sync complete", "success");

@@ -677,7 +677,16 @@ const AccountForm: React.FC<Props> = ({
             profile.biometricCredIds?.length ||
             profile.biometricCredId) && (
             <button
-              onClick={handleBiometricUnlock}
+              onClick={() => {
+                setConfirmationModal({
+                  isOpen: true,
+                  title: "Biometric Unlock",
+                  description:
+                    "Are you sure you want to use TouchID/FaceID to unlock your private vault data?",
+                  confirmLabel: "Verify Identity",
+                  onConfirm: handleBiometricUnlock,
+                });
+              }}
               className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
             >
               <FingerPrintIcon className="w-5 h-5" />

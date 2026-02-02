@@ -76,6 +76,20 @@ const AccountPage: React.FC = () => {
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [vaultPassword, setVaultPassword] = useState("");
   const [unlockError, setUnlockError] = useState("");
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    confirmLabel: string;
+    isDestructive?: boolean;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+    confirmLabel: "Confirm",
+  });
 
   const handleVaultUnlock = async () => {
     if (!vaultPassword) return;
@@ -770,7 +784,16 @@ const AccountPage: React.FC = () => {
             profile.biometricCredIds?.length ||
             profile.biometricCredId) && (
             <button
-              onClick={handleBiometricUnlock}
+              onClick={() => {
+                setConfirmationModal({
+                  isOpen: true,
+                  title: "Biometric Unlock",
+                  description:
+                    "Are you sure you want to use TouchID/FaceID to unlock your private vault data?",
+                  confirmLabel: "Verify Identity",
+                  onConfirm: handleBiometricUnlock,
+                });
+              }}
               className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
             >
               <FingerPrintIcon className="w-5 h-5" />
@@ -812,6 +835,45 @@ const AccountPage: React.FC = () => {
               Unlock
             </button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={confirmationModal.isOpen}
+        onClose={() =>
+          setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
+        }
+        title={confirmationModal.title}
+        description={confirmationModal.description}
+        iconColor={
+          confirmationModal.isDestructive ? "text-rose-400" : "text-primary"
+        }
+        iconBgColor={
+          confirmationModal.isDestructive ? "bg-rose-500/10" : "bg-primary/10"
+        }
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() =>
+              setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
+            }
+            className="py-3 px-4 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10 text-gray-400 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              confirmationModal.onConfirm();
+              setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
+            }}
+            className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors shadow-lg ${
+              confirmationModal.isDestructive
+                ? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20 text-white"
+                : "bg-primary hover:bg-primary-600 shadow-primary/20 text-white"
+            }`}
+          >
+            {confirmationModal.confirmLabel}
+          </button>
         </div>
       </Modal>
     </div>

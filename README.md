@@ -7,8 +7,9 @@ A sophisticated personal finance management application built with **React 19**,
 - 📊 **Dynamic Dashboard**: Visualize your accounts, transactions, and spending patterns.
 - ☁️ **Google Sheets Sync**: Real-time synchronization. Your data is stored safely in your own Google Drive.
 - 🔐 **Secure Vault**: End-to-end encrypted storage for sensitive bank details. Protected by a user-defined password and hardware-level biometrics.
-- 🤖 **AI Insights**: Integrated with Google Gemini to provide personalized financial advice and analysis.
+- 🤖 **AI Insights**: Integrated with Google Gemini to provide personalized financial advice, automated bank statement parsing (PDF/Images), and deep data analysis.
 - 🍯 **Saving Pots**: Create virtual buckets within your accounts to track specific savings goals without moving actual money.
+- 📂 **Bulk Import**: Import historical transactions from bank statements with smart deduplication and balance preservation.
 - 📉 **Rich Visualizations**: Interactive charts to track balance history and expense distribution.
 - 🌐 **Offline First**: Full functionality without an internet connection. Data syncs automatically once you go back online.
 - 📱 **Mobile First**: responsive design optimized for both desktop and mobile use.

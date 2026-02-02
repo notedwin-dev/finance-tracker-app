@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-02-02
+
+### Added
+
+- SDK Migration: Fully migrated the entire ecosystem (frontend & backend) to the new `@google/genai` SDK for faster, more reliable AI interactions.
+- **Multimodal Bank Statement Parsing**: Users can now upload PDF or image-based bank statements for automated transaction extraction using Gemini's vision capabilities.
+- **Historical Bulk Import**: New logic to import years of historical transactions without disrupting current account balances or triggering incorrect "opening balance" deltas.
+- **Backend ESM Support**: Converted the backend to ECMAScript Modules (ESM) for better performance and alignment with modern JavaScript standards.
+- **Bulk Google Sheets Operations**: Optimized synchronization by implementing bulk row inserts, significantly reducing API latency and preventing rate-limiting during large imports.
+
+### Fixed
+
+- **Vault Decryption Errors**: Implemented PBKDF2 key hashing to prevent `SyntaxError: Unexpected end of JSON input` when switching between passwords or devices.
+- **Asset Encryption Leaks**: Fixed a critical bug where newly created assets weren't being encrypted due to inconsistent boolean normalization from Google Sheets.
+- **Spending Pot Math**: Corrected arithmetic logic in pots where "Amount Left" would sometimes display negative values due to floating-point errors.
+
 ## [1.5.0] - 2026-02-02
 
 ### Added

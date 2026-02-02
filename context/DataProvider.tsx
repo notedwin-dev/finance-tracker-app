@@ -1508,6 +1508,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const handleSelectExistingSheet = async () => {
+    try {
+      const fileId = await SheetService.selectSpreadsheetWithPicker();
+      if (fileId) {
+        showToast("Spreadsheet linked! Synchronizing...", "success");
+        // Trigger a fresh sync with the newly linked file
+        syncData();
+      }
+    } catch (e) {
+      console.error("Failed to select sheet", e);
+      showToast("Could not link spreadsheet.", "alert");
+    }
+  };
+
   const handleDeleteChatSession = async (id: string) => {
     const updated = chatSessions.filter((s) => s.id !== id);
     setChatSessions(updated);
@@ -1603,6 +1617,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         toast,
         showToast,
         syncData,
+        handleSelectExistingSheet,
         loadData,
         setAccounts,
         setTransactions,

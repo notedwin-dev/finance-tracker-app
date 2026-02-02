@@ -88,7 +88,7 @@ export const initGapiClient = async (): Promise<void> => {
   }
 
   return new Promise<void>((resolve) => {
-    window.gapi.load("client", async () => {
+    window.gapi.load("client:picker", async () => {
       try {
         await window.gapi.client.init({
           apiKey,
@@ -99,7 +99,7 @@ export const initGapiClient = async (): Promise<void> => {
         if (window.gapi.client.sheets && window.gapi.client.drive) {
           gapiInited = true;
           console.log(
-            "GAPI Client successfully initialized with Sheets and Drive",
+            "GAPI Client successfully initialized with Sheets, Drive and Picker",
           );
         } else {
           console.error("GAPI Client init finished but services missing", {
@@ -164,7 +164,23 @@ const getSpreadsheetId = async (): Promise<string | null> => {
     return null;
   }
 
-  // Find the file
+  // 1. Check if the user has manually selected a file via the picker before
+  const savedId = localStorage.getItem("zenfinance_selected_sheet_id");
+  if (savedId) {
+    try {
+      // Verify it still exists and we have access
+      await window.gapi.client.drive.files.get({
+        fileId: savedId,
+        fields: "id",
+      });
+      return savedId;
+    } catch (e) {
+      console.warn("Saved spreadsheet ID is no longer accessible", e);
+      localStorage.removeItem("zenfinance_selected_sheet_id");
+    }
+  }
+
+  // 2. Find the file using search (works only for files CREATED by this app under drive.file scope)
   try {
     const response = await window.gapi.client.drive.files.list({
       q: `name = '${currentSheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
@@ -1163,4 +1179,52 @@ export const loadFromGoogleSheets = async (
     chatSessions: result.chatsessions || [],
     profile: result.profile,
   };
+};
+/**
+ * Opens a Google Picker to let the user select a specific spreadsheet.
+ * This is crucial for the drive.file scope to gain access to a file
+ * that was not created by this app (e.g., from a previous manual sync).
+ */
+export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
+  if (!gapiInited || !hasAccessToken) return null;
+
+  const accessToken = localStorage.getItem("google_access_token");
+  const apiKey = getApiKey();
+
+  if (!accessToken || !apiKey) return null;
+
+  return new Promise((resolve) => {
+    const picker = new window.google.picker.PickerBuilder()
+      .addView(
+        new window.google.picker.DocsView(
+          window.google.picker.ViewId.SPREADSHEETS,
+        )
+          .setMode(window.google.picker.DocsViewMode.LIST)
+          .setQuery(currentSheetTitle),
+      )
+      .setOAuthToken(accessToken)
+      .setDeveloperKey(apiKey)
+      .setCallback((data: any) => {
+        if (
+          data[window.google.picker.Response.ACTION] ===
+          window.google.picker.Action.PICKED
+        ) {
+          const doc = data[window.google.picker.Response.DOCUMENTS][0];
+          const fileId = doc[window.google.picker.Document.ID];
+          console.log("User selected spreadsheet via picker:", fileId);
+          // Store selected file ID to skip search next time
+          localStorage.setItem("zenfinance_selected_sheet_id", fileId);
+          resolve(fileId);
+        } else if (
+          data[window.google.picker.Response.ACTION] ===
+          window.google.picker.Action.CANCEL
+        ) {
+          resolve(null);
+        }
+      })
+      .setTitle(`Select Your ${currentSheetTitle} File`)
+      .build();
+
+    picker.setVisible(true);
+  });
 };

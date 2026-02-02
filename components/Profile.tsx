@@ -34,6 +34,7 @@ interface Props {
   onSync?: () => void;
   onUnlinkCloud?: () => void;
   onResetSync?: () => void;
+  onSelectSheet?: () => void;
   isSyncing?: boolean;
 }
 
@@ -49,6 +50,7 @@ const Profile: React.FC<Props> = ({
   onSync,
   onUnlinkCloud,
   onResetSync,
+  onSelectSheet,
   isSyncing = false,
 }) => {
   const {
@@ -840,6 +842,15 @@ const Profile: React.FC<Props> = ({
                     <ArrowPathIcon className="w-4 h-4 text-sky-400 animate-spin" />
                   ) : null
                 }
+              />
+            )}
+            {!profile.offlineMode && onSelectSheet && (
+              <SettingItem
+                icon={DocumentArrowDownIcon}
+                label="Re-link Google Sheet"
+                description="Manually select your data file if it's missing"
+                onClick={onSelectSheet}
+                color="text-amber-400"
               />
             )}
             {onResetSync && (

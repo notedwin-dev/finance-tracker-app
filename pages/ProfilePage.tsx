@@ -9,6 +9,7 @@ const ProfilePage: React.FC = () => {
   const {
     isSyncing,
     syncData,
+    handleSelectExistingSheet,
     handleResetAndSync,
     handleMigrateData,
     accounts,
@@ -65,6 +66,7 @@ const ProfilePage: React.FC = () => {
         onSync={syncData}
         onUnlinkCloud={unlinkCloud}
         onResetSync={handleResetAndSync}
+        onSelectSheet={handleSelectExistingSheet}
         isSyncing={isSyncing}
       />
     </div>

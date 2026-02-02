@@ -46,6 +46,7 @@ export interface DataContextType {
   toast: { message: string; type: "success" | "alert" | "info" } | null;
   showToast: (message: string, type: "success" | "alert" | "info") => void;
   syncData: () => Promise<void>;
+  handleSelectExistingSheet: () => Promise<void>;
   loadData: () => Promise<void>;
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;

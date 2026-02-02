@@ -635,6 +635,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           categoryId: sub.categoryId,
           shopName: sub.name + " (Subscription)",
           date: nextDateStr,
+          subscriptionId: sub.id,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -648,7 +649,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       if (hasProcessed) {
         processedCount++;
-        return { ...sub, nextPaymentDate: nextDateStr };
+        return { ...sub, nextPaymentDate: nextDateStr, updatedAt: Date.now() };
       }
       return { ...sub, nextPaymentDate: nextDateStr };
     });
@@ -987,6 +988,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const accountWithUser = {
       ...acc,
       userId: profile.id || "local",
+      updatedAt: Date.now(), // Always update timestamp on save to prevent stale cloud overwrites
     } as Account;
 
     // Encrypt for external storage
@@ -1092,10 +1094,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  const handleTransactionSubmit = async (tx: Omit<Transaction, "userId">) => {
+  const handleTransactionSubmit = async (
+    tx: Omit<Transaction, "userId">,
+    newSubscription?: Omit<Subscription, "userId" | "id">,
+  ) => {
     const oldTx = transactions.find((t) => t.id === tx.id);
     const isEdit = !!oldTx;
-    const txWithUser = { ...tx, userId: profile.id || "local" } as Transaction;
+    const currentUserId = profile.id || "local";
+    const txWithUser = { ...tx, userId: currentUserId } as Transaction;
 
     let updatedTransactions;
     if (isEdit) {
@@ -1111,6 +1117,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     setTransactions(updatedTransactions);
     StorageService.saveTransactions(updatedTransactions);
+
+    // Handle New Subscription
+    if (newSubscription && !isEdit) {
+      const sub: Subscription = {
+        ...newSubscription,
+        id: crypto.randomUUID(),
+        userId: currentUserId,
+      };
+
+      // Calculate next payment date based on frequency
+      const d = parseDateSafe(sub.nextPaymentDate);
+      if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
+      else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
+      else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
+      else d.setDate(d.getDate() + 1);
+      sub.nextPaymentDate = d.toLocaleDateString("en-CA");
+
+      const updatedSubs = [...subscriptions, sub];
+      setSubscriptions(updatedSubs);
+      StorageService.saveSubscriptions(updatedSubs);
+      if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
+    }
+
+    // Handle Link to Existing Subscription
+    if (tx.subscriptionId && !newSubscription) {
+      const sub = subscriptions.find((s) => s.id === tx.subscriptionId);
+      if (sub) {
+        let nextDateStr = normalizeDate(sub.nextPaymentDate);
+        const txDate = normalizeDate(tx.date);
+
+        // If the transaction date is equal to or later than the current nextPaymentDate,
+        // we push the nextPaymentDate forward.
+        if (txDate >= nextDateStr) {
+          const d = parseDateSafe(txDate);
+          if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
+          else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
+          else if (sub.frequency === "YEARLY")
+            d.setFullYear(d.getFullYear() + 1);
+          else d.setDate(d.getDate() + 1);
+          nextDateStr = d.toLocaleDateString("en-CA");
+
+          const updatedSub = { ...sub, nextPaymentDate: nextDateStr };
+          const updatedSubsList = subscriptions.map((s) =>
+            s.id === sub.id ? updatedSub : s,
+          );
+          setSubscriptions(updatedSubsList);
+          StorageService.saveSubscriptions(updatedSubsList);
+          if (isCloudEnabled)
+            await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
+        }
+      }
+    }
 
     const updatedAccounts = accounts.map((a) => {
       let balance = a.balance;
@@ -1282,7 +1340,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleCategorySave = async (cat: Omit<Category, "userId">) => {
     const isEdit = categories.some((c) => c.id === cat.id);
-    const catWithUser = { ...cat, userId: profile.id || "local" } as Category;
+    const catWithUser = {
+      ...cat,
+      userId: profile.id || "local",
+      updatedAt: Date.now(),
+    } as Category;
     const updated = isEdit
       ? categories.map((c) => (c.id === cat.id ? catWithUser : c))
       : [...categories, catWithUser];
@@ -1306,7 +1368,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleGoalUpdate = async (goal: Omit<Goal, "userId">) => {
     const isEdit = goals.some((g) => g.id === goal.id);
-    const goalWithUser = { ...goal, userId: profile.id || "local" } as Goal;
+    const goalWithUser = {
+      ...goal,
+      userId: profile.id || "local",
+      updatedAt: Date.now(),
+    } as Goal;
     const updated = isEdit
       ? goals.map((g) => (g.id === goal.id ? goalWithUser : g))
       : [...goals, goalWithUser];
@@ -1334,6 +1400,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       ...pot,
       amountLeft,
       userId: profile.id || "local",
+      updatedAt: Date.now(),
     } as Pot;
     const updated = isEdit
       ? pots.map((p) => (p.id === pot.id ? potWithUser : p))
@@ -1357,7 +1424,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleAddSubscription = async (sub: Omit<Subscription, "userId">) => {
     const currentUserId = profile.id || "guest";
-    const newSub: Subscription = { ...sub, userId: currentUserId };
+    const newSub: Subscription = {
+      ...sub,
+      userId: currentUserId,
+      updatedAt: Date.now(),
+    };
     const updated = [...subscriptions, newSub];
     setSubscriptions(updated);
     StorageService.saveSubscriptions(updated);
@@ -1374,15 +1445,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleSaveChatSession = async (session: ChatSession) => {
     const isEdit = chatSessions.some((s) => s.id === session.id);
+    const sessionWithUpdate = { ...session, updatedAt: Date.now() };
     const updated = isEdit
-      ? chatSessions.map((s) => (s.id === session.id ? session : s))
-      : [...chatSessions, session];
+      ? chatSessions.map((s) => (s.id === session.id ? sessionWithUpdate : s))
+      : [...chatSessions, sessionWithUpdate];
     setChatSessions(updated);
     StorageService.saveChatSessions(updated);
     if (isCloudEnabled && profile.syncChatToSheets) {
       if (isEdit)
-        await SheetService.updateOne("ChatSessions", session.id, session);
-      else await SheetService.insertOne("ChatSessions", session);
+        await SheetService.updateOne("ChatSessions", session.id, sessionWithUpdate);
+      else await SheetService.insertOne("ChatSessions", sessionWithUpdate);
     }
   };
 

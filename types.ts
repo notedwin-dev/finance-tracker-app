@@ -81,6 +81,7 @@ export interface Transaction {
   linkedTransactionId?: string; // For split transfers
   transferDirection?: "OUT" | "IN";
   potId?: string; // Linked Spending Pot / Limit
+  subscriptionId?: string; // Linked Subscription
 }
 
 export interface UserCloudSettings {
@@ -150,6 +151,7 @@ export interface Subscription {
   nextPaymentDate: string; // YYYY-MM-DD
   frequency: SubscriptionFrequency;
   active: boolean;
+  updatedAt?: number;
 }
 
 export interface ChatMessage {

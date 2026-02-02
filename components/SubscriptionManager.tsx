@@ -20,6 +20,7 @@ interface Props {
   categories: Category[];
   onAdd: (sub: Omit<Subscription, "userId">) => void;
   onDelete: (id: string) => void;
+  onRecordPayment?: (sub: Subscription) => void;
   onClose: () => void;
 }
 
@@ -29,6 +30,7 @@ const SubscriptionManager: React.FC<Props> = ({
   categories,
   onAdd,
   onDelete,
+  onRecordPayment,
   onClose,
 }) => {
   const { maskText, maskAmount } = useData();
@@ -324,7 +326,7 @@ const SubscriptionManager: React.FC<Props> = ({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:gap-4 shrink-0 pl-2">
+                    <div className="flex items-center gap-2 sm:gap-3 shrink-0 pl-2">
                       <span className="font-mono font-black text-white text-base sm:text-lg">
                         {sub.currency === "MYR" ? "RM" : "$"}{" "}
                         {maskAmount(
@@ -333,12 +335,23 @@ const SubscriptionManager: React.FC<Props> = ({
                           }),
                         )}
                       </span>
-                      <button
-                        onClick={() => onDelete(sub.id)}
-                        className="p-1 sm:p-2 text-gray-500 hover:text-red-400 transition-colors"
-                      >
-                        <TrashIcon className="w-5 h-5 sm:w-4 sm:h-4" />
-                      </button>
+                      <div className="flex gap-1">
+                        {onRecordPayment && (
+                          <button
+                            onClick={() => onRecordPayment(sub)}
+                            className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors border border-primary/20"
+                            title="Record Payment"
+                          >
+                            <CalendarDaysIcon className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onDelete(sub.id)}
+                          className="p-1.5 text-gray-500 hover:text-red-400 transition-colors hover:bg-red-400/10 rounded-lg"
+                        >
+                          <TrashIcon className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

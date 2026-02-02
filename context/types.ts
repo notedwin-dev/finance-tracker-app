@@ -56,7 +56,10 @@ export interface DataContextType {
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   handleAccountSave: (acc: Omit<Account, "userId">) => Promise<void>;
   handleAccountDelete: (id: string) => Promise<void>;
-  handleTransactionSubmit: (tx: Omit<Transaction, "userId">) => Promise<void>;
+  handleTransactionSubmit: (
+    tx: Omit<Transaction, "userId">,
+    newSubscription?: Omit<Subscription, "userId" | "id">,
+  ) => Promise<void>;
   handleBulkTransactionImport: (
     newTxs: Partial<Transaction>[],
     accountId: string,

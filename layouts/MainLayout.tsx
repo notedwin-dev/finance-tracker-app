@@ -27,7 +27,7 @@ import TransactionForm from "../components/TransactionForm";
 import AccountForm from "../components/AccountForm";
 import CategoryManager from "../components/CategoryManager";
 import SubscriptionManager from "../components/SubscriptionManager";
-import { Transaction, Account } from "../types";
+import { Transaction, Account, TransactionType, Subscription } from "../types";
 
 const zenLogo = "/images/ZenFinance.svg";
 
@@ -96,6 +96,24 @@ const MainLayout: React.FC = () => {
     setTimeout(() => {
       logout();
     }, 100);
+  };
+
+  const handleRecordSubscriptionPayment = (sub: Subscription) => {
+    setShowSubscriptionManager(false);
+    setEditingTransaction({
+      id: crypto.randomUUID(),
+      userId: profile.id || "local",
+      accountId: sub.accountId,
+      amount: sub.amount,
+      currency: sub.currency,
+      type: TransactionType.EXPENSE,
+      categoryId: sub.categoryId,
+      shopName: sub.name,
+      date: new Date().toLocaleDateString("en-CA"),
+      createdAt: Date.now(),
+      subscriptionId: sub.id,
+    } as Transaction);
+    setShowAddModal(true);
   };
 
   return (
@@ -389,6 +407,7 @@ const MainLayout: React.FC = () => {
           accounts={accounts}
           categories={categories}
           pots={pots}
+          subscriptions={subscriptions}
           initialTransaction={editingTransaction}
           onClose={() => {
             setShowAddModal(false);
@@ -428,6 +447,7 @@ const MainLayout: React.FC = () => {
           categories={categories}
           onAdd={handleAddSubscription}
           onDelete={handleDeleteSubscription}
+          onRecordPayment={handleRecordSubscriptionPayment}
           onClose={() => setShowSubscriptionManager(false)}
         />
       )}

@@ -7,6 +7,8 @@ import {
   Currency,
   Pot,
   AmountBreakdownItem,
+  Subscription,
+  SubscriptionFrequency,
 } from "../types";
 import {
   XMarkIcon,
@@ -15,6 +17,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   TrashIcon as TrashIconOutline,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { TrashIcon } from "@heroicons/react/24/solid";
 
@@ -22,9 +25,13 @@ interface Props {
   accounts: Account[];
   categories: Category[];
   pots?: Pot[];
+  subscriptions?: Subscription[];
   initialTransaction?: Transaction;
   onClose: () => void;
-  onSubmit: (transaction: Omit<Transaction, "userId">) => void;
+  onSubmit: (
+    transaction: Omit<Transaction, "userId">,
+    newSubscription?: Omit<Subscription, "userId" | "id">,
+  ) => void;
   onManageCategories: () => void;
 }
 
@@ -32,6 +39,7 @@ const TransactionForm: React.FC<Props> = ({
   accounts,
   categories,
   pots = [],
+  subscriptions = [],
   initialTransaction,
   onClose,
   onSubmit,
@@ -52,6 +60,12 @@ const TransactionForm: React.FC<Props> = ({
   const [potId, setPotId] = useState(
     initialTransaction ? initialTransaction.potId || "" : "",
   );
+  const [subscriptionId, setSubscriptionId] = useState(
+    initialTransaction ? initialTransaction.subscriptionId || "" : "",
+  );
+  const [isSubscription, setIsSubscription] = useState(false);
+  const [frequency, setFrequency] = useState<SubscriptionFrequency>("MONTHLY");
+
   const [toAccountId, setToAccountId] = useState(
     initialTransaction
       ? initialTransaction.toAccountId || ""
@@ -212,10 +226,11 @@ const TransactionForm: React.FC<Props> = ({
 
     setIsSubmitting(true);
     try {
-      await onSubmit({
+      const txData: Omit<Transaction, "userId"> = {
         id: initialTransaction?.id || crypto.randomUUID(),
         accountId,
         potId: potId || undefined,
+        subscriptionId: subscriptionId || undefined,
         toAccountId:
           type === TransactionType.TRANSFER ? toAccountId : undefined,
         amount: Math.abs(parseFloat(amount)),
@@ -236,7 +251,22 @@ const TransactionForm: React.FC<Props> = ({
               }))
             : undefined,
         createdAt: initialTransaction?.createdAt || Date.now(),
-      });
+      };
+
+      const newSubData = isSubscription
+        ? {
+            name: shopName || "New Subscription",
+            amount: Math.abs(parseFloat(amount)),
+            currency,
+            accountId,
+            categoryId,
+            frequency,
+            nextPaymentDate: date, // Will be updated by DataProvider logic
+            active: true,
+          }
+        : undefined;
+
+      await onSubmit(txData, newSubData);
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -442,6 +472,96 @@ const TransactionForm: React.FC<Props> = ({
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Subscription Linking */}
+          {type === TransactionType.EXPENSE && (
+            <div className="space-y-3 bg-white/5 p-3 rounded-2xl border border-gray-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-gray-400 flex items-center gap-2">
+                  <ArrowPathIcon className="w-3.5 h-3.5" />
+                  Subscription
+                </label>
+                {!subscriptionId && (
+                  <button
+                    type="button"
+                    onClick={() => setIsSubscription(!isSubscription)}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-all ${
+                      isSubscription
+                        ? "bg-primary/20 text-primary border border-primary/30"
+                        : "text-gray-500 border border-gray-800"
+                    }`}
+                  >
+                    {isSubscription ? "CREATE NEW" : "SET AS REPEATING"}
+                  </button>
+                )}
+              </div>
+
+              {isSubscription && !subscriptionId && (
+                <div className="animate-fadeIn space-y-3">
+                  <div className="flex gap-2">
+                    {(
+                      ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const
+                    ).map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setFrequency(f)}
+                        className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
+                          frequency === f
+                            ? "bg-primary border-primary text-white"
+                            : "bg-surface border-gray-700 text-gray-400"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-500 italic">
+                    This will create a new subscription starting from {date}.
+                  </p>
+                </div>
+              )}
+
+              {subscriptions.length > 0 && !isSubscription && (
+                <div className="relative">
+                  <select
+                    value={subscriptionId}
+                    onChange={(e) => {
+                      const subId = e.target.value;
+                      setSubscriptionId(subId);
+                      if (subId) {
+                        const sub = subscriptions.find((s) => s.id === subId);
+                        if (sub) {
+                          setCategoryId(sub.categoryId);
+                          setAmount(sub.amount.toFixed(2));
+                          setCurrency(sub.currency);
+                          if (!shopName) setShopName(sub.name);
+                        }
+                      }
+                    }}
+                    className="w-full bg-surface border border-gray-700 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-primary appearance-none"
+                  >
+                    <option value="">Link existing subscription...</option>
+                    {subscriptions.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} ({sub.currency} {sub.amount.toLocaleString()}
+                        ) - {sub.frequency}
+                      </option>
+                    ))}
+                  </select>
+                  {subscriptionId && (
+                    <button
+                      type="button"
+                      onClick={() => setSubscriptionId("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

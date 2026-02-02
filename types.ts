@@ -86,6 +86,7 @@ export interface Transaction {
 export interface UserCloudSettings {
   isVaultEnabled?: boolean;
   isVaultCreated?: boolean;
+  isVaultLocked?: boolean;
   vaultSalt?: string;
   biometricCredId?: string; // Legacy
   biometricCredIds?: string[];

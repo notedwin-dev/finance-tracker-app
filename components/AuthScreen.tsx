@@ -9,7 +9,14 @@ import {
 import zenLogo from "../images/ZenFinance.svg";
 
 export const AuthScreen: React.FC = () => {
-  const { emailLogin, emailSignup, loginWithGoogle, loginOffline } = useAuth();
+  const {
+    emailLogin,
+    emailSignup,
+    loginWithGoogle,
+    loginOffline,
+    isAuthLoading,
+    authStatus,
+  } = useAuth();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -139,15 +146,20 @@ export const AuthScreen: React.FC = () => {
         </div>
 
         <button
-          onClick={loginWithGoogle}
-          className="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
+          onClick={() => loginWithGoogle()}
+          disabled={isAuthLoading || isLoading}
+          className={`w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-3 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${isAuthLoading || isLoading ? "opacity-70 cursor-not-allowed" : ""}`}
         >
-          <img
-            src="https://www.google.com/favicon.ico"
-            className="w-5 h-5"
-            alt="Google"
-          />
-          Google Account
+          {isAuthLoading ? (
+            <div className="w-5 h-5 border-2 border-gray-400 border-t-gray-900 rounded-full animate-spin" />
+          ) : (
+            <img
+              src="https://www.google.com/favicon.ico"
+              className="w-5 h-5"
+              alt="Google"
+            />
+          )}
+          {isAuthLoading ? authStatus || "Authenticating..." : "Google Account"}
         </button>
 
         <button

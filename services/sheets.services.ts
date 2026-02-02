@@ -25,10 +25,25 @@ const getApiKey = () =>
   import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
 
 let gapiInited = false;
+let gapiInitializing = false;
 let hasAccessToken = false;
 let tokenExpiryTime = 0;
 
 export const initGapiClient = async (): Promise<void> => {
+  if (gapiInited) return;
+  if (gapiInitializing) {
+    // Wait for the already running initialization
+    return new Promise((resolve) => {
+      const interval = setInterval(() => {
+        if (gapiInited) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  gapiInitializing = true;
   const apiKey = getApiKey();
   if (!apiKey) {
     console.warn("Google API Key not found.");
@@ -215,12 +230,15 @@ export const findUser = async (email: string) => {
 
     const headers = rows[0];
 
-    // Migration: If sheet doesn't have isVaultCreated or biometricCredId, add them by updating headers
+    // Migration: ensure all required headers exist
     const requiredHeaders = [
       "isVaultCreated",
+      "isVaultLocked",
       "biometricCredId",
       "biometricCredIds",
       "devices",
+      "privacyMode",
+      "vaultSalt",
     ];
     const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
     if (missingHeaders.length > 0) {
@@ -293,7 +311,7 @@ export const createUser = async (userData: any) => {
       // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:K1",
+        range: "'Users'!A1:L1",
         valueInputOption: "RAW",
         resource: {
           values: [
@@ -303,11 +321,12 @@ export const createUser = async (userData: any) => {
               "name",
               "createdAt",
               "isVaultEnabled",
+              "isVaultCreated",
+              "isVaultLocked",
               "vaultSalt",
               "privacyMode",
               "biometricCredId",
               "biometricCredIds",
-              "isVaultCreated",
               "devices",
             ],
           ],
@@ -315,26 +334,35 @@ export const createUser = async (userData: any) => {
       });
     }
 
+    const headersRes = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: "'Users'!1:1",
+    });
+    const headers = headersRes.result.values?.[0] || [];
+
+    const row = headers.map((h: string) => {
+      if (h === "email") return userData.email;
+      if (h === "password") return userData.password;
+      if (h === "name") return userData.name;
+      if (h === "createdAt") return new Date().toISOString();
+      if (h === "isVaultEnabled") return userData.isVaultEnabled || false;
+      if (h === "isVaultCreated") return userData.isVaultCreated || false;
+      if (h === "isVaultLocked") return userData.isVaultLocked || true;
+      if (h === "vaultSalt") return userData.vaultSalt || "";
+      if (h === "privacyMode") return userData.privacyMode || false;
+      if (h === "biometricCredId") return userData.biometricCredId || "";
+      if (h === "biometricCredIds")
+        return JSON.stringify(userData.biometricCredIds || []);
+      if (h === "devices") return JSON.stringify(userData.devices || []);
+      return "";
+    });
+
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A:K",
+      range: "'Users'!A1",
       valueInputOption: "RAW",
       resource: {
-        values: [
-          [
-            userData.email,
-            userData.password,
-            userData.name,
-            new Date().toISOString(),
-            userData.isVaultEnabled || false,
-            userData.vaultSalt || "",
-            userData.privacyMode || false,
-            userData.biometricCredId || "",
-            JSON.stringify(userData.biometricCredIds || []),
-            userData.isVaultCreated || false,
-            JSON.stringify(userData.devices || []),
-          ],
-        ],
+        values: [row],
       },
     });
     return true;
@@ -890,7 +918,7 @@ export const loadFromGoogleSheets = async (
     }
   }
 
-  const sheets = [
+  const sheetNamesToLoad = [
     "Accounts",
     "Transactions",
     "Categories",
@@ -900,43 +928,44 @@ export const loadFromGoogleSheets = async (
     "ChatSessions",
   ];
 
-  // Check which sheets exist to avoid 400 errors for missing sheets
   const names = await getSheetNames(fileId);
   const existingSheets = names || [];
 
-  for (const sheet of sheets) {
-    if (!existingSheets.includes(sheet)) {
-      result[sheet.toLowerCase()] = [];
-      continue;
-    }
+  const validSheets = sheetNamesToLoad.filter((s) =>
+    existingSheets.includes(s),
+  );
+  if (validSheets.length === 0) return result;
 
-    try {
-      const res = await window.gapi.client.sheets.spreadsheets.values.get({
+  try {
+    const response =
+      await window.gapi.client.sheets.spreadsheets.values.batchGet({
         spreadsheetId: fileId,
-        range: `'${sheet}'!A:Z`,
-        valueRenderOption: "UNFORMATTED_VALUE", // Preserves numbers/booleans types
+        ranges: validSheets.map((s) => `'${s}'!A:Z`),
+        valueRenderOption: "UNFORMATTED_VALUE",
       });
 
-      const rows = res.result.values;
-      if (rows && rows.length > 1) {
-        const headers = rows[0] as string[];
-        const dataRows = rows.slice(1);
+    const valueRanges = response.result.valueRanges || [];
 
-        const parsedData = dataRows.map((row: any[]) => {
+    validSheets.forEach((sheetName, rangeIndex) => {
+      const rows = valueRanges[rangeIndex]?.values;
+      if (!rows || rows.length <= 1) {
+        result[sheetName.toLowerCase()] = [];
+        return;
+      }
+
+      const headers = rows[0] as string[];
+      const dataRows = rows.slice(1);
+
+      result[sheetName.toLowerCase()] = dataRows
+        .map((row: any[]) => {
           const obj: any = {};
           headers.forEach((header, index) => {
             let val = row[index];
-
-            // Special handling for Google Sheets Serial Dates (Numbers in the 'date' column)
-            if (header === "date" && typeof val === "number") {
+            if (header === "date" && typeof val === "number")
               val = fromSerialDate(val);
-            }
-
-            if (header === "time" && typeof val === "number") {
+            if (header === "time" && typeof val === "number")
               val = fromSerialTime(val);
-            }
 
-            // Basic check if it's a stringified object/array
             if (
               typeof val === "string" &&
               (val.trim().startsWith("{") || val.trim().startsWith("["))
@@ -944,47 +973,21 @@ export const loadFromGoogleSheets = async (
               try {
                 val = JSON.parse(val);
               } catch {
-                /* keep as string if parse fails */
+                /* ignore */
               }
             }
-
-            // Ensure IDs are always strings to prevent merge mismatches
-            if (header === "id" && val !== undefined && val !== null) {
-              val = String(val);
-            }
-
-            // Explicit check if undefined (ragged rows)
-            if (val !== undefined) {
-              obj[header] = val;
-            }
+            if (header === "id" && val !== undefined) val = String(val);
+            if (val !== undefined) obj[header] = val;
           });
           return obj;
-        });
-
-        // FILTER: Only return data for the current user OR global data (no userId)
-        if (currentUserId) {
-          result[sheet.toLowerCase()] = parsedData.filter(
-            (d: any) => d.userId === currentUserId || !d.userId,
-          );
-        } else {
-          // Fallback: Return all if no user known? Or return filtered?
-          // If we don't filter, we leak other users' data.
-          // But if currentUserId is somehow null (e.g. init failure), the user sees nothing.
-          // We'll return nothing to be safe, assuming authentication sets this.
-          result[sheet.toLowerCase()] = [];
-          console.warn(`No user ID set, hiding all data for ${sheet}`);
-        }
-      } else {
-        result[sheet.toLowerCase()] = [];
-      }
-    } catch (err: any) {
-      if (err?.status === 401) {
-        console.warn("Google Access Token expired, clearing session.");
-        clearGapiAccessToken();
-      }
-      console.warn(`Could not read ${sheet} from cloud`, err);
-      result[sheet.toLowerCase()] = [];
-    }
+        })
+        .filter(
+          (d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
+        );
+    });
+  } catch (err: any) {
+    if (err?.status === 401) clearGapiAccessToken();
+    console.warn("Batch load failed", err);
   }
 
   // Perform migration for Pots if needed

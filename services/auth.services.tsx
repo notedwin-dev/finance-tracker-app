@@ -15,6 +15,8 @@ interface AuthContextType {
   unlinkCloud: () => void;
   updateProfile: (updates: Partial<UserProfile>, skipCloud?: boolean) => void;
   isInitialized: boolean;
+  authStatus: string | null;
+  isAuthLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -29,6 +31,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     StorageService.getStoredProfile(),
   );
   const [isInitialized, setIsInitialized] = useState(false);
+  const [authStatus, setAuthStatus] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   const refreshAccessToken = async () => {
     const refreshToken = localStorage.getItem("google_refresh_token");
@@ -83,6 +87,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const handleGoogleSuccess = async ({ code }) => {
+    setIsAuthLoading(true);
+    setAuthStatus("Exchanging code for tokens...");
     try {
       const res = await fetch(`${BACKEND_URL}/auth/google`, {
         method: "POST",
@@ -93,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (!tokens.access_token) throw new Error("No access token returned");
 
+      setAuthStatus("Connecting to Google Services...");
       const expiresAt = Date.now() + tokens.expires_in * 1000;
       SheetService.setGapiAccessToken(tokens.access_token, tokens.expires_in);
 
@@ -102,6 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         localStorage.setItem("google_refresh_token", tokens.refresh_token);
       }
 
+      setAuthStatus("Fetching user info...");
       const userInfoRes = await fetch(
         "https://www.googleapis.com/oauth2/v3/userinfo",
         {
@@ -113,9 +121,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const userId = userInfo.sub || userInfo.email;
       SheetService.setSheetUser(userId);
 
+      setAuthStatus("Checking sync settings...");
       // Ensure user exists in the Users sheet for settings sync
       let cloudUser = await SheetService.findUser(userInfo.email);
       if (!cloudUser) {
+        setAuthStatus("Creating your cloud profile...");
         await SheetService.createUser({
           email: userInfo.email,
           password: "GOOGLE_AUTH",
@@ -124,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         cloudUser = await SheetService.findUser(userInfo.email);
       }
 
+      setAuthStatus("Synchronizing profile...");
       const newProfile: UserProfile = {
         ...profile,
         id: userId,
@@ -135,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // Sync cloud settings if they exist
         isVaultEnabled: cloudUser?.isVaultEnabled ?? profile.isVaultEnabled,
         isVaultCreated: cloudUser?.isVaultCreated ?? profile.isVaultCreated,
+        isVaultLocked: cloudUser?.isVaultLocked ?? profile.isVaultLocked,
         vaultSalt: cloudUser?.vaultSalt ?? profile.vaultSalt,
         privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
         biometricCredId: cloudUser?.biometricCredId ?? profile.biometricCredId,
@@ -165,6 +177,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setProfile(newProfile);
     } catch (error) {
       console.error("Authentication failed", error);
+    } finally {
+      setIsAuthLoading(false);
+      setAuthStatus(null);
     }
   };
 
@@ -195,6 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       isLoggedIn: true,
       isVaultEnabled: user.isVaultEnabled ?? profile.isVaultEnabled,
       isVaultCreated: user.isVaultCreated ?? profile.isVaultCreated,
+      isVaultLocked: user.isVaultLocked ?? profile.isVaultLocked,
       vaultSalt: user.vaultSalt ?? profile.vaultSalt,
       privacyMode: user.privacyMode ?? profile.privacyMode,
       biometricCredId: user.biometricCredId ?? profile.biometricCredId,
@@ -278,6 +294,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         logout,
         loginOffline,
         unlinkCloud,
+        isInitialized,
+        authStatus,
+        isAuthLoading,
         updateProfile: async (u, skipCloud = false) => {
           const p = { ...profile, ...u };
           setProfile(p);
@@ -292,7 +311,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             }
           }
         },
-        isInitialized,
       }}
     >
       {children}

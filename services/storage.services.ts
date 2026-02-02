@@ -497,6 +497,9 @@ export const getStoredProfile = (): UserProfile => {
   if (fullProfile.privacyMode === undefined) {
     fullProfile.privacyMode = false;
   }
+  if (fullProfile.isVaultLocked === undefined) {
+    fullProfile.isVaultLocked = true;
+  }
 
   // Normalize booleans that might come as strings from Sheets
   const normalizeBool = (val: any) => {
@@ -509,6 +512,8 @@ export const getStoredProfile = (): UserProfile => {
   };
 
   fullProfile.isVaultEnabled = normalizeBool(fullProfile.isVaultEnabled);
+  fullProfile.isVaultCreated = normalizeBool(fullProfile.isVaultCreated);
+  fullProfile.isVaultLocked = normalizeBool(fullProfile.isVaultLocked);
   fullProfile.privacyMode = normalizeBool(fullProfile.privacyMode);
 
   return fullProfile;
@@ -519,6 +524,7 @@ export const saveProfile = (profile: UserProfile) => {
   const {
     isVaultEnabled,
     isVaultCreated,
+    isVaultLocked,
     vaultSalt,
     biometricCredId,
     biometricCredIds,
@@ -533,6 +539,7 @@ export const saveProfile = (profile: UserProfile) => {
   const securitySettings: UserCloudSettings = {
     isVaultEnabled,
     isVaultCreated,
+    isVaultLocked,
     vaultSalt,
     biometricCredId,
     biometricCredIds,

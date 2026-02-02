@@ -40,6 +40,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     null,
   );
   const [isSyncing, setIsSyncing] = useState(false);
+  const syncInProgress = React.useRef(false);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "alert" | "info";
@@ -63,6 +64,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const privacyMode = checkBool(profile.privacyMode);
   const isVaultEnabled = checkBool(profile.isVaultEnabled);
   const isVaultCreated = checkBool(profile.isVaultCreated);
+  const isVaultLockedSetting = checkBool(profile.isVaultLocked);
 
   const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
 
@@ -117,7 +119,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const isVaultUnlocked = !!vaultPassword && isVaultEnabled;
+  const isVaultUnlocked =
+    !!vaultPassword && isVaultEnabled && !isVaultLockedSetting;
 
   const normalizeAccount = (acc: any): Account => {
     // If details is a string but not encrypted, parse it
@@ -201,6 +204,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (localStorage.getItem("vault_password_remembered")) {
           localStorage.setItem("vault_password_remembered", encryptedPassword);
         }
+        updateProfile({ isVaultLocked: false });
         return true;
       }
 
@@ -217,6 +221,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           localStorage.setItem("vault_password_remembered", encryptedPassword);
         }
         await loadData(encryptedPassword);
+        updateProfile({ isVaultLocked: false });
         return true;
       }
     } catch (error) {
@@ -303,7 +308,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("vault_password_session");
     // We keep vault_password_remembered if they chose to "remember" for biometrics
     showToast("Vault locked", "info");
-    loadData(); // This will re-load accounts in their encrypted state
+    updateProfile({ isVaultLocked: true });
+    loadData(null); // Explicitly pass null to skip decryption
   };
 
   const disableVault = async () => {
@@ -354,7 +360,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const decryptAccount = async (
     acc: Account,
-    customPass?: string,
+    customPass?: string | null,
     customSalt?: string,
   ): Promise<Account> => {
     if (
@@ -364,7 +370,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     )
       return acc;
 
-    const passToUse = customPass || vaultPassword;
+    const passToUse = customPass === null ? null : customPass || vaultPassword;
     if (!passToUse) return acc;
 
     const salt = customSalt || getVaultSalt();
@@ -467,7 +473,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadData = async (overridePass?: string) => {
+  const loadData = async (overridePass?: string | null) => {
     const storedAccounts = StorageService.getStoredAccounts();
     // Decrypt and normalize accounts
     const decryptedAccounts = await Promise.all(
@@ -505,6 +511,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       syncData();
     }
   }, [profile.isLoggedIn, isInitialized, profile.offlineMode]);
+
+  useEffect(() => {
+    if (checkBool(profile.isVaultLocked) && vaultPassword) {
+      console.log("Vault locked from remote update/sync");
+      setVaultPassword(null);
+      localStorage.removeItem("vault_password_session");
+      loadData(null);
+    }
+  }, [profile.isVaultLocked]);
 
   const processSubscriptions = (
     subs: Subscription[],
@@ -590,7 +605,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const syncData = async () => {
-    if (isSyncing || profile.offlineMode) return;
+    if (syncInProgress.current || profile.offlineMode) return;
+    syncInProgress.current = true;
     setIsSyncing(true);
     const currentProfile = StorageService.getStoredProfile();
     const userId = currentProfile.id || profile.id;
@@ -602,6 +618,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           await SheetService.initGapiClient();
         } catch (e) {
           console.warn("GAPI init failed, likely offline.");
+          syncInProgress.current = false;
           setIsSyncing(false);
           return;
         }
@@ -618,11 +635,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!SheetService.isClientReady()) {
         // If they had a token but still not ready, don't force login if they could be offline
         if (!navigator.onLine) {
+          syncInProgress.current = false;
           setIsSyncing(false);
           return;
         }
         showToast("Session expired. Please sign in again.", "info");
         loginWithGoogle();
+        syncInProgress.current = false;
         setIsSyncing(false);
         return;
       }
@@ -653,6 +672,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             cloudData.profile.vaultSalt !== profile.vaultSalt
           ) {
             updates.vaultSalt = cloudData.profile.vaultSalt;
+          }
+          if (
+            cloudData.profile.isVaultLocked !== undefined &&
+            cloudData.profile.isVaultLocked !== profile.isVaultLocked
+          ) {
+            updates.isVaultLocked = cloudData.profile.isVaultLocked;
           }
           if (
             cloudData.profile.privacyMode !== undefined &&
@@ -804,8 +829,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (e) {
       console.error("Sync failed", e);
       showToast("Cloud sync failed. Working offline.", "info");
+    } finally {
+      setIsSyncing(false);
+      syncInProgress.current = false;
     }
-    setIsSyncing(false);
   };
 
   const handleAccountSave = async (acc: Omit<Account, "userId">) => {

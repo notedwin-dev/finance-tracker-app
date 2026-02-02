@@ -795,8 +795,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           // Array fields - Merge Cloud and Local
-          const existingIds = profile.biometricCredIds || [];
-          const cloudIds = cloudData.profile.biometricCredIds || [];
+          const existingIds = [...(profile.biometricCredIds || [])];
+          const cloudIds = [...(cloudData.profile.biometricCredIds || [])];
+
+          // Include legacy singular IDs if they exist
+          if (profile.biometricCredId)
+            existingIds.push(profile.biometricCredId);
+          if (cloudData.profile.biometricCredId)
+            cloudIds.push(cloudData.profile.biometricCredId);
+
           const mergedBio = Array.from(new Set([...existingIds, ...cloudIds]));
 
           if (
@@ -833,37 +840,61 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           cloud: T[],
         ): T[] => {
           const map = new Map<string, T>();
+          const now = Date.now();
+          const localIds = new Set(local.map((l) => String(l.id)));
+
           cloud.forEach((i) => {
             if (i.id) {
-              const cloudUpdated =
-                i.updatedAt !== undefined && i.updatedAt !== null
-                  ? Number(i.updatedAt)
-                  : 0;
-              map.set(String(i.id), { ...i, updatedAt: cloudUpdated });
+              const id = String(i.id);
+              const cloudUpdated = Number(i.updatedAt || 0);
+
+              // Deletion detection (Cloud -> Local):
+              // If an item is in Cloud but NOT in Local, it might have been deleted locally.
+              // If its updatedAt is <= our lastSyncTime, it means we definitely had it during
+              // our last sync session. Since it's gone now, we should treat it as deleted.
+              if (
+                !localIds.has(id) &&
+                lastSyncTime > 0 &&
+                cloudUpdated > 0 && // ignore legacy items without timestamps for safer deletion
+                cloudUpdated <= lastSyncTime
+              ) {
+                console.log(`Burying deleted item ${id} from cloud merge`);
+                return;
+              }
+
+              map.set(id, {
+                ...i,
+                updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+              });
             }
           });
 
           local.forEach((i) => {
             const id = String(i.id);
-            const localUpdated =
-              i.updatedAt !== undefined && i.updatedAt !== null
-                ? Number(i.updatedAt)
-                : 0;
+            const localUpdated = Number(i.updatedAt || 0);
 
             if (map.has(id)) {
-              const cloudUpdated = Number(map.get(id)!.updatedAt || 0);
+              const cloudItem = map.get(id)!;
+              const cloudUpdated = Number(cloudItem.updatedAt || 0);
               // Last Write Wins. On tie, prefer Cloud.
               if (localUpdated > cloudUpdated) {
-                map.set(id, { ...i, updatedAt: localUpdated });
-              }
-            } else if (i.id) {
-              // Deletion detection:
-              // Keep if it's NEWER than our last sync, OR if we've NEVER synced (lastSyncTime === 0).
-              if (localUpdated > lastSyncTime || lastSyncTime === 0) {
-                // If it's a legacy item without a timestamp, give it one now so it persists next sync.
                 map.set(id, {
                   ...i,
-                  updatedAt: localUpdated || Date.now(),
+                  updatedAt: localUpdated === 0 ? now : localUpdated || now,
+                });
+              }
+            } else if (i.id) {
+              // Deletion detection logic (Local -> Cloud):
+              // Keep if it's NEWER than our last sync, or if it's legacy data (localUpdated === 0),
+              // or if we've NEVER synced (lastSyncTime === 0).
+              if (
+                localUpdated === 0 ||
+                localUpdated > lastSyncTime ||
+                lastSyncTime === 0
+              ) {
+                map.set(id, {
+                  ...i,
+                  updatedAt: localUpdated === 0 ? now : localUpdated || now,
                 });
               }
             }
@@ -958,6 +989,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setChatSessions(mergedChatSessions);
         StorageService.saveChatSessions(mergedChatSessions);
 
+        const syncTimestamp = Date.now();
         await SheetService.syncWithGoogleSheets(
           encryptedAccounts,
           mergedTransactions,
@@ -966,12 +998,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           mergedSubs,
           mergedPots,
           profile.syncChatToSheets ? mergedChatSessions : undefined,
-          activeProfile,
+          { ...activeProfile, lastSyncAt: syncTimestamp },
         );
         processSubscriptions(mergedSubs, mergedTransactions);
 
         // Update sync status and timestamp
-        updateProfile({ lastSyncAt: Date.now() }, false);
+        updateProfile({ lastSyncAt: syncTimestamp }, false);
         setHasSynced(true);
 
         showToast("Cloud sync complete", "success");
@@ -1166,7 +1198,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           else d.setDate(d.getDate() + 1);
           nextDateStr = d.toLocaleDateString("en-CA");
 
-          const updatedSub = { ...sub, nextPaymentDate: nextDateStr };
+          const updatedSub = {
+            ...sub,
+            nextPaymentDate: nextDateStr,
+            updatedAt: Date.now(),
+          };
           const updatedSubsList = subscriptions.map((s) =>
             s.id === sub.id ? updatedSub : s,
           );
@@ -1267,6 +1303,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
+            updatedAt: Date.now(),
           };
           if (isCloudEnabled) SheetService.updateOne("Pots", p.id, updated);
           return updated;
@@ -1328,6 +1365,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
               ...p,
               usedAmount: newUsedAmount,
               amountLeft: p.limitAmount - newUsedAmount,
+              updatedAt: Date.now(),
             };
             if (isCloudEnabled)
               SheetService.updateOne("Pots", p.id, updatedPot);

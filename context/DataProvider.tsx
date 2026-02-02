@@ -95,14 +95,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     customPass?: string,
     customSalt?: string,
   ): Promise<Account> => {
-    if (!profile.isVaultEnabled || !acc.details) return acc;
+    if (!isVaultEnabled || !acc.details) return acc;
 
     // If already encrypted, don't double encrypt
     if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
       return acc;
     }
 
-    const passToUse = customPass || vaultPassword;
+    const passToUse =
+      customPass ||
+      vaultPassword ||
+      sessionStorage.getItem("vault_password_session") ||
+      localStorage.getItem("vault_password_remembered");
+
     // If vault is enabled but we have no password, we are in a dangerous state.
     // If we have a plain object, we MUST NOT return it as is, otherwise it leaks to Sheets.
     if (!passToUse) {
@@ -432,7 +437,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     )
       return acc;
 
-    const passToUse = customPass === null ? null : customPass || vaultPassword;
+    const passToUse =
+      customPass === null
+        ? null
+        : customPass ||
+          vaultPassword ||
+          sessionStorage.getItem("vault_password_session") ||
+          localStorage.getItem("vault_password_remembered");
     if (!passToUse) return acc;
 
     const salt = customSalt || getVaultSalt();
@@ -820,7 +831,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const currentPass =
           vaultPassword ||
           sessionStorage.getItem("vault_password_session") ||
+          localStorage.getItem("vault_password_remembered") ||
           localStorage.getItem("vault_password_session");
+
+        if (currentPass && !vaultPassword) {
+          setVaultPassword(currentPass);
+        }
         const currentSalt = activeProfile.vaultSalt;
 
         const cloudAccounts = await Promise.all(

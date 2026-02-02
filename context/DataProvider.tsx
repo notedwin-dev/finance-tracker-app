@@ -1453,7 +1453,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     StorageService.saveChatSessions(updated);
     if (isCloudEnabled && profile.syncChatToSheets) {
       if (isEdit)
-        await SheetService.updateOne("ChatSessions", session.id, sessionWithUpdate);
+        await SheetService.updateOne(
+          "ChatSessions",
+          session.id,
+          sessionWithUpdate,
+        );
       else await SheetService.insertOne("ChatSessions", sessionWithUpdate);
     }
   };

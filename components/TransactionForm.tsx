@@ -501,22 +501,22 @@ const TransactionForm: React.FC<Props> = ({
               {isSubscription && !subscriptionId && (
                 <div className="animate-fadeIn space-y-3">
                   <div className="flex gap-2">
-                    {(
-                      ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const
-                    ).map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => setFrequency(f)}
-                        className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
-                          frequency === f
-                            ? "bg-primary border-primary text-white"
-                            : "bg-surface border-gray-700 text-gray-400"
-                        }`}
-                      >
-                        {f}
-                      </button>
-                    ))}
+                    {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const).map(
+                      (f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => setFrequency(f)}
+                          className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
+                            frequency === f
+                              ? "bg-primary border-primary text-white"
+                              : "bg-surface border-gray-700 text-gray-400"
+                          }`}
+                        >
+                          {f}
+                        </button>
+                      ),
+                    )}
                   </div>
                   <p className="text-[10px] text-gray-500 italic">
                     This will create a new subscription starting from {date}.

@@ -10,6 +10,7 @@ interface ModalProps {
   icon?: React.ComponentType<{ className?: string }>;
   iconColor?: string;
   iconBgColor?: string;
+  maxWidth?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -21,12 +22,15 @@ const Modal: React.FC<ModalProps> = ({
   icon: Icon,
   iconColor = "text-primary",
   iconBgColor = "bg-primary/10",
+  maxWidth = "max-w-sm",
 }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-surface w-full max-w-sm rounded-4xl border border-white/10 shadow-2xl p-6 space-y-6 relative animate-scaleIn">
+      <div
+        className={`bg-surface w-full ${maxWidth} rounded-4xl border border-white/10 shadow-2xl p-6 space-y-6 relative animate-scaleIn`}
+      >
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white transition-colors"

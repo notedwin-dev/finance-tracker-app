@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import Modal from "../components/Modal";
+import BulkImportModal from "../components/BulkImportModal";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
@@ -15,6 +16,7 @@ import {
   BanknotesIcon,
   LockClosedIcon,
   FingerPrintIcon,
+  DocumentArrowUpIcon,
 } from "@heroicons/react/24/outline";
 import {
   Chart as ChartJS,
@@ -57,6 +59,7 @@ const AccountPage: React.FC = () => {
     accounts,
     pots,
     handleTransactionDelete,
+    handleBulkTransactionImport,
     usdRate,
     cryptoPrices,
     displayCurrency,
@@ -74,6 +77,7 @@ const AccountPage: React.FC = () => {
   } = useOutletContext<any>();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [vaultPassword, setVaultPassword] = useState("");
   const [unlockError, setUnlockError] = useState("");
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -405,6 +409,12 @@ const AccountPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 relative z-10 w-full md:w-auto">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-4 bg-primary/10 hover:bg-primary/20 rounded-2xl transition-all font-bold sm:font-black text-xs text-primary uppercase tracking-[0.2em] border border-primary/20 shadow-xl"
+          >
+            <DocumentArrowUpIcon className="w-4 h-4" /> Import Statements
+          </button>
           <button
             onClick={() => {
               setEditingAccount(account);
@@ -876,6 +886,18 @@ const AccountPage: React.FC = () => {
           </button>
         </div>
       </Modal>
+
+      <BulkImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        accountId={account.id}
+        onImport={async (txs, isHistorical) => {
+          await handleBulkTransactionImport(txs, account.id, {
+            isHistorical,
+            adjustBalance: !isHistorical,
+          });
+        }}
+      />
     </div>
   );
 };

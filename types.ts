@@ -92,6 +92,7 @@ export interface UserCloudSettings {
   biometricCredIds?: string[];
   devices?: string[];
   privacyMode?: boolean;
+  lastSyncAt?: number;
 }
 
 export interface UserProfile extends UserCloudSettings {

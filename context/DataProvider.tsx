@@ -40,6 +40,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     null,
   );
   const [isSyncing, setIsSyncing] = useState(false);
+  const [hasSynced, setHasSynced] = useState(false);
   const syncInProgress = React.useRef(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -566,10 +567,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setChatSessions(StorageService.getStoredChatSessions());
     const storedSubs = StorageService.getStoredSubscriptions();
     setSubscriptions(storedSubs);
-    processSubscriptions(storedSubs, loadedTxs);
   };
 
   useEffect(() => {
+    setHasSynced(false);
     loadData();
     getUSDToMYRRate().then((data) => {
       setExchangeRate(data);
@@ -579,6 +580,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       setCryptoPrices(prices);
     });
   }, [profile.id]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    // Process subscriptions ONLY after initial sync is done, or if we are definitively offline
+    // This prevents stale local data from generating duplicate/old transactions before syncing with cloud
+    if (hasSynced || profile.offlineMode) {
+      const currentTxs = StorageService.getStoredTransactions();
+      const currentSubs = StorageService.getStoredSubscriptions();
+      processSubscriptions(currentSubs, currentTxs);
+    }
+  }, [hasSynced, profile.offlineMode, isInitialized]);
 
   useEffect(() => {
     if (profile.isLoggedIn && isInitialized && !profile.offlineMode) {
@@ -812,18 +825,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        const merge = <T extends { id: string; updatedAt?: number }>(
+        const lastSyncTime = Number(activeProfile.lastSyncAt || 0);
+
+        const merge = <T extends { id: string; updatedAt?: any }>(
           local: T[],
           cloud: T[],
         ): T[] => {
           const map = new Map<string, T>();
-          cloud.forEach((i) => i.id && map.set(String(i.id), i));
+          cloud.forEach((i) => {
+            if (i.id) {
+              // Ensure updatedAt is always a number for reliable comparison
+              const item = {
+                ...i,
+                updatedAt: i.updatedAt ? Number(i.updatedAt) : 0,
+              };
+              map.set(String(i.id), item);
+            }
+          });
+
           local.forEach((i) => {
             const id = String(i.id);
+            const localUpdated = i.updatedAt ? Number(i.updatedAt) : 0;
+
             if (map.has(id)) {
-              if ((i.updatedAt || 0) > (map.get(id)!.updatedAt || 0))
-                map.set(id, i);
-            } else if (i.id) map.set(id, i);
+              const cloudUpdated = map.get(id)!.updatedAt || 0;
+              // Last Write Wins. On tie, prefer Cloud (it's the authoritative backup).
+              if (localUpdated > cloudUpdated) {
+                map.set(id, { ...i, updatedAt: localUpdated });
+              }
+            } else if (i.id) {
+              // Deletion detection logic:
+              // If local item ID is not in cloud, it was either deleted globally
+              // on another device OR created locally since the last sync.
+              // If localUpdated > lastSyncTime, it's a NEW local item created while offline.
+              if (localUpdated > lastSyncTime) {
+                map.set(id, { ...i, updatedAt: localUpdated });
+              }
+            }
           });
           return Array.from(map.values());
         };
@@ -926,11 +964,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           activeProfile,
         );
         processSubscriptions(mergedSubs, mergedTransactions);
+
+        // Update sync status and timestamp
+        updateProfile({ lastSyncAt: Date.now() }, false);
+        setHasSynced(true);
+
         showToast("Cloud sync complete", "success");
       }
     } catch (e) {
       console.error("Sync failed", e);
       showToast("Cloud sync failed. Working offline.", "info");
+      // Allow local processing to proceed if sync attempt failed
+      setHasSynced(true);
     } finally {
       setIsSyncing(false);
       syncInProgress.current = false;

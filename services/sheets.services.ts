@@ -286,6 +286,17 @@ const parseUserRow = (headers: string[], userRow: any[]) => {
       if (lower === "true") val = true;
       else if (lower === "false") val = false;
     }
+
+    // Convert numeric fields
+    if (
+      typeof val === "string" &&
+      val.trim() !== "" &&
+      (h === "lastSyncAt" || h === "updatedAt")
+    ) {
+      const num = Number(val);
+      if (!isNaN(num)) val = num;
+    }
+
     if (
       typeof val === "string" &&
       ((val.startsWith("{") && val.endsWith("}")) ||
@@ -558,6 +569,30 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
               /* ignore */
             }
           }
+
+          // Convert numeric fields
+          const numericFields = [
+            "amount",
+            "balance",
+            "updatedAt",
+            "createdAt",
+            "limit",
+            "targetAmount",
+            "currentAmount",
+            "lastSyncAt",
+            "usedAmount",
+            "limitAmount",
+            "amountLeft",
+          ];
+          if (
+            typeof val === "string" &&
+            val.trim() !== "" &&
+            numericFields.includes(header)
+          ) {
+            const num = Number(val);
+            if (!isNaN(num)) val = num;
+          }
+
           if (val !== undefined) obj[header] = val;
         });
         return obj;
@@ -1049,6 +1084,30 @@ export const loadFromGoogleSheets = async (
                 /* ignore */
               }
             }
+
+            // Convert numeric fields
+            const numericFields = [
+              "amount",
+              "balance",
+              "updatedAt",
+              "createdAt",
+              "limit",
+              "targetAmount",
+              "currentAmount",
+              "lastSyncAt",
+              "usedAmount",
+              "limitAmount",
+              "amountLeft",
+            ];
+            if (
+              typeof val === "string" &&
+              val.trim() !== "" &&
+              numericFields.includes(header)
+            ) {
+              const num = Number(val);
+              if (!isNaN(num)) val = num;
+            }
+
             if (header === "id" && val !== undefined) val = String(val);
             if (val !== undefined) obj[header] = val;
           });

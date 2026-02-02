@@ -1009,14 +1009,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         let newUsedAmount = p.usedAmount;
 
         if (isEdit && oldTx?.potId === p.id) {
-          if (oldTx.type === TransactionType.INCOME)
-            newUsedAmount -= oldTx.amount;
-          else newUsedAmount += oldTx.amount;
+          if (
+            oldTx.type === TransactionType.INCOME ||
+            oldTx.type === TransactionType.ACCOUNT_OPENING
+          )
+            newUsedAmount += oldTx.amount;
+          else newUsedAmount -= oldTx.amount;
         }
 
         if (tx.potId === p.id) {
-          if (tx.type === TransactionType.INCOME) newUsedAmount += tx.amount;
-          else newUsedAmount -= tx.amount;
+          if (
+            tx.type === TransactionType.INCOME ||
+            tx.type === TransactionType.ACCOUNT_OPENING
+          )
+            newUsedAmount -= tx.amount;
+          else newUsedAmount += tx.amount;
         }
 
         if (newUsedAmount !== p.usedAmount) {
@@ -1074,8 +1081,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const updatedPots = pots.map((p) => {
           if (p.id === tx.potId) {
             let balanceRestore = 0;
-            if (tx.type === TransactionType.INCOME) balanceRestore = -tx.amount;
-            else balanceRestore = tx.amount;
+            if (
+              tx.type === TransactionType.INCOME ||
+              tx.type === TransactionType.ACCOUNT_OPENING
+            )
+              balanceRestore = tx.amount;
+            else balanceRestore = -tx.amount;
             const newUsedAmount = p.usedAmount + balanceRestore;
             const updatedPot = {
               ...p,

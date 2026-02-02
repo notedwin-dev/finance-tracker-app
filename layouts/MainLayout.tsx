@@ -29,7 +29,7 @@ import CategoryManager from "../components/CategoryManager";
 import SubscriptionManager from "../components/SubscriptionManager";
 import { Transaction, Account } from "../types";
 
-import zenLogo from "../images/ZenFinance.svg";
+const zenLogo = "/images/ZenFinance.svg";
 
 const MainLayout: React.FC = () => {
   const { profile, logout, updateProfile, loginWithGoogle } = useAuth();

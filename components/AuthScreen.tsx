@@ -6,7 +6,7 @@ import {
   LockClosedIcon,
   EnvelopeIcon,
 } from "@heroicons/react/24/solid";
-import zenLogo from "../images/ZenFinance.svg";
+const zenLogo = "/images/ZenFinance.svg";
 
 export const AuthScreen: React.FC = () => {
   const {

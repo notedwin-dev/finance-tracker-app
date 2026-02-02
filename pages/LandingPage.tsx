@@ -7,9 +7,9 @@ import {
   ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 
-import zenLogo from "../images/ZenFinance.svg";
-import neuralVault from "../images/neural-vault.png";
-import shieldImg from "../images/shield.png";
+const zenLogo = "/images/ZenFinance.svg";
+const neuralVault = "/images/neural-vault.png";
+const shieldImg = "/images/shield.png";
 
 const LandingPage: React.FC = () => {
   const { profile, loginWithGoogle } = useAuth();

@@ -25,7 +25,7 @@ import {
   Bars3Icon,
   ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
-import neuralVault from "../images/neural-vault.png";
+const neuralVault = "/images/neural-vault.png";
 
 interface Props {
   accounts: Account[];

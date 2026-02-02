@@ -85,7 +85,31 @@ const PrivacyPolicy: React.FC = () => {
 
           <section>
             <h2 className="text-2xl font-bold text-white mb-4">
-              4. AI Processing (Gemini API)
+              4. Google API Limited Use Disclosure
+            </h2>
+            <p>
+              ZenFinance's use and transfer to any other app of information
+              received from Google APIs will adhere to the{" "}
+              <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Google API Services User Data Policy
+              </a>
+              , including the Limited Use requirements.
+            </p>
+            <p>
+              Specifically, we do not transfer your Google user data to third
+              parties other than as necessary to provide or improve the app's
+              features, or as required by law.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-4">
+              5. AI Processing (Gemini API)
             </h2>
             <p>
               If you use the ZenFinance AI features, relevant financial context

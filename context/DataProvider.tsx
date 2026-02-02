@@ -795,16 +795,40 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           // Array fields - Merge Cloud and Local
-          const existingIds = [...(profile.biometricCredIds || [])];
-          const cloudIds = [...(cloudData.profile.biometricCredIds || [])];
+          const flatten = (arr: any[]): string[] => {
+            let result: string[] = [];
+            if (!Array.isArray(arr))
+              return typeof arr === "string" ? [arr] : [];
+            arr.forEach((item) => {
+              if (Array.isArray(item)) result = result.concat(flatten(item));
+              else if (typeof item === "string" && item) result.push(item);
+            });
+            return result;
+          };
 
-          // Include legacy singular IDs if they exist
-          if (profile.biometricCredId)
+          const existingIds = flatten(profile.biometricCredIds || []);
+          const cloudIds = flatten(cloudData.profile.biometricCredIds || []);
+
+          // Include legacy singular IDs if they exist and are not already in arrays
+          if (
+            profile.biometricCredId &&
+            typeof profile.biometricCredId === "string"
+          )
             existingIds.push(profile.biometricCredId);
-          if (cloudData.profile.biometricCredId)
-            cloudIds.push(cloudData.profile.biometricCredId);
+          else if (Array.isArray(profile.biometricCredId))
+            existingIds.push(...flatten(profile.biometricCredId));
 
-          const mergedBio = Array.from(new Set([...existingIds, ...cloudIds]));
+          if (
+            cloudData.profile.biometricCredId &&
+            typeof cloudData.profile.biometricCredId === "string"
+          )
+            cloudIds.push(cloudData.profile.biometricCredId);
+          else if (Array.isArray(cloudData.profile.biometricCredId))
+            cloudIds.push(...flatten(cloudData.profile.biometricCredId));
+
+          const mergedBio = Array.from(
+            new Set([...existingIds, ...cloudIds]),
+          ).filter(Boolean);
 
           if (
             mergedBio.length !== existingIds.length ||
@@ -1164,6 +1188,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         ...newSubscription,
         id: crypto.randomUUID(),
         userId: currentUserId,
+        updatedAt: Date.now(),
       };
 
       // Calculate next payment date based on frequency

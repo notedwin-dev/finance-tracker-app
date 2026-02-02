@@ -482,19 +482,24 @@ export const updateUser = async (email: string, updates: any) => {
           newArr = [updatesVal];
         }
 
-        // Merge and Dedupe
-        // If the update intends to CLEAR (empty array passed), we should respect that?
-        // User asked: "replaces instead of adding".
-        // We will assume Set union for these fields unless explicit reset is detected (handle elsewhere if needed)
-        // Actually, if user clicks "Unlink all", they send empty array.
-        // We need to distinguish between "I added one" and "I cleared all".
-        // The `updateProfile` in auth service passes the whole new state.
+        // --- RECURSIVE FLATTEN HELPER ---
+        const flattenIds = (arr: any[]): string[] => {
+          let result: string[] = [];
+          if (!Array.isArray(arr)) return typeof arr === "string" ? [arr] : [];
+          arr.forEach((item) => {
+            if (Array.isArray(item)) result = result.concat(flattenIds(item));
+            else if (typeof item === "string" && item) result.push(item);
+          });
+          return result;
+        };
 
-        // Strategy:
-        // If updates[header] is EMPTY, it might be a clear operation.
-        // If updates[header] has items, we MERGE with existing cloud items to ensure we don't lose other devices.
+        // Merge and Dedupe
         if (newArr.length > 0) {
-          const merged = Array.from(new Set([...currentArr, ...newArr]));
+          const flatCurrent = flattenIds(currentArr);
+          const flatNew = flattenIds(newArr);
+          const merged = Array.from(
+            new Set([...flatCurrent, ...flatNew]),
+          ).filter(Boolean);
           return JSON.stringify(merged);
         }
 

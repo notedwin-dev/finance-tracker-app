@@ -835,32 +835,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           const map = new Map<string, T>();
           cloud.forEach((i) => {
             if (i.id) {
-              // Ensure updatedAt is always a number for reliable comparison
-              const item = {
-                ...i,
-                updatedAt: i.updatedAt ? Number(i.updatedAt) : 0,
-              };
-              map.set(String(i.id), item);
+              const cloudUpdated =
+                i.updatedAt !== undefined && i.updatedAt !== null
+                  ? Number(i.updatedAt)
+                  : 0;
+              map.set(String(i.id), { ...i, updatedAt: cloudUpdated });
             }
           });
 
           local.forEach((i) => {
             const id = String(i.id);
-            const localUpdated = i.updatedAt ? Number(i.updatedAt) : 0;
+            const localUpdated =
+              i.updatedAt !== undefined && i.updatedAt !== null
+                ? Number(i.updatedAt)
+                : 0;
 
             if (map.has(id)) {
-              const cloudUpdated = map.get(id)!.updatedAt || 0;
-              // Last Write Wins. On tie, prefer Cloud (it's the authoritative backup).
+              const cloudUpdated = Number(map.get(id)!.updatedAt || 0);
+              // Last Write Wins. On tie, prefer Cloud.
               if (localUpdated > cloudUpdated) {
                 map.set(id, { ...i, updatedAt: localUpdated });
               }
             } else if (i.id) {
-              // Deletion detection logic:
-              // If local item ID is not in cloud, it was either deleted globally
-              // on another device OR created locally since the last sync.
-              // If localUpdated > lastSyncTime, it's a NEW local item created while offline.
-              if (localUpdated > lastSyncTime) {
-                map.set(id, { ...i, updatedAt: localUpdated });
+              // Deletion detection:
+              // Keep if it's NEWER than our last sync, OR if we've NEVER synced (lastSyncTime === 0).
+              if (localUpdated > lastSyncTime || lastSyncTime === 0) {
+                // If it's a legacy item without a timestamp, give it one now so it persists next sync.
+                map.set(id, {
+                  ...i,
+                  updatedAt: localUpdated || Date.now(),
+                });
               }
             }
           });
@@ -1101,7 +1105,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const oldTx = transactions.find((t) => t.id === tx.id);
     const isEdit = !!oldTx;
     const currentUserId = profile.id || "local";
-    const txWithUser = { ...tx, userId: currentUserId } as Transaction;
+    const txWithUser = {
+      ...tx,
+      userId: currentUserId,
+      updatedAt: Date.now(),
+    } as Transaction;
 
     let updatedTransactions;
     if (isEdit) {

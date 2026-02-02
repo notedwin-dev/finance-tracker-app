@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, Content, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import {
   Account,
   Transaction,
@@ -7,53 +7,49 @@ import {
   Pot,
   Goal,
   Subscription,
+  TransactionType,
 } from "../types";
 
 const BACKEND_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
 
-const getModel = (apiKey?: string) => {
+const getClient = (apiKey?: string) => {
   const finalKey = apiKey || import.meta.env.VITE_GOOGLE_API_KEY;
   if (!finalKey) {
     throw new Error("No Gemini API key provided.");
   }
+  return new GoogleGenAI({ apiKey: finalKey });
+};
 
-  const genAI = new GoogleGenerativeAI(finalKey);
-  return genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    tools: [
-      {
-        functionDeclarations: [
-          {
-            name: "get_historical_transactions",
-            description:
-              "Query all historical transactions (beyond the recent 50 provided in context). Use this to answer questions about past spending, trends, or specific shops not in the recent list.",
-            parameters: {
-              type: SchemaType.OBJECT,
-              properties: {
-                searchKeyword: {
-                  type: SchemaType.STRING,
-                  description: "Shop name or description to filter by",
-                },
-                startDate: {
-                  type: SchemaType.STRING,
-                  description: "Start date in YYYY-MM-DD format",
-                },
-                endDate: {
-                  type: SchemaType.STRING,
-                  description: "End date in YYYY-MM-DD format",
-                },
-                categoryName: {
-                  type: SchemaType.STRING,
-                  description: "The name of the category to filter by",
-                },
-              },
-            },
+const historicalTransactionsTool = {
+  functionDeclarations: [
+    {
+      name: "get_historical_transactions",
+      description:
+        "Query all historical transactions (beyond the recent 50 provided in context). Use this to answer questions about past spending, trends, or specific shops not in the recent list.",
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          searchKeyword: {
+            type: Type.STRING,
+            description: "Shop name or description to filter by",
           },
-        ],
+          startDate: {
+            type: Type.STRING,
+            description: "Start date in YYYY-MM-DD format",
+          },
+          endDate: {
+            type: Type.STRING,
+            description: "End date in YYYY-MM-DD format",
+          },
+          categoryName: {
+            type: Type.STRING,
+            description: "The name of the category to filter by",
+          },
+        },
       },
-    ],
-  });
+    },
+  ],
 };
 
 const prepareContext = (
@@ -184,7 +180,7 @@ export const streamFinancialAdvice = async (
   }
 
   try {
-    const model = getModel(apiKey);
+    const ai = getClient(apiKey);
 
     const systemInstruction = `
       You are ZenFinance AI, a helpful and minimalist financial assistant. 
@@ -225,15 +221,24 @@ export const streamFinancialAdvice = async (
       - If historical context for goals or pots is needed, look at related transactions using the tool.
     `;
 
-    // Map history to Google's format
+    // Map history to Google GenAI SDK format
     const contents: any[] = history.map((m) => {
+      const parts: any[] = [];
+
       if (m.functionResponse) {
         return {
-          role: "function",
-          parts: [{ functionResponse: m.functionResponse }],
+          role: "tool",
+          parts: [
+            {
+              functionResponse: {
+                name: m.functionResponse.name,
+                response: m.functionResponse.response,
+              },
+            },
+          ],
         };
       }
-      const parts: any[] = [];
+
       if (m.content) parts.push({ text: m.content });
       if (m.functionCall) parts.push({ functionCall: m.functionCall });
 
@@ -243,30 +248,31 @@ export const streamFinancialAdvice = async (
       };
     });
 
-    const chat = model.startChat({
+    const chat = ai.chats.create({
+      model: "gemini-2.5-flash",
       history: contents.slice(0, -1),
-      systemInstruction: {
-        role: "system",
-        parts: [{ text: systemInstruction }],
+      config: {
+        systemInstruction: systemInstruction,
+        tools: [historicalTransactionsTool],
       },
     });
 
     const lastTurn = contents[contents.length - 1];
-    const result = await chat.sendMessageStream(lastTurn.parts);
+    const message = lastTurn.parts[0]?.text || "";
+    const response = await chat.sendMessageStream(message);
 
     let fullText = "";
     let functionCall: any = null;
 
-    for await (const chunk of result.stream) {
-      const parts = chunk.candidates[0].content.parts;
-      for (const part of parts) {
-        if (part.text) {
-          fullText += part.text;
-          onChunk(part.text);
-        }
-        if (part.functionCall) {
-          functionCall = part.functionCall;
-        }
+    for await (const chunk of response) {
+      if (chunk.text) {
+        fullText += chunk.text;
+        onChunk(chunk.text);
+      }
+
+      // In the new SDK, functionCalls are collected on the response/chunk
+      if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+        functionCall = chunk.functionCalls[0];
       }
     }
 
@@ -311,7 +317,7 @@ export const generateChatTitle = async (
   }
 
   try {
-    const model = getModel(apiKey);
+    const ai = getClient(apiKey);
     const prompt = `
       Based on this first exchange in a financial chat, generate a very short (max 4 words) title.
       Question: "${firstQuestion}"
@@ -320,11 +326,72 @@ export const generateChatTitle = async (
       Title:
     `;
 
-    const result = await model.generateContent(prompt);
-    const text = await result.response.text();
+    const result = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+    const text = result.text;
     return text.replace(/"/g, "").trim() || "New Chat";
   } catch (e) {
     console.error("Title Generation Error:", e);
     return "New Financial Chat";
+  }
+};
+
+/**
+ * Parses a bank statement (PDF or Image) and returns structured transactions.
+ */
+export const parseBankStatement = async (
+  apiKey: string,
+  fileBase64: string,
+  mimeType: string,
+): Promise<Partial<Transaction>[]> => {
+  try {
+    const ai = getClient(apiKey);
+
+    const prompt = `
+      Extract all transactions from this bank statement. 
+      Analyze the statement thoroughly and find every single transaction record.
+      
+      Return a JSON array of objects with the following keys:
+      - date: string (YYYY-MM-DD)
+      - amount: number (positive for both income and expense)
+      - type: string (one of: "EXPENSE", "INCOME", "TRANSFER")
+      - shopName: string (clean merchant name)
+      - note: string (original description)
+      - currency: string (e.g. "MYR", "USD")
+      
+      If a transaction is a transfer between accounts, mark type as "TRANSFER".
+      Ensure dates are in YYYY-MM-DD format.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            { inlineData: { data: fileBase64, mimeType } },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No data extracted from statement");
+
+    // The new SDK might already parse this if responseMimeType is application/json
+    // but usually it returns a string in .text.
+    const parsed = typeof text === "string" ? JSON.parse(text) : text;
+    return Array.isArray(parsed) ? parsed : parsed.transactions || [];
+  } catch (error) {
+    console.error("Bank Statement Parsing Error:", error);
+    throw new Error(
+      "Failed to parse bank statement. Please ensure the file is clear and supported.",
+    );
   }
 };

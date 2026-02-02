@@ -988,6 +988,65 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast("Account deleted", "success");
   };
 
+  const handleBulkTransactionImport = async (
+    newTxs: Partial<Transaction>[],
+    accountId: string,
+    options: { adjustBalance?: boolean; isHistorical?: boolean } = {},
+  ) => {
+    const { adjustBalance = true, isHistorical = false } = options;
+
+    const transactionsToInsert: Transaction[] = newTxs.map(
+      (tx) =>
+        ({
+          ...tx,
+          id: crypto.randomUUID(),
+          userId: profile.id || "local",
+          accountId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }) as Transaction,
+    );
+
+    const updatedTransactionsList = [...transactions, ...transactionsToInsert];
+    setTransactions(updatedTransactionsList);
+    StorageService.saveTransactions(updatedTransactionsList);
+
+    if (isCloudEnabled) {
+      // Use bulk insert for better performance and to avoid rate limits
+      SheetService.insertMany("Transactions", transactionsToInsert);
+    }
+
+    if (adjustBalance && !isHistorical) {
+      const account = accounts.find((a) => a.id === accountId);
+      if (account) {
+        let totalDelta = 0;
+        transactionsToInsert.forEach((tx) => {
+          const amt =
+            tx.currency === account.currency
+              ? tx.amount
+              : tx.currency === "USD"
+                ? tx.amount * usdRate
+                : tx.amount / usdRate;
+
+          if (tx.type === TransactionType.INCOME) totalDelta += amt;
+          else if (tx.type === TransactionType.EXPENSE) totalDelta -= amt;
+        });
+
+        const updatedAccount = {
+          ...account,
+          balance: account.balance + totalDelta,
+          updatedAt: Date.now(),
+        };
+        handleAccountSave(updatedAccount);
+      }
+    }
+
+    showToast(
+      `Imported ${transactionsToInsert.length} transactions`,
+      "success",
+    );
+  };
+
   const handleTransactionSubmit = async (tx: Omit<Transaction, "userId">) => {
     const oldTx = transactions.find((t) => t.id === tx.id);
     const isEdit = !!oldTx;
@@ -1388,6 +1447,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         handleAccountSave,
         handleAccountDelete,
         handleTransactionSubmit,
+        handleBulkTransactionImport,
         handleTransactionDelete,
         handleCategorySave,
         handleCategoryDelete,

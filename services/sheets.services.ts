@@ -729,6 +729,58 @@ export const insertOne = async (sheetName: string, item: any) => {
   }
 };
 
+export const insertMany = async (sheetName: string, items: any[]) => {
+  if (!gapiInited || !hasAccessToken || items.length === 0) return;
+
+  const fileId = await getSpreadsheetId();
+  if (!fileId) return;
+
+  // 1. Get Headers to ensure column alignment
+  let headers: string[] = [];
+  try {
+    const res = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!A1:Z1`,
+    });
+    const rows = res.result.values;
+    if (rows && rows.length > 0) {
+      headers = rows[0];
+    }
+  } catch (e) {
+    /* ignore */
+  }
+
+  // If no headers, initialize sheet with saveToSheet
+  if (headers.length === 0) {
+    return saveToSheet(sheetName, items);
+  }
+
+  // 2. Align Data to Headers
+  const rows = items.map((item) => {
+    return headers.map((header) => {
+      const val = item[header];
+      if (typeof val === "object" && val !== null) {
+        return JSON.stringify(val);
+      }
+      return val ?? "";
+    });
+  });
+
+  // 3. Append Rows in Bulk
+  try {
+    await window.gapi.client.sheets.spreadsheets.values.append({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!A1`,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      resource: { values: rows },
+    });
+    console.log(`Inserted ${items.length} rows into ${sheetName}`);
+  } catch (e) {
+    console.error(`Error inserting bulk into ${sheetName}`, e);
+  }
+};
+
 const getColumnLetter = (index: number): string => {
   let letter = "";
   while (index >= 0) {

@@ -57,6 +57,11 @@ export interface DataContextType {
   handleAccountSave: (acc: Omit<Account, "userId">) => Promise<void>;
   handleAccountDelete: (id: string) => Promise<void>;
   handleTransactionSubmit: (tx: Omit<Transaction, "userId">) => Promise<void>;
+  handleBulkTransactionImport: (
+    newTxs: Partial<Transaction>[],
+    accountId: string,
+    options?: { adjustBalance?: boolean; isHistorical?: boolean },
+  ) => Promise<void>;
   handleTransactionDelete: (id: string) => Promise<void>;
   handleCategorySave: (cat: Omit<Category, "userId">) => Promise<void>;
   handleCategoryDelete: (id: string) => Promise<void>;

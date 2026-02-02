@@ -229,8 +229,19 @@ const Profile: React.FC<Props> = ({
                                 "vault_password_remembered",
                               );
                               if (storedPass) {
+                                // Migration: if storedPass is encrypted (legacy bug), it's invalid
+                                if (storedPass.startsWith("ENC:")) {
+                                  localStorage.removeItem(
+                                    "vault_password_remembered",
+                                  );
+                                  setVaultError(
+                                    "Vault link expired. Please use password once.",
+                                  );
+                                  setIsSyncingLocal(false);
+                                  return;
+                                }
+
                                 try {
-                                  // The storedPass is already encrypted/hashed via encryptVaultPassword
                                   await unlockVault(storedPass);
 
                                   showToast(
@@ -498,9 +509,9 @@ const Profile: React.FC<Props> = ({
                     profile.name,
                   );
                   if (credId) {
-                    const currentPass = localStorage.getItem(
-                      "vault_password_session",
-                    );
+                    const currentPass =
+                      sessionStorage.getItem("vault_password_session") ||
+                      localStorage.getItem("vault_password_session");
                     if (currentPass) {
                       localStorage.setItem(
                         "vault_password_remembered",

@@ -47,9 +47,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   } | null>(null);
 
   // Vault/Security State
-  const [vaultPassword, setVaultPassword] = useState<string | null>(
-    localStorage.getItem("vault_password_session") || null,
-  );
+  const [vaultPassword, setVaultPassword] = useState<string | null>(() => {
+    // Try sessionStorage first (active tab)
+    let session = sessionStorage.getItem("vault_password_session");
+    if (!session) {
+      // Fallback to legacy localStorage session check for smoother migration
+      session = localStorage.getItem("vault_password_session");
+      if (session) {
+        // Move to sessionStorage and clean up
+        sessionStorage.setItem("vault_password_session", session);
+        localStorage.removeItem("vault_password_session");
+      }
+    }
+    return session;
+  });
 
   const checkBool = (val: any) => {
     if (typeof val === "boolean") return val;
@@ -175,14 +186,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     return acc;
   };
 
-  const encryptVaultPassword = async (password: string): Promise<string> => {
-    const salt = getVaultSalt();
-    return await SecurityService.encryptData(password, password, salt);
-  };
-
   const unlockVault = async (password: string): Promise<boolean> => {
     try {
-      const encryptedPassword = await encryptVaultPassword(password);
+      const salt = getVaultSalt();
+      // Ensure we are working with a hashed version for storage/session
+      const passToUse = password.startsWith("HASHED:")
+        ? password
+        : await SecurityService.hashPassword(password, salt);
 
       // Find the first encrypted account to verify the password
       const firstEncryptedAccount = accounts.find(
@@ -197,12 +207,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         typeof firstEncryptedAccount.details !== "string"
       ) {
         // If no encrypted accounts, we accept the password as is (first time or empty vault)
-        setVaultPassword(encryptedPassword);
-        localStorage.setItem("vault_password_session", encryptedPassword);
+        setVaultPassword(passToUse);
+        sessionStorage.setItem("vault_password_session", passToUse);
         // Also save to remembered if user chooses (this should be tied to a 'remember me' logic)
         // For now, we update it if it exists to keep it sync'd
         if (localStorage.getItem("vault_password_remembered")) {
-          localStorage.setItem("vault_password_remembered", encryptedPassword);
+          localStorage.setItem("vault_password_remembered", passToUse);
         }
         updateProfile({ isVaultLocked: false });
         return true;
@@ -210,17 +220,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const decryptedDetails = await SecurityService.decryptData(
         firstEncryptedAccount.details,
-        password,
-        getVaultSalt(),
+        passToUse,
+        salt,
       );
 
       if (decryptedDetails) {
-        setVaultPassword(encryptedPassword);
-        localStorage.setItem("vault_password_session", encryptedPassword);
+        setVaultPassword(passToUse);
+        sessionStorage.setItem("vault_password_session", passToUse);
         if (localStorage.getItem("vault_password_remembered")) {
-          localStorage.setItem("vault_password_remembered", encryptedPassword);
+          localStorage.setItem("vault_password_remembered", passToUse);
         }
-        await loadData(encryptedPassword);
+        await loadData(passToUse);
         updateProfile({ isVaultLocked: false });
         return true;
       }
@@ -231,9 +241,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const enableVault = async (password: string) => {
-    const encryptedPassword = await encryptVaultPassword(password);
-    setVaultPassword(encryptedPassword);
-    localStorage.setItem("vault_password_session", encryptedPassword);
+    const salt = getVaultSalt();
+    const hashedPass = await SecurityService.hashPassword(password, salt);
+
+    setVaultPassword(hashedPass);
+    sessionStorage.setItem("vault_password_session", hashedPass);
     const deviceId = StorageService.getDeviceId();
     const currentDevices = profile.devices || [];
     const newDevices = currentDevices.includes(deviceId)
@@ -250,10 +262,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const encryptedAccounts = await Promise.all(
       accounts.map(async (acc) => {
         if (acc.details && typeof acc.details === "object") {
-          const salt = getVaultSalt();
           const encryptedStr = await SecurityService.encryptData(
             JSON.stringify(acc.details),
-            password,
+            hashedPass,
             salt,
           );
           return { ...acc, details: encryptedStr as any };
@@ -280,14 +291,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       // Since we just enabled (created a password), update the remembered password
       // This solves the issue of "First time login" message appearing on re-enable
-      localStorage.setItem("vault_password_remembered", password);
+      localStorage.setItem("vault_password_remembered", hashedPass);
     }
 
     // Register biometrics logic moved to UI components to allow meaningful Modals
     // instead of window.confirm blocking calls.
     if (await SecurityService.isBiometricRegistered()) {
       // If already registered (e.g. restored above), ensure password is updated
-      localStorage.setItem("vault_password_remembered", password);
+      localStorage.setItem("vault_password_remembered", hashedPass);
     }
 
     if (isCloudEnabled) {
@@ -306,6 +317,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const lockVault = () => {
     setVaultPassword(null);
     localStorage.removeItem("vault_password_session");
+    sessionStorage.removeItem("vault_password_session");
     // We keep vault_password_remembered if they chose to "remember" for biometrics
     showToast("Vault locked", "info");
     updateProfile({ isVaultLocked: true });
@@ -339,6 +351,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     updateProfile({ isVaultEnabled: false });
     setVaultPassword(null);
     localStorage.removeItem("vault_password_session");
+    sessionStorage.removeItem("vault_password_session");
     localStorage.removeItem("vault_password_remembered");
     localStorage.removeItem("biometric_cred_id");
     localStorage.removeItem("biometric_cred_ids");
@@ -517,6 +530,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       console.log("Vault locked from remote update/sync");
       setVaultPassword(null);
       localStorage.removeItem("vault_password_session");
+      sessionStorage.removeItem("vault_password_session");
       loadData(null);
     }
   }, [profile.isVaultLocked]);
@@ -735,7 +749,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         };
 
         const currentPass =
-          vaultPassword || localStorage.getItem("vault_password_session");
+          vaultPassword ||
+          sessionStorage.getItem("vault_password_session") ||
+          localStorage.getItem("vault_password_session");
         const currentSalt = activeProfile.vaultSalt;
 
         const cloudAccounts = await Promise.all(

@@ -96,6 +96,39 @@ export async function decryptData(
 }
 
 /**
+ * Deterministically hashes a password for session storage.
+ * This prevents storing the plain-text password while still allowing it
+ * to be used as a consistent key for decryption.
+ */
+export async function hashPassword(
+  password: string,
+  salt: string,
+): Promise<string> {
+  const enc = new TextEncoder();
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"],
+  );
+
+  const bits = await window.crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: enc.encode(salt),
+      iterations: 100000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256,
+  );
+
+  const hashArray = new Uint8Array(bits);
+  return "HASHED:" + btoa(String.fromCharCode(...hashArray));
+}
+
+/**
  * Checks if biometric authentication is available.
  */
 export async function isBiometricAvailable(): Promise<boolean> {

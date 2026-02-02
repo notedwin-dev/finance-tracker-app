@@ -88,6 +88,11 @@ const AccountForm: React.FC<Props> = ({
     if (verified) {
       const storedPass = localStorage.getItem("vault_password_remembered");
       if (storedPass) {
+        if (storedPass.startsWith("ENC:")) {
+          localStorage.removeItem("vault_password_remembered");
+          setUnlockError("Vault key expired. Please use password once.");
+          return;
+        }
         const success = await unlockVault(storedPass);
         if (success) {
           setShowUnlockModal(false);

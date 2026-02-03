@@ -85,11 +85,26 @@ const History: React.FC<Props> = ({
     touchStartY.current = e.clientY;
     isLongPressActive.current = false;
 
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+
     longPressTimer.current = setTimeout(() => {
       isLongPressActive.current = true;
       toggleSelection(id);
-      if (window.navigator.vibrate) window.navigator.vibrate(10);
-    }, 600);
+      if (window.navigator.vibrate) window.navigator.vibrate(20);
+    }, 1500); // Increased to 1.5s for more deliberate selection
+  };
+
+  const handleItemPointerMove = (e: React.PointerEvent) => {
+    if (!longPressTimer.current) return;
+
+    const deltaX = Math.abs(e.clientX - touchStartX.current);
+    const deltaY = Math.abs(e.clientY - touchStartY.current);
+
+    // If moved significantly, cancel the long press (user is probably scrolling or swiping)
+    if (deltaX > 10 || deltaY > 10) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   };
 
   const handleItemPointerUp = (e: React.PointerEvent, id: string) => {
@@ -471,7 +486,7 @@ const History: React.FC<Props> = ({
                           );
                           setSwipedId(null);
                         }}
-                        className="w-12 h-12 bg-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-all shadow-lg border border-indigo-500/20 active:scale-95"
+                        className="w-12 h-12 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-all shadow-lg border border-indigo-500/20 active:scale-95"
                       >
                         <PencilIcon className="w-5 h-5" />
                       </button>
@@ -487,7 +502,7 @@ const History: React.FC<Props> = ({
                             setSwipedId(null);
                           }
                         }}
-                        className="w-12 h-12 bg-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all shadow-lg border border-rose-500/20 active:scale-95"
+                        className="w-12 h-12 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all shadow-lg border border-rose-500/20 active:scale-95"
                       >
                         <TrashIcon className="w-5 h-5" />
                       </button>
@@ -496,7 +511,7 @@ const History: React.FC<Props> = ({
                           e.stopPropagation();
                           setSwipedId(null);
                         }}
-                        className="w-12 h-12 bg-white/5 text-gray-500 rounded-2xl flex items-center justify-center hover:bg-white/10 hover:text-white transition-all shadow-lg border border-white/5 active:scale-95"
+                        className="w-12 h-12 bg-white/10 text-gray-500 rounded-full flex items-center justify-center hover:bg-white/20 hover:text-white transition-all shadow-lg border border-white/10 active:scale-95"
                       >
                         <XMarkIcon className="w-5 h-5" />
                       </button>
@@ -507,6 +522,7 @@ const History: React.FC<Props> = ({
                   <div
                     onClick={() => handleItemClick(t)}
                     onPointerDown={(e) => handleItemPointerDown(e, t.id)}
+                    onPointerMove={handleItemPointerMove}
                     onPointerUp={(e) => handleItemPointerUp(e, t.id)}
                     className={`relative flex items-center p-4 sm:p-5 bg-card rounded-4xl border transition-all cursor-pointer select-none active:scale-[0.99] shadow-xl touch-pan-y ${
                       swipedId === t.id

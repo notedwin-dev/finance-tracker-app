@@ -857,7 +857,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        const lastSyncTime = Number(activeProfile.lastSyncAt || 0);
+        // Use the LOCAL last sync time for deletion detection.
+        // If we use the Cloud's lastSyncAt on a new device, we risk wiping cloud data
+        // because localIDs would be empty while lastSyncTime > 0.
+        const localLastSyncTime = Number(currentProfile.lastSyncAt || 0);
+        const cloudLastSyncTime = Number(cloudData.profile?.lastSyncAt || 0);
+
+        // Safety: If cloud says its last sync was EARLIER than our local record,
+        // it might have been restored from a version history. In that case,
+        // we should be conservative and not delete cloud items just because they aren't local.
+        const cloudWasRestored =
+          cloudLastSyncTime > 0 && localLastSyncTime > cloudLastSyncTime;
+        const effectiveLastSyncTime = cloudWasRestored ? 0 : localLastSyncTime;
+
+        if (cloudWasRestored) {
+          console.warn(
+            "Cloud data appears to be from an older version (restored?). Disabling deletion detection for this sync.",
+          );
+        }
 
         const merge = <T extends { id: string; updatedAt?: any }>(
           local: T[],
@@ -874,13 +891,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
               // Deletion detection (Cloud -> Local):
               // If an item is in Cloud but NOT in Local, it might have been deleted locally.
-              // If its updatedAt is <= our lastSyncTime, it means we definitely had it during
-              // our last sync session. Since it's gone now, we should treat it as deleted.
+              // If its updatedAt is <= our LOCAL last sync time, it means this device
+              // definitely had it during its last sync session. Since it's gone now,
+              // we treat it as a deliberate local deletion.
               if (
                 !localIds.has(id) &&
-                lastSyncTime > 0 &&
-                cloudUpdated > 0 && // ignore legacy items without timestamps for safer deletion
-                cloudUpdated <= lastSyncTime
+                effectiveLastSyncTime > 0 &&
+                cloudUpdated > 0 &&
+                cloudUpdated <= effectiveLastSyncTime
               ) {
                 console.log(`Burying deleted item ${id} from cloud merge`);
                 return;
@@ -910,11 +928,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             } else if (i.id) {
               // Deletion detection logic (Local -> Cloud):
               // Keep if it's NEWER than our last sync, or if it's legacy data (localUpdated === 0),
-              // or if we've NEVER synced (lastSyncTime === 0).
+              // or if we've NEVER synced (effectiveLastSyncTime === 0).
               if (
                 localUpdated === 0 ||
-                localUpdated > lastSyncTime ||
-                lastSyncTime === 0
+                localUpdated > effectiveLastSyncTime ||
+                effectiveLastSyncTime === 0
               ) {
                 map.set(id, {
                   ...i,

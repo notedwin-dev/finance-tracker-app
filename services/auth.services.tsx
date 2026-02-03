@@ -227,7 +227,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     StorageService.saveProfile(newProfile);
     setProfile(newProfile);
-    window.location.reload();
   };
 
   const emailSignup = async (email: string, pass: string, name: string) => {

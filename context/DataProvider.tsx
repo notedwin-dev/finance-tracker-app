@@ -594,10 +594,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [hasSynced, profile.offlineMode, isInitialized]);
 
   useEffect(() => {
-    if (profile.isLoggedIn && isInitialized && !profile.offlineMode) {
-      syncData();
+    if (
+      profile.isLoggedIn &&
+      isInitialized &&
+      !profile.offlineMode &&
+      !hasSynced
+    ) {
+      // Avoid double-triggering by checking syncInProgress.current
+      if (!syncInProgress.current) {
+        syncData();
+      }
     }
-  }, [profile.isLoggedIn, isInitialized, profile.offlineMode]);
+  }, [profile.isLoggedIn, isInitialized, profile.offlineMode, hasSynced]);
 
   useEffect(() => {
     if (checkBool(profile.isVaultLocked) && vaultPassword) {

@@ -127,17 +127,17 @@ const BulkImportModal: React.FC<Props> = ({
             </div>
             <div className="text-center">
               <p className="text-white font-bold text-lg">
-                Upload Bank Statement
+                Upload Bank Statement or CSV
               </p>
               <p className="text-gray-500 text-sm mt-1">
-                PDF or Image files supported (Gemini AI Vision)
+                PDF, CSV or Image files supported (Gemini AI Vision)
               </p>
             </div>
             <input
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept="application/pdf,image/*"
+              accept="application/pdf,image/*,text/csv,.csv"
               onChange={handleFileChange}
             />
           </div>
@@ -273,7 +273,7 @@ const BulkImportModal: React.FC<Props> = ({
         <div className="flex items-start gap-3 p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl">
           <CloudArrowUpIcon className="w-5 h-5 text-indigo-400 shrink-0" />
           <p className="text-[11px] text-indigo-300 leading-relaxed font-medium">
-            ZenFinance AI uses Gemini 2.0 Vision to securely read your
+            ZenFinance AI uses Gemini 2.5 Vision to securely read your
             statement. Data is used only to convert the file into structured
             transactions and is not saved on any servers.
           </p>

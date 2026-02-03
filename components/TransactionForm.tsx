@@ -49,7 +49,11 @@ const TransactionForm: React.FC<Props> = ({
     initialTransaction ? initialTransaction.type : TransactionType.EXPENSE,
   );
   const [amount, setAmount] = useState(
-    initialTransaction ? initialTransaction.amount.toFixed(2) : "",
+    initialTransaction
+      ? typeof initialTransaction.amount === "number"
+        ? initialTransaction.amount.toFixed(2)
+        : String(initialTransaction.amount || "0.00")
+      : "",
   );
   const [currency, setCurrency] = useState<Currency>(
     initialTransaction ? initialTransaction.currency : "MYR",
@@ -90,16 +94,21 @@ const TransactionForm: React.FC<Props> = ({
     initialTransaction ? initialTransaction.time || "" : "",
   );
   const [breakdownEnabled, setBreakdownEnabled] = useState(
-    initialTransaction?.amountBreakdown &&
+    Array.isArray(initialTransaction?.amountBreakdown) &&
       initialTransaction.amountBreakdown.length > 0
       ? true
       : false,
   );
   const [breakdownItems, setBreakdownItems] = useState<any[]>(
-    initialTransaction?.amountBreakdown?.map((item) => ({
-      ...item,
-      amount: item.amount.toFixed(2),
-    })) || [],
+    Array.isArray(initialTransaction?.amountBreakdown)
+      ? initialTransaction.amountBreakdown.map((item) => ({
+          ...item,
+          amount:
+            typeof item.amount === "number"
+              ? item.amount.toFixed(2)
+              : String(item.amount || "0.00"),
+        }))
+      : [],
   );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -535,7 +544,11 @@ const TransactionForm: React.FC<Props> = ({
                         const sub = subscriptions.find((s) => s.id === subId);
                         if (sub) {
                           setCategoryId(sub.categoryId);
-                          setAmount(sub.amount.toFixed(2));
+                          setAmount(
+                            typeof sub.amount === "number"
+                              ? sub.amount.toFixed(2)
+                              : String(sub.amount || "0.00"),
+                          );
                           setCurrency(sub.currency);
                           if (!shopName) setShopName(sub.name);
                         }

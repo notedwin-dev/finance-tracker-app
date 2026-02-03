@@ -339,7 +339,7 @@ export const generateChatTitle = async (
 };
 
 /**
- * Parses a bank statement (PDF or Image) and returns structured transactions.
+ * Parses a bank statement (PDF, Image or CSV) and returns structured transactions.
  */
 export const parseBankStatement = async (
   apiKey: string,
@@ -348,10 +348,11 @@ export const parseBankStatement = async (
 ): Promise<Partial<Transaction>[]> => {
   try {
     const ai = getClient(apiKey);
+    const isText = mimeType.includes("text") || mimeType.includes("csv");
 
     const prompt = `
-      Extract all transactions from this bank statement. 
-      Analyze the statement thoroughly and find every single transaction record.
+      Extract all transactions from this ${isText ? "CSV file" : "bank statement"}. 
+      Analyze the data thoroughly and find every single transaction record.
       
       Return a JSON array of objects with the following keys:
       - date: string (YYYY-MM-DD)
@@ -361,19 +362,29 @@ export const parseBankStatement = async (
       - note: string (original description)
       - currency: string (e.g. "MYR", "USD")
       
-      If a transaction is a transfer between accounts, mark type as "TRANSFER".
-      Ensure dates are in YYYY-MM-DD format.
+      Business Rules:
+      1. Dates must be converted to YYYY-MM-DD.
+      2. Type should be "INCOME" if money is entering the account, "EXPENSE" if leaving.
+      3. CLEAN the shopName. Remove garbage codes (e.g. T42256, dates, reference numbers).
+      4. If it looks like a Transfer between own accounts (e.g. "To Savings"), use "TRANSFER".
     `;
+
+    let parts: any[] = [{ text: prompt }];
+
+    if (isText) {
+      // For CSV/Text, we decode and send as part of the prompt text for better accuracy
+      const textContent = atob(fileBase64);
+      parts.push({ text: `DATA CONTENT:\n${textContent}` });
+    } else {
+      parts.push({ inlineData: { data: fileBase64, mimeType } });
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         {
           role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { data: fileBase64, mimeType } },
-          ],
+          parts,
         },
       ],
       config: {

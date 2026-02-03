@@ -67,6 +67,11 @@ export interface DataContextType {
     options?: { adjustBalance?: boolean; isHistorical?: boolean },
   ) => Promise<void>;
   handleTransactionDelete: (id: string) => Promise<void>;
+  handleBatchTransactionDelete: (ids: string[]) => Promise<void>;
+  handleBatchTransactionEdit: (
+    ids: string[],
+    updates: Partial<Transaction>,
+  ) => Promise<void>;
   handleCategorySave: (cat: Omit<Category, "userId">) => Promise<void>;
   handleCategoryDelete: (id: string) => Promise<void>;
   handleGoalUpdate: (goal: Omit<Goal, "userId">) => Promise<void>;

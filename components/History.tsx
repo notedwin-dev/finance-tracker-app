@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Transaction, TransactionType, Category, Account } from "../types";
 import {
   PlusIcon,
@@ -6,6 +6,13 @@ import {
   TrashIcon,
   EllipsisHorizontalIcon,
   XMarkIcon,
+  CheckIcon,
+  CalendarIcon,
+  ClockIcon,
+  InboxIcon,
+  ArrowUpIcon,
+  FunnelIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import {
   groupTransactions,
@@ -15,6 +22,7 @@ import {
   formatDateReadable,
 } from "../helpers/transactions.helper";
 import { useData } from "../context/DataContext";
+import Modal from "./Modal";
 
 interface Props {
   transactions: Transaction[];
@@ -33,8 +41,83 @@ const History: React.FC<Props> = ({
   onEditTransaction,
   onDeleteTransaction,
 }) => {
-  const { maskAmount, maskText, privacyMode } = useData();
+  const {
+    maskAmount,
+    maskText,
+    privacyMode,
+    handleBatchTransactionDelete,
+    handleBatchTransactionEdit,
+    pots,
+  } = useData();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [showBatchEditModal, setShowBatchEditModal] = useState(false);
+  const [batchUpdates, setBatchUpdates] = useState<Partial<Transaction>>({});
+
+  // Filters & Pagination
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  // Scroll to Top state
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 400);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const toggleSelection = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
+    );
+  };
+
+  const selectAll = () => {
+    const filteredTxs = getFilteredTransactions();
+    if (selectedIds.length === filteredTxs.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredTxs.map((t) => t.id));
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (
+      window.confirm(
+        `Delete ${selectedIds.length} transactions? This cannot be undone.`,
+      )
+    ) {
+      await handleBatchTransactionDelete(selectedIds);
+      setSelectedIds([]);
+      setIsBatchMode(false);
+    }
+  };
+
+  const handleBatchEditSubmit = async () => {
+    await handleBatchTransactionEdit(selectedIds, batchUpdates);
+    setSelectedIds([]);
+    setShowBatchEditModal(false);
+    setBatchUpdates({});
+    setIsBatchMode(false);
+  };
+
+  const getFilteredTransactions = () => {
+    return transactions.filter((t) => {
+      const tDate = normalizeDate(t.date);
+      if (startDate && tDate < startDate) return false;
+      if (endDate && tDate > endDate) return false;
+      return true;
+    });
+  };
+
+  const filteredTransactions = getFilteredTransactions();
 
   if (transactions.length === 0) {
     return (
@@ -53,7 +136,7 @@ const History: React.FC<Props> = ({
   }
 
   // 1. Sort transactions by date and time (Newest first)
-  const sortedTransactions = [...transactions].sort((a, b) => {
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
     const dateA = normalizeDate(a.date);
     const dateB = normalizeDate(b.date);
     if (dateA !== dateB) return dateB.localeCompare(dateA);
@@ -67,8 +150,11 @@ const History: React.FC<Props> = ({
     return (b.createdAt || 0) - (a.createdAt || 0);
   });
 
+  // Apply Pagination
+  const paginatedTransactions = sortedTransactions.slice(0, visibleCount);
+
   // Group grouped transactions first, then by date
-  const groupedList = groupTransactions(sortedTransactions);
+  const groupedList = groupTransactions(paginatedTransactions);
 
   const grouped = groupedList.reduce(
     (acc, t) => {
@@ -109,176 +195,492 @@ const History: React.FC<Props> = ({
     return formatDateReadable(date);
   };
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
-    <div className="space-y-6 sm:space-y-8">
-      <div className="hidden lg:flex justify-end mb-4">
+    <div className="space-y-6 sm:space-y-8 relative">
+      {/* Back to Top Button */}
+      {showBackToTop && (
         <button
-          onClick={onAddTransaction}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-3xl font-black tracking-tight shadow-xl shadow-indigo-500/20 transition-all active:scale-95"
+          onClick={scrollToTop}
+          className="fixed bottom-24 right-6 sm:right-10 z-[60] bg-indigo-600 text-white p-4 rounded-full shadow-2xl shadow-indigo-500/40 hover:scale-110 active:scale-95 transition-all animate-bounce"
         >
-          <PlusIcon className="w-5 h-5" />
-          NEW TRANSACTION
+          <ArrowUpIcon className="w-6 h-6" />
         </button>
+      )}
+
+      {/* Filters Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+              showFilters || startDate || endDate
+                ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                : "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10"
+            }`}
+          >
+            <FunnelIcon className="w-3.5 h-3.5" />
+            Filter {startDate || endDate ? "(Active)" : ""}
+          </button>
+
+          <button
+            onClick={() => {
+              setIsBatchMode(!isBatchMode);
+              if (isBatchMode) setSelectedIds([]);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+              isBatchMode
+                ? "bg-amber-500 text-white shadow-lg shadow-amber-500/20"
+                : "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10"
+            }`}
+          >
+            <CheckIcon className="w-3.5 h-3.5" />
+            {isBatchMode ? "Exit Batch" : "Batch Actions"}
+          </button>
+        </div>
+
+        <div className="hidden lg:block">
+          <button
+            onClick={onAddTransaction}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-3xl font-black tracking-tight shadow-xl shadow-indigo-500/20 transition-all active:scale-95"
+          >
+            <PlusIcon className="w-5 h-5" />
+            NEW TRANSACTION
+          </button>
+        </div>
       </div>
 
-      {sortedDates.map((dateStr) => (
-        <div key={dateStr} className="animate-slideUp">
-          <h3 className="text-[10px] font-extrabold text-gray-500 uppercase tracking-[0.2em] mb-4 pl-4 flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/40"></span>
-            {formatDateHeader(dateStr)}
-          </h3>
-          <div className="space-y-3 sm:space-y-4">
-            {grouped[dateStr].map((t) => (
-              <div
-                key={t.id}
-                onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
-                className="group flex items-center p-4 sm:p-5 bg-surface/40 backdrop-blur-md rounded-4xl sm:rounded-4xl border border-white/5 hover:border-indigo-500/30 transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden shadow-xl"
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="bg-surface/40 backdrop-blur-md rounded-3xl p-6 border border-white/5 animate-slideDown">
+          <div className="flex justify-between items-center mb-6">
+            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">
+              Date Range Filter
+            </p>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="text-[10px] font-bold text-rose-400 uppercase tracking-widest hover:text-rose-300"
               >
-                <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
-                  <div
-                    className={`shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-md sm:text-lg transition-all duration-500 ${
-                      t.linkedTransaction
-                        ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
-                        : "bg-surface border border-white/5"
-                    }`}
-                  >
-                    {t.linkedTransaction
-                      ? "↔️"
-                      : t.type === TransactionType.INCOME
-                        ? "💰"
-                        : getCategoryIcon(t.categoryId)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-extrabold sm:font-black text-white text-[17px] sm:text-lg tracking-tight truncate">
-                        {t.linkedTransaction ? (
-                          t.shopName ? (
-                            maskText(t.shopName)
-                          ) : (
-                            <>
-                              {maskText(
-                                accounts.find((a) => a.id === t.accountId)
-                                  ?.name || "???",
-                              )}{" "}
-                              →{" "}
-                              {maskText(
-                                accounts.find((a) => a.id === t.toAccountId)
-                                  ?.name || "???",
-                              )}
-                            </>
-                          )
-                        ) : (
-                          maskText(t.shopName || "UNTITLED")
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
-                      {t.time && (
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                          {t.time}
-                        </span>
-                      )}
-                      <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
-                      {t.linkedTransaction ? (
-                        <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-indigo-400/70 truncate uppercase tracking-wider">
-                          INTERNAL TRANSFER
-                        </p>
-                      ) : (
-                        <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-gray-500/70 truncate uppercase tracking-[0.05em]">
-                          {categories.find((c) => c.id === t.categoryId)
-                            ?.name ||
-                            (t.type === TransactionType.ACCOUNT_OPENING
-                              ? "OPENING BALANCE"
-                              : t.type)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                Clear All
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all font-bold text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all font-bold text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div className="flex items-center gap-3 sm:gap-4 shrink-0 ml-4">
-                  <div className="flex flex-col items-end">
-                    <span
-                      className={`font-black text-xl sm:text-xl tracking-tighter ${
+      {/* Batch Action Bar */}
+      {isBatchMode && selectedIds.length > 0 && (
+        <div className="sticky top-4 z-50 animate-fadeIn bg-indigo-600 shadow-2xl shadow-indigo-500/40 rounded-4xl p-3 sm:p-4 mb-8 flex items-center justify-between border border-white/20">
+          <div className="flex items-center gap-3 pl-2 sm:pl-4">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-black text-sm sm:text-base">
+              {selectedIds.length}
+            </div>
+            <p className="text-white font-black text-xs sm:text-sm uppercase tracking-widest hidden sm:block">
+              Selected
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowBatchEditModal(true)}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all"
+            >
+              <PencilIcon className="w-4 h-4" />
+              Batch Edit
+            </button>
+            <button
+              onClick={handleBatchDelete}
+              className="flex items-center gap-2 bg-rose-500 hover:bg-rose-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all shadow-lg"
+            >
+              <TrashIcon className="w-4 h-4" />
+              Delete
+            </button>
+            <div className="w-px h-8 bg-white/10 mx-1"></div>
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-2 sm:p-3 text-white/50 hover:text-white transition-colors"
+            >
+              <XMarkIcon className="w-5 sm:w-6 h-5 sm:h-6" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isBatchMode && (
+        <div className="flex justify-between items-center bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-4 animate-slideDown">
+          <button
+            onClick={selectAll}
+            className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] hover:text-indigo-300 transition-colors"
+          >
+            {selectedIds.length === filteredTransactions.length
+              ? "Deselect All"
+              : `Select All (${filteredTransactions.length})`}
+          </button>
+          <p className="text-[10px] font-bold text-indigo-400/60 uppercase tracking-widest">
+            {selectedIds.length} of {filteredTransactions.length} selected
+          </p>
+        </div>
+      )}
+
+      {sortedDates.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-64 text-gray-600 bg-surface/20 rounded-4xl border border-white/5 border-dashed">
+          <FunnelIcon className="w-12 h-12 mb-4 opacity-20" />
+          <p className="font-bold">No transactions match your filters.</p>
+          <button
+            onClick={() => {
+              setStartDate("");
+              setEndDate("");
+            }}
+            className="mt-4 text-xs font-black text-indigo-400 uppercase tracking-widest"
+          >
+            Reset Filters
+          </button>
+        </div>
+      ) : (
+        sortedDates.map((dateStr) => (
+          <div key={dateStr} className="animate-slideUp">
+            <h3 className="text-[10px] font-extrabold text-gray-500 uppercase tracking-[0.2em] mb-4 pl-4 flex items-center gap-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/40"></span>
+              {formatDateHeader(dateStr)}
+            </h3>
+            <div className="space-y-3 sm:space-y-4">
+              {grouped[dateStr].map((t) => (
+                <div
+                  key={t.id}
+                  onClick={() => {
+                    if (isBatchMode || selectedIds.length > 0) {
+                      toggleSelection(t.id);
+                    } else {
+                      setOpenMenuId(openMenuId === t.id ? null : t.id);
+                    }
+                  }}
+                  className={`group flex items-center p-4 sm:p-5 bg-surface/40 backdrop-blur-md rounded-4xl sm:rounded-4xl border transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden shadow-xl ${
+                    selectedIds.includes(t.id)
+                      ? "border-indigo-500 bg-indigo-500/10"
+                      : "border-white/5 hover:border-indigo-500/30"
+                  }`}
+                >
+                  {/* Selection Checkbox */}
+                  {(isBatchMode || selectedIds.length > 0) && (
+                    <div
+                      onClick={(e) => toggleSelection(t.id, e)}
+                      className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 transition-all ${
+                        selectedIds.includes(t.id)
+                          ? "bg-indigo-500 border-indigo-500 scale-110 shadow-lg shadow-indigo-500/30"
+                          : "border-white/10 group-hover:border-indigo-500/50"
+                      }`}
+                    >
+                      {selectedIds.includes(t.id) && (
+                        <CheckIcon className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                    <div
+                      className={`shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-md sm:text-lg transition-all duration-500 ${
                         t.linkedTransaction
-                          ? "text-indigo-400"
+                          ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                          : selectedIds.includes(t.id)
+                            ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                            : "bg-surface border border-white/5"
+                      }`}
+                    >
+                      {t.linkedTransaction
+                        ? "↔️"
+                        : t.type === TransactionType.INCOME
+                          ? "💰"
+                          : getCategoryIcon(t.categoryId)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-extrabold sm:font-black text-white text-[17px] sm:text-lg tracking-tight truncate">
+                          {t.linkedTransaction ? (
+                            t.shopName ? (
+                              maskText(t.shopName)
+                            ) : (
+                              <>
+                                {maskText(
+                                  accounts.find((a) => a.id === t.accountId)
+                                    ?.name || "???",
+                                )}{" "}
+                                →{" "}
+                                {maskText(
+                                  accounts.find((a) => a.id === t.toAccountId)
+                                    ?.name || "???",
+                                )}
+                              </>
+                            )
+                          ) : (
+                            maskText(t.shopName || "UNTITLED")
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+                        {t.time && (
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            {t.time}
+                          </span>
+                        )}
+                        <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+                        {t.linkedTransaction ? (
+                          <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-indigo-400/70 truncate uppercase tracking-wider">
+                            INTERNAL TRANSFER
+                          </p>
+                        ) : (
+                          <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-gray-500/70 truncate uppercase tracking-[0.05em]">
+                            {categories.find((c) => c.id === t.categoryId)
+                              ?.name ||
+                              (t.type === TransactionType.ACCOUNT_OPENING
+                                ? "OPENING BALANCE"
+                                : t.type)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 sm:gap-4 shrink-0 ml-4">
+                    <div className="flex flex-col items-end">
+                      <span
+                        className={`font-black text-xl sm:text-xl tracking-tighter ${
+                          t.linkedTransaction
+                            ? "text-indigo-400"
+                            : t.type === TransactionType.INCOME ||
+                                t.type === TransactionType.ACCOUNT_OPENING ||
+                                (t.type === TransactionType.TRANSFER &&
+                                  t.transferDirection === "IN") ||
+                                (t.type === TransactionType.ADJUSTMENT &&
+                                  t.amount >= 0)
+                              ? "text-emerald-400"
+                              : "text-rose-400"
+                        }`}
+                      >
+                        {t.linkedTransaction
+                          ? ""
                           : t.type === TransactionType.INCOME ||
                               t.type === TransactionType.ACCOUNT_OPENING ||
                               (t.type === TransactionType.TRANSFER &&
                                 t.transferDirection === "IN") ||
                               (t.type === TransactionType.ADJUSTMENT &&
                                 t.amount >= 0)
-                            ? "text-emerald-400"
-                            : "text-rose-400"
-                      }`}
-                    >
-                      {t.linkedTransaction
-                        ? ""
-                        : t.type === TransactionType.INCOME ||
-                            t.type === TransactionType.ACCOUNT_OPENING ||
-                            (t.type === TransactionType.TRANSFER &&
-                              t.transferDirection === "IN") ||
-                            (t.type === TransactionType.ADJUSTMENT &&
-                              t.amount >= 0)
-                          ? "+"
-                          : "-"}
-                      {maskAmount(
-                        Math.abs(t.amount).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        }),
-                      )}
-                    </span>
-                    <span className="text-[8px] sm:text-[9px] text-gray-600 font-bold sm:font-black tracking-widest uppercase">
-                      {t.currency}
-                    </span>
+                            ? "+"
+                            : "-"}
+                        {maskAmount(
+                          Math.abs(t.amount).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }),
+                        )}
+                      </span>
+                      <span className="text-[8px] sm:text-[9px] text-gray-600 font-bold sm:font-black tracking-widest uppercase">
+                        {t.currency}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Simplified floating actions on expand */}
-                {openMenuId === t.id && (
-                  <div className="absolute inset-y-0 right-0 bg-indigo-600 flex items-center gap-4 px-4 animate animate-fadeIn">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditTransaction(
-                          t.linkedTransaction &&
-                            t.transferDirection === "IN" &&
-                            t.linkedTransaction
-                            ? t.linkedTransaction
-                            : t,
-                        );
-                        setOpenMenuId(null);
-                      }}
-                      className="p-2 bg-white/20 rounded-lg text-white hover:scale-110 transition-transform"
-                    >
-                      <PencilIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteTransaction(t.id);
-                      }}
-                      className="p-2 bg-rose-500/40 rounded-lg text-white hover:scale-110 transition-transform"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenMenuId(null);
-                      }}
-                      className="p-2 bg-white/10 rounded-lg text-white/50"
-                    >
-                      <XMarkIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+                  {/* Simplified floating actions on expand */}
+                  {openMenuId === t.id && (
+                    <div className="absolute inset-y-0 right-0 bg-indigo-600 flex items-center gap-4 px-4 animate animate-fadeIn shadow-2xl">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditTransaction(
+                            t.linkedTransaction &&
+                              t.transferDirection === "IN" &&
+                              t.linkedTransaction
+                              ? t.linkedTransaction
+                              : t,
+                          );
+                          setOpenMenuId(null);
+                        }}
+                        className="p-2 bg-white/20 rounded-lg text-white hover:scale-110 transition-transform"
+                      >
+                        <PencilIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteTransaction(t.id);
+                        }}
+                        className="p-2 bg-rose-500/40 rounded-lg text-white hover:scale-110 transition-transform"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(null);
+                        }}
+                        className="p-2 bg-white/10 rounded-lg text-white/50"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+
+      {/* Pagination "Load More" */}
+      {visibleCount < filteredTransactions.length && (
+        <div className="flex justify-center pt-8">
+          <button
+            onClick={() => setVisibleCount((prev) => prev + 30)}
+            className="flex items-center gap-3 bg-surface/40 hover:bg-surface/60 text-gray-400 hover:text-white px-8 py-4 rounded-3xl font-black text-[10px] uppercase tracking-[0.2em] border border-white/5 transition-all active:scale-95"
+          >
+            Show Older Transactions
+            <ChevronRightIcon className="w-4 h-4 rotate-90" />
+          </button>
+        </div>
+      )}
+
+      {/* Batch Edit Modal */}
+      <Modal
+        isOpen={showBatchEditModal}
+        onClose={() => {
+          setShowBatchEditModal(false);
+          setBatchUpdates({});
+        }}
+        title={`Batch Edit ${selectedIds.length} items`}
+      >
+        <div className="space-y-6">
+          <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
+            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">
+              Note
+            </p>
+            <p className="text-gray-400 text-xs leading-relaxed">
+              Batch editing is limited to non-financial fields to prevent
+              accidental balance corruption. Amounts and accounts must be edited
+              individually.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* Date */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                <CalendarIcon className="w-3.5 h-3.5" /> Date
+              </label>
+              <input
+                type="date"
+                value={batchUpdates.date || ""}
+                onChange={(e) =>
+                  setBatchUpdates((prev) => ({ ...prev, date: e.target.value }))
+                }
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+              />
+            </div>
+
+            {/* Time */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                <ClockIcon className="w-3.5 h-3.5" /> Time
+              </label>
+              <input
+                type="time"
+                value={batchUpdates.time || ""}
+                onChange={(e) =>
+                  setBatchUpdates((prev) => ({ ...prev, time: e.target.value }))
+                }
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+              />
+            </div>
+
+            {/* Spending Limit / Pot */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                <InboxIcon className="w-3.5 h-3.5" /> Assign to Limit (Pot)
+              </label>
+              <select
+                value={
+                  batchUpdates.potId === undefined
+                    ? "KEEP"
+                    : batchUpdates.potId === null
+                      ? "REMOVE"
+                      : batchUpdates.potId
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setBatchUpdates((prev) => {
+                    const next = { ...prev };
+                    if (val === "KEEP") delete next.potId;
+                    else if (val === "REMOVE") next.potId = null as any;
+                    else next.potId = val;
+                    return next;
+                  });
+                }}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+              >
+                <option value="KEEP" className="bg-surface">
+                  — Keep Unchanged —
+                </option>
+                <option value="REMOVE" className="bg-surface">
+                  None (Remove from Pot)
+                </option>
+                {pots.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-surface">
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-4">
+            <button
+              onClick={() => {
+                setShowBatchEditModal(false);
+                setBatchUpdates({});
+              }}
+              className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest bg-white/5 hover:bg-white/10 text-gray-400 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBatchEditSubmit}
+              disabled={Object.keys(batchUpdates).length === 0}
+              className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all shadow-xl shadow-indigo-500/20"
+            >
+              Apply Changes
+            </button>
           </div>
         </div>
-      ))}
+      </Modal>
     </div>
   );
 };

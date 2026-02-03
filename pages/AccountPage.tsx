@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import Modal from "../components/Modal";
@@ -53,6 +53,11 @@ const AccountPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { profile } = useAuth();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
   const {
     transactions,
     categories,

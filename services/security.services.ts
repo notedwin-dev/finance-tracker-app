@@ -6,7 +6,11 @@ const IV_LENGTH = 12;
 /**
  * Derives a cryptographic key from a password and salt.
  */
-async function deriveKey(password: string, salt: string): Promise<CryptoKey> {
+async function deriveKey(
+  password: string,
+  salt: string,
+  iterations: number = 100000,
+): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
     "raw",
@@ -20,7 +24,7 @@ async function deriveKey(password: string, salt: string): Promise<CryptoKey> {
     {
       name: "PBKDF2",
       salt: enc.encode(salt),
-      iterations: 100000,
+      iterations: iterations,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -79,18 +83,36 @@ export async function decryptData(
 
     const iv = combined.slice(0, IV_LENGTH);
     const data = combined.slice(IV_LENGTH);
-    const key = await deriveKey(password, salt);
 
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: ALGORITHM, iv },
-      key,
-      data,
-    );
+    // Try multiple iteration counts for backward compatibility.
+    // Tiers: 100k, 1M, 10k, 5k, 2048, 1024, 1000, 256, 128, 1
+    const iterationTries = [
+      100000, 1000000, 10000, 5000, 2048, 1024, 1000, 256, 128, 1,
+    ];
 
-    return new TextDecoder().decode(decrypted);
+    // Try multiple possible password variations (raw hash vs prefix string)
+    const passwordTries = [password];
+    if (password.startsWith("HASHED:")) {
+      passwordTries.push(password.substring(7));
+    }
+
+    for (const p of passwordTries) {
+      for (const iterations of iterationTries) {
+        try {
+          const key = await deriveKey(p, salt, iterations);
+          const decrypted = await window.crypto.subtle.decrypt(
+            { name: ALGORITHM, iv },
+            key,
+            data,
+          );
+          return new TextDecoder().decode(decrypted);
+        } catch (e) {
+          // Try next combination
+        }
+      }
+    }
+    return null;
   } catch (error) {
-    // Return null on failure instead of the original string
-    // this prevents JSON.parse errors in callers
     return null;
   }
 }
@@ -103,6 +125,7 @@ export async function decryptData(
 export async function hashPassword(
   password: string,
   salt: string,
+  iterations: number = 100000,
 ): Promise<string> {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -117,7 +140,7 @@ export async function hashPassword(
     {
       name: "PBKDF2",
       salt: enc.encode(salt),
-      iterations: 100000,
+      iterations: iterations,
       hash: "SHA-256",
     },
     keyMaterial,

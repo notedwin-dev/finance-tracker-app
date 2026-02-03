@@ -117,7 +117,7 @@ const LandingPage: React.FC = () => {
               {
                 icon: MagnifyingGlassCircleIcon,
                 title: "AI Insights",
-                desc: "Get personalized financial advice from Gemini 2.0 Flash based on your real spending habits.",
+                desc: "Get personalized financial advice from Gemini 2.5 Flash based on your real spending habits.",
               },
               {
                 icon: CloudArrowUpIcon,

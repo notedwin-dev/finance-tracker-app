@@ -113,10 +113,13 @@ const Profile: React.FC<Props> = ({
         }
 
         try {
-          await unlockVault(storedPass);
-
-          showToast("Vault unlocked with Biometrics!", "success");
-          setShowVaultPrompt(false);
+          const success = await unlockVault(storedPass);
+          if (success) {
+            showToast("Vault unlocked with Biometrics!", "success");
+            setShowVaultPrompt(false);
+          } else {
+            setVaultError("Biometric link expired. Please use password.");
+          }
         } catch (e) {
           setVaultError("Unlock failed. Please try again.");
         }

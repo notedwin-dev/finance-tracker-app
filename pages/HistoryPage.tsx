@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import { useData } from "../context/DataContext";
@@ -7,6 +7,10 @@ const HistoryPage: React.FC = () => {
   const { transactions, categories, accounts, handleTransactionDelete } =
     useData();
   const { setShowAddModal, setEditingTransaction } = useOutletContext<any>();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   return (
     <div className="animate-fadeIn max-w-3xl mx-auto">

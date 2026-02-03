@@ -20,6 +20,7 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { TrashIcon } from "@heroicons/react/24/solid";
+import DatePicker from "./DatePicker";
 
 interface Props {
   accounts: Account[];
@@ -306,6 +307,7 @@ const TransactionForm: React.FC<Props> = ({
             ].map((t) => (
               <button
                 key={t}
+                type="button"
                 onClick={() => setType(t)}
                 className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${
                   type === t
@@ -323,6 +325,32 @@ const TransactionForm: React.FC<Props> = ({
           onSubmit={handleSubmit}
           className="p-4 sm:p-5 space-y-4 sm:space-y-5 overflow-y-auto flex-1 custom-scrollbar pb-10 sm:pb-5"
         >
+          {/* Transaction Type Dropdown (Edit Mode Only) */}
+          {initialTransaction && (
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                Transaction Type
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as TransactionType)}
+                className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none font-bold"
+              >
+                {[
+                  TransactionType.EXPENSE,
+                  TransactionType.INCOME,
+                  TransactionType.TRANSFER,
+                  TransactionType.ADJUSTMENT,
+                  TransactionType.ACCOUNT_OPENING,
+                ].map((t) => (
+                  <option key={t} value={t} className="bg-surface">
+                    {t.replace("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Amount & Currency */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1.5">
@@ -603,13 +631,7 @@ const TransactionForm: React.FC<Props> = ({
               <label className="block text-xs font-medium text-gray-400 mb-1">
                 Date
               </label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
-              />
+              <DatePicker value={date} onChange={setDate} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">

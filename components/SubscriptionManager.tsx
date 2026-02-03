@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { parseDateSafe } from "../helpers/transactions.helper";
 import { useData } from "../context/DataContext";
+import DatePicker from "./DatePicker";
 
 interface Props {
   subscriptions: Subscription[];
@@ -245,12 +246,9 @@ const SubscriptionManager: React.FC<Props> = ({
                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                     Next Payment
                   </label>
-                  <input
-                    type="date"
-                    required
+                  <DatePicker
                     value={nextPaymentDate}
-                    onChange={(e) => setNextPaymentDate(e.target.value)}
-                    className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:border-primary outline-none"
+                    onChange={setNextPaymentDate}
                   />
                 </div>
               </div>

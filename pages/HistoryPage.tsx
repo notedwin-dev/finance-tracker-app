@@ -6,7 +6,8 @@ import { useData } from "../context/DataContext";
 const HistoryPage: React.FC = () => {
   const { transactions, categories, accounts, handleTransactionDelete } =
     useData();
-  const { setShowAddModal, setEditingTransaction } = useOutletContext<any>();
+  const { showAddModal, setShowAddModal, setEditingTransaction } =
+    useOutletContext<any>();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -21,6 +22,7 @@ const HistoryPage: React.FC = () => {
         transactions={transactions}
         categories={categories}
         accounts={accounts}
+        showAddModal={showAddModal}
         onAddTransaction={() => setShowAddModal(true)}
         onEditTransaction={(t) => {
           setEditingTransaction(t);

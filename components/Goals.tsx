@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Goal, Account, Pot } from "../types";
 import { parseDateSafe, normalizeDate } from "../helpers/transactions.helper";
 import { useData } from "../context/DataContext";
+import DatePicker from "./DatePicker";
 import {
   PlusIcon,
   TrashIcon,
@@ -745,12 +746,7 @@ const Goals: React.FC<Props> = ({
                 <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
                   Deadline (Optional)
                 </label>
-                <input
-                  type="date"
-                  value={goalDeadline}
-                  onChange={(e) => setGoalDeadline(e.target.value)}
-                  className="w-full bg-background border border-gray-700 rounded-xl px-4 py-2.5 sm:py-3 text-white text-sm focus:border-primary outline-none scheme-dark"
-                />
+                <DatePicker value={goalDeadline} onChange={setGoalDeadline} />
               </div>
 
               <div>

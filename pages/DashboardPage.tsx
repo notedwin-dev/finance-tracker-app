@@ -24,6 +24,7 @@ import {
   formatDateReadable,
 } from "../helpers/transactions.helper";
 import { TransactionType } from "../types";
+import DatePicker from "../components/DatePicker";
 
 type TimeFrame = "1D" | "1W" | "1M" | "YTD" | "ALL";
 
@@ -726,16 +727,14 @@ const DashboardPage: React.FC = () => {
                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">
                   Start Date
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={customRange.start}
-                  onChange={(e) =>
+                  onChange={(date) =>
                     setCustomRange((prev) => ({
                       ...prev,
-                      start: e.target.value,
+                      start: date,
                     }))
                   }
-                  className="w-full bg-gray-900 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 
@@ -743,13 +742,11 @@ const DashboardPage: React.FC = () => {
                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">
                   End Date
                 </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={customRange.end}
-                  onChange={(e) =>
-                    setCustomRange((prev) => ({ ...prev, end: e.target.value }))
+                  onChange={(date) =>
+                    setCustomRange((prev) => ({ ...prev, end: date }))
                   }
-                  className="w-full bg-gray-900 border border-gray-800 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
 

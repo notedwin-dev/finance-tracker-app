@@ -245,8 +245,8 @@ const MainLayout: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl">
-        <header className="lg:hidden flex justify-between items-center px-6 py-4 bg-background/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
+      <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl relative">
+        <header className="lg:hidden flex justify-between items-center px-6 h-20 bg-background/90 backdrop-blur-md sticky top-0 z-60 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
           <div className="flex items-center gap-2">
             <img
               src={zenLogo}
@@ -304,9 +304,10 @@ const MainLayout: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-4 pb-32 lg:pb-8 overflow-y-auto w-full mx-auto">
+        <main className="flex-1 p-4 pb-32 lg:pb-8 w-full mx-auto">
           <Outlet
             context={{
+              showAddModal,
               setShowAddModal,
               setEditingTransaction,
               setShowAccountForm,

@@ -1484,7 +1484,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           )
             balanceRestore = -amount;
           else balanceRestore = amount;
-          accountUpdates.set(a.id, (accountUpdates.get(a.id) || 0) + balanceRestore);
+          accountUpdates.set(
+            a.id,
+            (accountUpdates.get(a.id) || 0) + balanceRestore,
+          );
         }
         if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
           accountUpdates.set(a.id, (accountUpdates.get(a.id) || 0) - amount);
@@ -1518,7 +1521,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         )
           balanceRestore = tx.amount;
         else balanceRestore = -tx.amount;
-        potUpdates.set(tx.potId, (potUpdates.get(tx.potId) || 0) + balanceRestore);
+        potUpdates.set(
+          tx.potId,
+          (potUpdates.get(tx.potId) || 0) + balanceRestore,
+        );
       }
     });
 
@@ -1560,8 +1566,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const txsToEdit = transactions.filter((t) => ids.includes(t.id));
     if (txsToEdit.length === 0) return;
 
-    // We only allow editing potId, date, time per user request
+    // We allow editing title, category, potId, date, time per user request
     const allowedUpdates: any = {
+      shopName: updates.shopName,
+      categoryId: updates.categoryId,
       potId: updates.potId,
       date: updates.date,
       time: updates.time,
@@ -1570,9 +1578,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // Clean undefined (but keep null for potId removal)
     Object.keys(allowedUpdates).forEach(
-      (key) =>
-        allowedUpdates[key] === undefined &&
-        delete allowedUpdates[key],
+      (key) => allowedUpdates[key] === undefined && delete allowedUpdates[key],
     );
 
     const potDeltaMap = new Map<string, number>();
@@ -1580,10 +1586,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const updatedTransactionsList = transactions.map((t) => {
       if (ids.includes(t.id)) {
         // Handle Pot migration if potId changed
-        if (
-          updates.potId !== undefined &&
-          updates.potId !== t.potId
-        ) {
+        if (updates.potId !== undefined && updates.potId !== t.potId) {
           // 1. Remove from old pot
           if (t.potId) {
             let restore = 0;
@@ -1604,7 +1607,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             )
               add = -t.amount;
             else add = t.amount;
-            potDeltaMap.set(updates.potId, (potDeltaMap.get(updates.potId) || 0) + add);
+            potDeltaMap.set(
+              updates.potId,
+              (potDeltaMap.get(updates.potId) || 0) + add,
+            );
           }
         }
 

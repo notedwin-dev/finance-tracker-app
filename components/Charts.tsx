@@ -119,6 +119,12 @@ export const NetWorthChart: React.FC<Props> = ({
         if (t.type === TransactionType.INCOME) effect = absAmount;
         else if (t.type === TransactionType.EXPENSE) effect = -absAmount;
         else if (
+          t.type === TransactionType.TRANSFER &&
+          t.fee &&
+          t.feeType === "EXCLUSIVE"
+        )
+          effect = -Math.abs(t.fee);
+        else if (
           t.type === TransactionType.ADJUSTMENT ||
           t.type === TransactionType.ACCOUNT_OPENING
         )
@@ -191,7 +197,7 @@ export const NetWorthChart: React.FC<Props> = ({
         },
       ],
     };
-  }, [transactions, currentTotal]);
+  }, [transactions, currentTotal, usdRate, displayCurrency]);
 
   const hasData =
     chartData.datasets.length > 0 && chartData.datasets[0].data.length > 0;
@@ -361,16 +367,17 @@ export const RevenueChart: React.FC<Props> = ({
       const expense = transactions
         .filter(
           (t) =>
-            t.type === TransactionType.EXPENSE &&
+            (t.type === TransactionType.EXPENSE ||
+              (t.type === TransactionType.TRANSFER && t.fee)) &&
             toYMD(t.date).startsWith(monthStr),
         )
         .reduce((sum, t) => {
-          let val = t.amount;
+          let val = t.type === TransactionType.EXPENSE ? t.amount : t.fee || 0;
           if (t.currency !== displayCurrency) {
             if (t.currency === "USD" && displayCurrency === "MYR")
-              val = t.amount * usdRate;
+              val *= usdRate;
             else if (t.currency === "MYR" && displayCurrency === "USD")
-              val = t.amount / usdRate;
+              val /= usdRate;
           }
           return sum + val;
         }, 0);
@@ -776,7 +783,7 @@ export const CategoryPieChart: React.FC<{
   data: { label: string; value: number; color: string }[];
   height?: number;
   currencySymbol?: string;
-}> = ({ data, height = 300, currencySymbol = "RM" }) => {
+}> = ({ data, height = 500, currencySymbol = "RM" }) => {
   const total = useMemo(
     () => data.reduce((sum, item) => sum + item.value, 0),
     [data],
@@ -834,7 +841,7 @@ export const CategoryPieChart: React.FC<{
   return (
     <div style={{ height }} className="relative">
       <Pie data={chartData} options={options} />
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transform -translate-y-12">
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transform -translate-y-15">
         <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1">
           Total Spent
         </span>
@@ -900,16 +907,17 @@ export const MonthlyBreakdown: React.FC<Props> = ({
       const expense = transactions
         .filter(
           (t) =>
-            t.type === TransactionType.EXPENSE &&
+            (t.type === TransactionType.EXPENSE ||
+              (t.type === TransactionType.TRANSFER && t.fee)) &&
             toYMD(t.date).startsWith(monthStr),
         )
         .reduce((sum, t) => {
-          let val = t.amount;
+          let val = t.type === TransactionType.EXPENSE ? t.amount : t.fee || 0;
           if (t.currency !== displayCurrency) {
             if (t.currency === "USD" && displayCurrency === "MYR")
-              val = t.amount * usdRate;
+              val *= usdRate;
             else if (t.currency === "MYR" && displayCurrency === "USD")
-              val = t.amount / usdRate;
+              val /= usdRate;
           }
           return sum + val;
         }, 0);

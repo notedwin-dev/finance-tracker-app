@@ -590,7 +590,7 @@ const DashboardPage: React.FC = () => {
                   {pieChartData.length > 0 ? (
                     <CategoryPieChart
                       data={pieChartData}
-                      height={300}
+                      height={500}
                       currencySymbol={displayCurrency === "MYR" ? "RM" : "$"}
                     />
                   ) : (

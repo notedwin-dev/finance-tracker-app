@@ -149,9 +149,25 @@ const AccountPage: React.FC = () => {
   );
 
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(
-      (t) => t.accountId === id || t.toAccountId === id,
-    );
+    const results: any[] = [];
+    transactions.forEach((t) => {
+      if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+        if (t.accountId === id) {
+          results.push({ ...t, transferDirection: "OUT" });
+        } else if (t.toAccountId === id) {
+          results.push({
+            ...t,
+            id: t.id + "_in",
+            accountId: t.toAccountId,
+            toAccountId: t.accountId,
+            transferDirection: "IN",
+          });
+        }
+      } else if (t.accountId === id) {
+        results.push(t);
+      }
+    });
+    return results;
   }, [transactions, id]);
 
   const getCurrencySymbol = (currency: string) => {
@@ -552,6 +568,7 @@ const AccountPage: React.FC = () => {
               categories={categories}
               accounts={accounts}
               pockets={pockets}
+              isAssetPage={true}
               onAddTransaction={() => setShowAddModal(true)}
               onEditTransaction={(t) => {
                 setEditingTransaction(t);

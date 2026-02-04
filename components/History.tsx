@@ -38,6 +38,7 @@ interface Props {
   accounts: Account[];
   pockets: SavingPocket[];
   showAddModal?: boolean;
+  isAssetPage?: boolean;
   onAddTransaction: () => void;
   onEditTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
@@ -49,6 +50,7 @@ const History: React.FC<Props> = ({
   accounts,
   pockets,
   showAddModal = false,
+  isAssetPage = false,
   onAddTransaction,
   onEditTransaction,
   onDeleteTransaction,
@@ -304,14 +306,17 @@ const History: React.FC<Props> = ({
   return (
     <div className="space-y-6 sm:space-y-8 relative">
       {/* Back to Top Button */}
-      {showBackToTop && !showBatchEditModal && !showAddModal && (
-        <button
-          onClick={scrollToTop}
-          className="fixed bottom-24 right-6 sm:right-10 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl shadow-indigo-500/40 hover:scale-110 active:scale-95 transition-all animate-bounce"
-        >
-          <ArrowUpIcon className="w-6 h-6" />
-        </button>
-      )}
+      {showBackToTop &&
+        !isAssetPage &&
+        !showBatchEditModal &&
+        !showAddModal && (
+          <button
+            onClick={scrollToTop}
+            className="fixed bottom-24 right-6 sm:right-10 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl shadow-indigo-500/40 hover:scale-110 active:scale-95 transition-all animate-bounce"
+          >
+            <ArrowUpIcon className="w-6 h-6" />
+          </button>
+        )}
 
       {/* Sticky Header Section */}
       {!showBatchEditModal && !showAddModal && (
@@ -561,14 +566,16 @@ const History: React.FC<Props> = ({
                     <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
                       <div
                         className={`shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-md sm:text-lg transition-all duration-500 ${
-                          t.linkedTransaction
+                          t.linkedTransaction ||
+                          t.type === TransactionType.TRANSFER
                             ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
                             : selectedIds.includes(t.id)
                               ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
                               : "bg-surface border border-white/5"
                         }`}
                       >
-                        {t.linkedTransaction
+                        {t.linkedTransaction ||
+                        t.type === TransactionType.TRANSFER
                           ? "↔️"
                           : t.type === TransactionType.INCOME
                             ? "💰"
@@ -577,7 +584,8 @@ const History: React.FC<Props> = ({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="font-extrabold sm:font-black text-white text-[17px] sm:text-lg tracking-tight truncate">
-                            {t.linkedTransaction ? (
+                            {t.linkedTransaction ||
+                            t.type === TransactionType.TRANSFER ? (
                               t.shopName ? (
                                 maskText(t.shopName)
                               ) : (
@@ -637,9 +645,14 @@ const History: React.FC<Props> = ({
                                 <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
                               </>
                             )}
-                          {t.linkedTransaction ? (
+                          {t.linkedTransaction ||
+                          t.type === TransactionType.TRANSFER ? (
                             <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-indigo-400/70 truncate uppercase tracking-wider">
-                              INTERNAL TRANSFER
+                              {t.transferDirection === "IN"
+                                ? "TRANSFER IN"
+                                : t.transferDirection === "OUT"
+                                  ? "TRANSFER OUT"
+                                  : "INTERNAL TRANSFER"}
                             </p>
                           ) : (
                             <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-gray-500/70 truncate uppercase tracking-[0.05em]">
@@ -689,6 +702,11 @@ const History: React.FC<Props> = ({
                         </span>
                         <span className="text-[8px] sm:text-[9px] text-gray-600 font-bold sm:font-black tracking-widest uppercase">
                           {t.currency}
+                          {t.fee && t.fee > 0 && (
+                            <span className="ml-1 text-rose-400/80">
+                              (Fee: {t.fee.toFixed(2)})
+                            </span>
+                          )}
                         </span>
                       </div>
 

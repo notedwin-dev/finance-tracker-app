@@ -42,6 +42,7 @@ const DatePicker: React.FC<Props> = ({
     value ? parseISO(value) : new Date(),
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({
     top: 0,
     left: 0,
@@ -86,10 +87,13 @@ const DatePicker: React.FC<Props> = ({
   // Close on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      const isInsideTrigger =
+        containerRef.current && containerRef.current.contains(target);
+      const isInsidePortal =
+        portalRef.current && portalRef.current.contains(target);
+
+      if (!isInsideTrigger && !isInsidePortal) {
         setIsOpen(false);
         setView("calendar");
       }
@@ -179,6 +183,7 @@ const DatePicker: React.FC<Props> = ({
               }
             >
               <div
+                ref={portalRef}
                 className="bg-surface border border-white/10 rounded-4xl shadow-2xl p-5 w-[320px] animate-fadeIn backdrop-blur-2xl pointer-events-auto mx-auto sm:mx-0 shadow-black/50"
                 onClick={(e) => e.stopPropagation()}
               >

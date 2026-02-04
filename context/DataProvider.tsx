@@ -1327,6 +1327,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           oldTx.currency,
           a.currency,
         );
+        const oldFee = oldTx.fee
+          ? getConvertedAmount(oldTx.fee, oldTx.currency, a.currency)
+          : 0;
+        const oldFeeType = oldTx.feeType || "INCLUSIVE";
+
         if (a.id === oldTx.accountId) {
           isChanged = true;
           if (
@@ -1341,11 +1346,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           a.id === oldTx.toAccountId
         ) {
           isChanged = true;
-          balance -= oldAmount;
+          balance -=
+            oldFeeType === "EXCLUSIVE" ? oldAmount - oldFee : oldAmount;
         }
       }
 
       const newAmount = getConvertedAmount(tx.amount, tx.currency, a.currency);
+      const newFee = tx.fee
+        ? getConvertedAmount(tx.fee, tx.currency, a.currency)
+        : 0;
+      const newFeeType = tx.feeType || "INCLUSIVE";
+
       if (a.id === tx.accountId) {
         isChanged = true;
         if (
@@ -1357,7 +1368,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
         isChanged = true;
-        balance += newAmount;
+        balance += newFeeType === "EXCLUSIVE" ? newAmount - newFee : newAmount;
       }
 
       return isChanged ? { ...a, balance, updatedAt: Date.now() } : a;
@@ -1413,38 +1424,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         let newCurrentAmount = p.currentAmount;
 
         // Old Transaction Restoration
-        if (isEdit) {
-          if (oldTx?.savingPocketId === p.id) {
+        if (isEdit && oldTx) {
+          const oldFee = oldTx.fee || 0;
+          const oldFeeType = oldTx.feeType || "INCLUSIVE";
+          const oldSourceAmount = oldTx.amount;
+          const oldTargetAmount =
+            oldFeeType === "EXCLUSIVE" ? oldTx.amount - oldFee : oldTx.amount;
+
+          if (oldTx.savingPocketId === p.id) {
             if (
               oldTx.type === TransactionType.INCOME ||
               oldTx.type === TransactionType.ACCOUNT_OPENING
             )
               newCurrentAmount -= oldTx.amount;
-            else newCurrentAmount += oldTx.amount;
+            else newCurrentAmount += oldSourceAmount;
           }
           if (
-            oldTx?.type === TransactionType.TRANSFER &&
-            oldTx?.toSavingPocketId === p.id
+            oldTx.type === TransactionType.TRANSFER &&
+            oldTx.toSavingPocketId === p.id
           ) {
-            newCurrentAmount -= oldTx.amount;
+            newCurrentAmount -= oldTargetAmount;
           }
         }
 
         // New Transaction Application
+        const newFee = tx.fee || 0;
+        const newFeeType = tx.feeType || "INCLUSIVE";
+        const newSourceAmount = tx.amount;
+        const newTargetAmount =
+          newFeeType === "EXCLUSIVE" ? tx.amount - newFee : tx.amount;
+
         if (tx.savingPocketId === p.id) {
           if (
             tx.type === TransactionType.INCOME ||
             tx.type === TransactionType.ACCOUNT_OPENING
           )
             newCurrentAmount += tx.amount;
-          else newCurrentAmount -= tx.amount;
+          else newCurrentAmount -= newSourceAmount;
         }
 
         if (
           tx.type === TransactionType.TRANSFER &&
           tx.toSavingPocketId === p.id
         ) {
-          newCurrentAmount += tx.amount;
+          newCurrentAmount += newTargetAmount;
         }
 
         if (newCurrentAmount !== p.currentAmount) {
@@ -1476,6 +1499,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
               ? tx.amount * usdRate
               : tx.amount / usdRate;
 
+        const fee = tx.fee
+          ? tx.currency === a.currency
+            ? tx.fee
+            : tx.currency === "USD"
+              ? tx.fee * usdRate
+              : tx.fee / usdRate
+          : 0;
+
+        const feeType = tx.feeType || "INCLUSIVE";
+
         if (a.id === tx.accountId) {
           let balanceRestore = 0;
           if (
@@ -1491,7 +1524,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         }
         if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
-          return { ...a, balance: a.balance - amount, updatedAt: Date.now() };
+          return {
+            ...a,
+            balance:
+              a.balance - (feeType === "EXCLUSIVE" ? amount - fee : amount),
+            updatedAt: Date.now(),
+          };
         }
         return a;
       });
@@ -1531,19 +1569,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       ) {
         const updatedPockets = pockets.map((p) => {
           let delta = 0;
+          const fee = tx.fee || 0;
+          const feeType = tx.feeType || "INCLUSIVE";
+          const sourceAmount = tx.amount;
+          const targetAmount =
+            feeType === "EXCLUSIVE" ? tx.amount - fee : tx.amount;
+
           if (p.id === tx.savingPocketId) {
             if (
               tx.type === TransactionType.INCOME ||
               tx.type === TransactionType.ACCOUNT_OPENING
             )
               delta = -tx.amount;
-            else delta = tx.amount;
+            else delta = sourceAmount;
           }
           if (
             tx.type === TransactionType.TRANSFER &&
             p.id === tx.toSavingPocketId
           ) {
-            delta = -tx.amount;
+            delta = -targetAmount;
           }
 
           if (delta !== 0) {
@@ -1584,6 +1628,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
               ? tx.amount * usdRate
               : tx.amount / usdRate;
 
+        const fee = tx.fee
+          ? tx.currency === a.currency
+            ? tx.fee
+            : tx.currency === "USD"
+              ? tx.fee * usdRate
+              : tx.fee / usdRate
+          : 0;
+
+        const feeType = tx.feeType || "INCLUSIVE";
+
         if (a.id === tx.accountId) {
           let balanceRestore = 0;
           if (
@@ -1598,7 +1652,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
         if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
-          accountUpdates.set(a.id, (accountUpdates.get(a.id) || 0) - amount);
+          accountUpdates.set(
+            a.id,
+            (accountUpdates.get(a.id) || 0) -
+              (feeType === "EXCLUSIVE" ? amount - fee : amount),
+          );
         }
       });
     });
@@ -1658,6 +1716,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     // Update Pockets
     const pocketUpdates = new Map<string, number>();
     txsToDelete.forEach((tx) => {
+      const fee = tx.fee || 0;
+      const feeType = tx.feeType || "INCLUSIVE";
+      const sourceAmount = tx.amount;
+      const targetAmount =
+        feeType === "EXCLUSIVE" ? tx.amount - fee : tx.amount;
+
       if (tx.savingPocketId) {
         let amountRestore = 0;
         if (
@@ -1665,7 +1729,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           tx.type === TransactionType.ACCOUNT_OPENING
         )
           amountRestore = -tx.amount;
-        else amountRestore = tx.amount;
+        else amountRestore = sourceAmount;
         pocketUpdates.set(
           tx.savingPocketId,
           (pocketUpdates.get(tx.savingPocketId) || 0) + amountRestore,
@@ -1674,7 +1738,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       if (tx.type === TransactionType.TRANSFER && tx.toSavingPocketId) {
         pocketUpdates.set(
           tx.toSavingPocketId,
-          (pocketUpdates.get(tx.toSavingPocketId) || 0) - tx.amount,
+          (pocketUpdates.get(tx.toSavingPocketId) || 0) - targetAmount,
         );
       }
     });

@@ -329,7 +329,7 @@ export const RevenueChart: React.FC<Props> = ({
     const incomeData = [];
     const expenseData = [];
 
-    for (let i = months - 1; i >= 0; i--) {
+    for (let i = months; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
       // Use Local time for Month generation to match user expectation
@@ -502,7 +502,7 @@ export const RevenueChart: React.FC<Props> = ({
             Income vs Expenses (Last{" "}
             {months >= 12
               ? `${months / 12} ${months === 12 ? "Year" : "Years"}`
-              : `${months} Months`}
+              : `${months} ${months === 1 ? "Month" : "Months"}`}
             )
           </p>
         </div>
@@ -834,7 +834,7 @@ export const CategoryPieChart: React.FC<{
   return (
     <div style={{ height }} className="relative">
       <Pie data={chartData} options={options} />
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transform -translate-y-8">
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transform -translate-y-12">
         <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-1">
           Total Spent
         </span>

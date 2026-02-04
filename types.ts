@@ -75,6 +75,8 @@ export interface Transaction {
   date: string; // ISO String (YYYY-MM-DD or full ISO)
   time?: string; // Optional time (HH:mm)
   amountBreakdown?: AmountBreakdownItem[];
+  fee?: number; // Optional transaction fee for transfers
+  feeType?: "INCLUSIVE" | "EXCLUSIVE"; // INCLUSIVE: Add to total (Target gets full), EXCLUSIVE: Deduct from total (Target gets less)
   createdAt: number; // For sorting and conflict resolution
   note?: string;
   updatedAt?: number;

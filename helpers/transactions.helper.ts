@@ -77,6 +77,33 @@ export const groupTransactions = (
           continue;
         }
       }
+
+      // 3. Single-record Transfer Handling (for records with both accounts)
+      if (
+        t.toAccountId &&
+        t.accountId !== t.toAccountId &&
+        !t.transferDirection
+      ) {
+        const partnerId = t.id + "_virtual_in";
+        const partner: Transaction = {
+          ...t,
+          id: partnerId,
+          accountId: t.toAccountId,
+          toAccountId: t.accountId,
+          transferDirection: "IN",
+          linkedTransactionId: t.id,
+        };
+
+        const main = {
+          ...t,
+          transferDirection: "OUT" as "OUT",
+          linkedTransaction: partner,
+        };
+
+        grouped.push(main);
+        processedIds.add(t.id);
+        continue;
+      }
     }
 
     grouped.push(t);

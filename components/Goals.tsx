@@ -57,6 +57,7 @@ const Goals: React.FC<Props> = ({
 
   // Saving Pocket form state
   const [pocketName, setPocketName] = useState("");
+  const [pocketAccountId, setPocketAccountId] = useState("");
   const [pocketCurrent, setPocketCurrent] = useState("");
   const [pocketCurrency, setPocketCurrency] = useState("MYR");
   const [pocketIcon, setPocketIcon] = useState("🚀");
@@ -163,6 +164,7 @@ const Goals: React.FC<Props> = ({
   const handleEditPocket = (pocket: SavingPocket) => {
     setEditingId(pocket.id);
     setPocketName(pocket.name);
+    setPocketAccountId(pocket.accountId || "");
     setPocketCurrent(pocket.currentAmount.toFixed(2));
     setPocketCurrency(pocket.currency);
     setPocketIcon(pocket.icon);
@@ -177,6 +179,7 @@ const Goals: React.FC<Props> = ({
       const pocketData: Omit<SavingPocket, "userId"> = {
         id: editingId || crypto.randomUUID(),
         name: pocketName,
+        accountId: pocketAccountId || undefined,
         currentAmount: parseFloat(pocketCurrent) || 0,
         currency: pocketCurrency,
         icon: pocketIcon,
@@ -184,6 +187,7 @@ const Goals: React.FC<Props> = ({
       };
       await onSavePocket(pocketData);
       setPocketName("");
+      setPocketAccountId("");
       setPocketCurrent("");
       setEditingId(null);
       setShowPocketModal(false);
@@ -449,7 +453,9 @@ const Goals: React.FC<Props> = ({
                           {maskText(pocket.name)}
                         </h3>
                         <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                          Endless Savings
+                          {pocket.accountId
+                            ? getAccountName(pocket.accountId)
+                            : "Endless Savings"}
                         </p>
                       </div>
                     </div>
@@ -767,6 +773,7 @@ const Goals: React.FC<Props> = ({
                   setShowPocketModal(false);
                   setEditingId(null);
                   setPocketName("");
+                  setPocketAccountId("");
                   setPocketCurrent("");
                 }}
                 className="p-2 text-gray-500 hover:text-white transition-colors"
@@ -776,6 +783,24 @@ const Goals: React.FC<Props> = ({
             </div>
 
             <form onSubmit={handlePocketSubmit} className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                  Linked Bank Account (Optional)
+                </label>
+                <select
+                  value={pocketAccountId}
+                  onChange={(e) => setPocketAccountId(e.target.value)}
+                  className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white focus:border-indigo-500/50 transition-all outline-none appearance-none"
+                >
+                  <option value="">No Linked Account</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
                   Pocket Name

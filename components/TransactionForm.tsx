@@ -201,6 +201,25 @@ const TransactionForm: React.FC<Props> = ({
     (selectedPot.amountLeft <= 0 ||
       selectedPot.amountLeft / selectedPot.limitAmount <= 0.1);
 
+  // Handle account change effect on pockets
+  useEffect(() => {
+    if (savingPocketId) {
+      const pocket = pockets.find((p) => p.id === savingPocketId);
+      if (pocket?.accountId && pocket.accountId !== accountId) {
+        setSavingPocketId("");
+      }
+    }
+  }, [accountId, pockets, savingPocketId]);
+
+  useEffect(() => {
+    if (toSavingPocketId) {
+      const pocket = pockets.find((p) => p.id === toSavingPocketId);
+      if (pocket?.accountId && pocket.accountId !== toAccountId) {
+        setToSavingPocketId("");
+      }
+    }
+  }, [toAccountId, pockets, toSavingPocketId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -487,12 +506,16 @@ const TransactionForm: React.FC<Props> = ({
                         className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
                       >
                         <option value="">No Pocket Selected</option>
-                        {pockets.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.icon} {p.name} ({p.currency}{" "}
-                            {p.currentAmount.toLocaleString()})
-                          </option>
-                        ))}
+                        {pockets
+                          .filter(
+                            (p) => !p.accountId || p.accountId === accountId,
+                          )
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.icon} {p.name} ({p.currency}{" "}
+                              {p.currentAmount.toLocaleString()})
+                            </option>
+                          ))}
                       </select>
                     </div>
                   </div>
@@ -552,7 +575,11 @@ const TransactionForm: React.FC<Props> = ({
                 >
                   <option value="">No Pocket Selected</option>
                   {pockets
-                    .filter((p) => p.id !== savingPocketId)
+                    .filter(
+                      (p) =>
+                        p.id !== savingPocketId &&
+                        (!p.accountId || p.accountId === toAccountId),
+                    )
                     .map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.icon} {p.name} ({p.currency}{" "}

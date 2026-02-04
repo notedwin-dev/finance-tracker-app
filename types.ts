@@ -143,6 +143,7 @@ export interface Pot {
 export interface SavingPocket {
   id: string;
   userId: string;
+  accountId?: string; // Linked Bank Account
   name: string;
   currentAmount: number; // Balance in this pocket
   currency: Currency;

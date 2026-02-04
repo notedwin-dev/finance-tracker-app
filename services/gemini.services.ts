@@ -14,7 +14,7 @@ const BACKEND_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
 
 const getClient = (apiKey?: string) => {
-  const finalKey = apiKey || import.meta.env.VITE_GOOGLE_API_KEY;
+  const finalKey = apiKey || import.meta.env.VITE_GEMINI_API_KEY;
   if (!finalKey) {
     throw new Error("No Gemini API key provided.");
   }

@@ -81,6 +81,7 @@ export interface Transaction {
   linkedTransactionId?: string; // For split transfers
   transferDirection?: "OUT" | "IN";
   potId?: string; // Linked Spending Pot / Limit
+  savingPocketId?: string; // Linked Saving Pocket
   subscriptionId?: string; // Linked Subscription
 }
 
@@ -132,6 +133,17 @@ export interface Pot {
   limitAmount: number; // The total budget limit for this pot
   usedAmount: number; // How much has been spent/used so far
   amountLeft: number; // The remaining balance available to spend
+  currency: Currency;
+  color: string;
+  icon: string;
+  updatedAt?: number;
+}
+
+export interface SavingPocket {
+  id: string;
+  userId: string;
+  name: string;
+  currentAmount: number; // Balance in this pocket
   currency: Currency;
   color: string;
   icon: string;

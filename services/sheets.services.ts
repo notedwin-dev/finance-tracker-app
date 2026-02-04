@@ -5,6 +5,7 @@ import {
   Goal,
   Subscription,
   Pot,
+  SavingPocket,
   ChatSession,
 } from "../types";
 import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
@@ -984,6 +985,7 @@ export const syncWithGoogleSheets = async (
   goals?: Goal[],
   subscriptions?: Subscription[],
   pots?: Pot[],
+  pockets?: SavingPocket[],
   chatSessions?: ChatSession[],
   profile?: any,
 ) => {
@@ -994,6 +996,7 @@ export const syncWithGoogleSheets = async (
   if (goals) tasks.push(saveToSheet("Goals", goals));
   if (subscriptions) tasks.push(saveToSheet("Subscriptions", subscriptions));
   if (pots) tasks.push(saveToSheet("Pots", pots));
+  if (pockets) tasks.push(saveToSheet("Pockets", pockets));
   if (chatSessions) tasks.push(saveToSheet("ChatSessions", chatSessions));
 
   // Sync profile/security settings
@@ -1013,6 +1016,7 @@ export const loadFromGoogleSheets = async (
   goals: Goal[];
   subscriptions: Subscription[];
   pots: Pot[];
+  pockets: SavingPocket[];
   chatSessions: ChatSession[];
   profile?: any;
 } | null> => {
@@ -1040,6 +1044,7 @@ export const loadFromGoogleSheets = async (
     "Goals",
     "Subscriptions",
     "Pots",
+    "Pockets",
     "ChatSessions",
     "Users",
   ];
@@ -1181,6 +1186,7 @@ export const loadFromGoogleSheets = async (
     goals: result.goals || [],
     subscriptions: result.subscriptions || [],
     pots,
+    pockets: result.pockets || [],
     chatSessions: result.chatsessions || [],
     profile: result.profile,
   };

@@ -4,8 +4,13 @@ import History from "../components/History";
 import { useData } from "../context/DataContext";
 
 const HistoryPage: React.FC = () => {
-  const { transactions, categories, accounts, handleTransactionDelete } =
-    useData();
+  const {
+    transactions,
+    categories,
+    accounts,
+    pockets,
+    handleTransactionDelete,
+  } = useData();
   const { showAddModal, setShowAddModal, setEditingTransaction } =
     useOutletContext<any>();
 
@@ -22,6 +27,7 @@ const HistoryPage: React.FC = () => {
         transactions={transactions}
         categories={categories}
         accounts={accounts}
+        pockets={pockets}
         showAddModal={showAddModal}
         onAddTransaction={() => setShowAddModal(true)}
         onEditTransaction={(t) => {

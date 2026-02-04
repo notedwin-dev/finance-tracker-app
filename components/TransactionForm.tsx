@@ -6,6 +6,7 @@ import {
   Transaction,
   Currency,
   Pot,
+  SavingPocket,
   AmountBreakdownItem,
   Subscription,
   SubscriptionFrequency,
@@ -18,6 +19,7 @@ import {
   ChevronUpIcon,
   TrashIcon as TrashIconOutline,
   ArrowPathIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { TrashIcon } from "@heroicons/react/24/solid";
 import DatePicker from "./DatePicker";
@@ -26,6 +28,7 @@ interface Props {
   accounts: Account[];
   categories: Category[];
   pots?: Pot[];
+  pockets?: SavingPocket[];
   subscriptions?: Subscription[];
   initialTransaction?: Transaction;
   onClose: () => void;
@@ -40,6 +43,7 @@ const TransactionForm: React.FC<Props> = ({
   accounts,
   categories,
   pots = [],
+  pockets = [],
   subscriptions = [],
   initialTransaction,
   onClose,
@@ -64,6 +68,9 @@ const TransactionForm: React.FC<Props> = ({
   );
   const [potId, setPotId] = useState(
     initialTransaction ? initialTransaction.potId || "" : "",
+  );
+  const [savingPocketId, setSavingPocketId] = useState(
+    initialTransaction ? initialTransaction.savingPocketId || "" : "",
   );
   const [subscriptionId, setSubscriptionId] = useState(
     initialTransaction ? initialTransaction.subscriptionId || "" : "",
@@ -240,6 +247,7 @@ const TransactionForm: React.FC<Props> = ({
         id: initialTransaction?.id || crypto.randomUUID(),
         accountId,
         potId: potId || undefined,
+        savingPocketId: savingPocketId || undefined,
         subscriptionId: subscriptionId || undefined,
         toAccountId:
           type === TransactionType.TRANSFER ? toAccountId : undefined,
@@ -763,6 +771,43 @@ const TransactionForm: React.FC<Props> = ({
                 )}
               </div>
             )}
+
+            {/* Saving Pocket (Available for Expense & Income) */}
+            {(type === TransactionType.EXPENSE ||
+              type === TransactionType.INCOME) &&
+              pockets.length > 0 && (
+                <div className="animate-fadeIn">
+                  <label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+                    <SparklesIcon className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Saving Pocket (Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={savingPocketId}
+                      onChange={(e) => setSavingPocketId(e.target.value)}
+                      className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
+                    >
+                      <option value="">No Pocket Linked</option>
+                      {pockets.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.icon} {p.name} ({p.currency}{" "}
+                          {p.currentAmount.toLocaleString()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {type === TransactionType.EXPENSE && savingPocketId && (
+                    <p className="mt-1 text-[9px] text-gray-500 italic">
+                      This will deduct from the pocket balance.
+                    </p>
+                  )}
+                  {type === TransactionType.INCOME && savingPocketId && (
+                    <p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
+                      This will add to your pocket savings!
+                    </p>
+                  )}
+                </div>
+              )}
           </div>
         </form>
 

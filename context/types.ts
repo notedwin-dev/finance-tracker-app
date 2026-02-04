@@ -5,6 +5,7 @@ import {
   Goal,
   Subscription,
   Pot,
+  SavingPocket,
   ChatSession,
   ExchangeRateData,
 } from "../types";
@@ -17,6 +18,7 @@ export interface DataContextType {
   goals: Goal[];
   subscriptions: Subscription[];
   pots: Pot[];
+  pockets: SavingPocket[];
   chatSessions: ChatSession[];
   usdRate: number;
   cryptoPrices: CryptoPrices;
@@ -54,6 +56,7 @@ export interface DataContextType {
   setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
   setSubscriptions: React.Dispatch<React.SetStateAction<Subscription[]>>;
   setPots: React.Dispatch<React.SetStateAction<Pot[]>>;
+  setPockets: React.Dispatch<React.SetStateAction<SavingPocket[]>>;
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   handleAccountSave: (acc: Omit<Account, "userId">) => Promise<void>;
   handleAccountDelete: (id: string) => Promise<void>;
@@ -78,6 +81,8 @@ export interface DataContextType {
   handleGoalDelete: (id: string) => Promise<void>;
   handlePotSave: (pot: Omit<Pot, "userId">) => Promise<void>;
   handlePotDelete: (id: string) => Promise<void>;
+  handlePocketSave: (pocket: Omit<SavingPocket, "userId">) => Promise<void>;
+  handlePocketDelete: (id: string) => Promise<void>;
   handleAddSubscription: (sub: Omit<Subscription, "userId">) => Promise<void>;
   handleDeleteSubscription: (id: string) => Promise<void>;
   handleSaveChatSession: (session: ChatSession) => void;

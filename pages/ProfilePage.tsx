@@ -18,6 +18,8 @@ const ProfilePage: React.FC = () => {
     goals,
     subscriptions,
     pots,
+    pockets,
+    chatSessions,
   } = useData();
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
@@ -31,6 +33,8 @@ const ProfilePage: React.FC = () => {
       goals,
       subscriptions,
       pots,
+      pockets,
+      chatSessions,
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {

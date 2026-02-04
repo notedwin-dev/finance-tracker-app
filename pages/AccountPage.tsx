@@ -63,6 +63,7 @@ const AccountPage: React.FC = () => {
     categories,
     accounts,
     pots,
+    pockets,
     handleTransactionDelete,
     handleBulkTransactionImport,
     usdRate,
@@ -550,6 +551,7 @@ const AccountPage: React.FC = () => {
               transactions={filteredTransactions}
               categories={categories}
               accounts={accounts}
+              pockets={pockets}
               onAddTransaction={() => setShowAddModal(true)}
               onEditTransaction={(t) => {
                 setEditingTransaction(t);

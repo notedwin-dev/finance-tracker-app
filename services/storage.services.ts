@@ -7,6 +7,7 @@ import {
   UserCloudSettings,
   Subscription,
   Pot,
+  SavingPocket,
   ChatSession,
 } from "../types";
 import * as SheetService from "./sheets.services";
@@ -21,6 +22,7 @@ export const KEYS = {
   SECURITY: "zenfinance_security_settings_v1",
   SUBSCRIPTIONS: "zenfinance_subscriptions_v2",
   POTS: "zenfinance_pots_v2",
+  POCKETS: "zenfinance_pockets_v2",
   CHATS: "zenfinance_chats_v2",
   SETTINGS: "zenfinance_settings_v2",
 };
@@ -34,6 +36,7 @@ export const hasLegacyData = (): boolean => {
     KEYS.GOALS,
     KEYS.SUBSCRIPTIONS,
     KEYS.POTS,
+    KEYS.POCKETS,
   ];
   for (const key of checkKeys) {
     const raw = localStorage.getItem(key);
@@ -95,6 +98,7 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
   migrateCollection(KEYS.GOALS, "Goals");
   migrateCollection(KEYS.SUBSCRIPTIONS, "Subscriptions");
   migrateCollection(KEYS.POTS, "Pots");
+  migrateCollection(KEYS.POCKETS, "Pockets");
 
   return hasChanges;
 };
@@ -458,6 +462,20 @@ export const savePots = async (pots: Pot[]) => {
   }
 };
 
+export const getStoredPockets = (): SavingPocket[] => {
+  const stored = localStorage.getItem(getKey(KEYS.POCKETS));
+  if (!stored) return [];
+
+  return JSON.parse(stored);
+};
+
+export const savePockets = async (pockets: SavingPocket[]) => {
+  localStorage.setItem(getKey(KEYS.POCKETS), JSON.stringify(pockets));
+  if (isLoggedIn()) {
+    await SheetService.saveToSheet("Pockets", pockets);
+  }
+};
+
 export const getStoredChatSessions = (): ChatSession[] => {
   const stored = localStorage.getItem(getKey(KEYS.CHATS));
   return stored ? JSON.parse(stored) : [];
@@ -565,6 +583,7 @@ export const syncAllData = async (
   goals: Goal[],
   subscriptions: Subscription[],
   pots: Pot[],
+  pockets: SavingPocket[],
   chatSessions: ChatSession[],
   profile: UserProfile,
 ) => {
@@ -576,7 +595,9 @@ export const syncAllData = async (
       goals,
       subscriptions,
       pots,
+      pockets,
       profile.syncChatToSheets ? chatSessions : undefined,
+      profile,
     );
   }
 };

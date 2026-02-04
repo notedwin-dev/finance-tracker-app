@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Transaction, TransactionType, Category, Account } from "../types";
+import {
+  Transaction,
+  TransactionType,
+  Category,
+  Account,
+  SavingPocket,
+} from "../types";
 import {
   PlusIcon,
   PencilIcon,
@@ -13,6 +19,7 @@ import {
   ArrowUpIcon,
   FunnelIcon,
   ChevronRightIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/solid";
 import {
   groupTransactions,
@@ -29,6 +36,7 @@ interface Props {
   transactions: Transaction[];
   categories: Category[];
   accounts: Account[];
+  pockets: SavingPocket[];
   showAddModal?: boolean;
   onAddTransaction: () => void;
   onEditTransaction: (t: Transaction) => void;
@@ -39,6 +47,7 @@ const History: React.FC<Props> = ({
   transactions,
   categories,
   accounts,
+  pockets,
   showAddModal = false,
   onAddTransaction,
   onEditTransaction,
@@ -825,6 +834,46 @@ const History: React.FC<Props> = ({
                 {pots.map((p) => (
                   <option key={p.id} value={p.id} className="bg-surface">
                     {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Saving Pocket */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                <SparklesIcon className="w-3.5 h-3.5" /> Assign to saving pocket
+              </label>
+              <select
+                value={
+                  batchUpdates.savingPocketId === undefined
+                    ? "KEEP"
+                    : batchUpdates.savingPocketId === null
+                      ? "REMOVE"
+                      : batchUpdates.savingPocketId
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setBatchUpdates((prev) => {
+                    const next = { ...prev };
+                    if (val === "KEEP") delete next.savingPocketId;
+                    else if (val === "REMOVE")
+                      next.savingPocketId = null as any;
+                    else next.savingPocketId = val;
+                    return next;
+                  });
+                }}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+              >
+                <option value="KEEP" className="bg-surface">
+                  — Keep Unchanged —
+                </option>
+                <option value="REMOVE" className="bg-surface">
+                  None (Remove from Pocket)
+                </option>
+                {pockets.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-surface">
+                    {p.icon} {p.name}
                   </option>
                 ))}
               </select>

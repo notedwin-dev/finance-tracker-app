@@ -12,6 +12,7 @@ import {
   Goal,
   Subscription,
   Pot,
+  SavingPocket,
   ChatSession,
   TransactionType,
   ExchangeRateData,
@@ -29,6 +30,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [pots, setPots] = useState<Pot[]>([]);
+  const [pockets, setPockets] = useState<SavingPocket[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [usdRate, setUsdRate] = useState<number>(4.45);
   const [cryptoPrices, setCryptoPrices] = useState<CryptoPrices>({
@@ -328,6 +330,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
                       goals,
                       subscriptions,
                       pots,
+                      pockets,
                       profile.syncChatToSheets ? chatSessions : undefined,
                     );
                   }
@@ -417,6 +420,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         goals,
         subscriptions,
         pots,
+        pockets,
         profile.syncChatToSheets ? chatSessions : undefined,
       );
     }
@@ -474,6 +478,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         goals,
         subscriptions,
         pots,
+        pockets,
         profile.syncChatToSheets ? chatSessions : undefined,
       );
     }
@@ -1058,6 +1063,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setPots(mergedPots);
         StorageService.savePots(mergedPots);
 
+        const mergedPockets = merge(
+          StorageService.getStoredPockets(),
+          cloudData.pockets || [],
+        );
+        setPockets(mergedPockets);
+        StorageService.savePockets(mergedPockets);
+
         const mergedChatSessions = merge(
           StorageService.getStoredChatSessions(),
           cloudData.chatSessions || [],
@@ -1073,6 +1085,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           mergedGoals,
           mergedSubs,
           mergedPots,
+          mergedPockets,
           profile.syncChatToSheets ? mergedChatSessions : undefined,
           { ...activeProfile, lastSyncAt: syncTimestamp },
         );
@@ -1391,6 +1404,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       StorageService.savePots(updatedPots);
     }
 
+    if (tx.savingPocketId || (isEdit && oldTx?.savingPocketId)) {
+      const updatedPockets = pockets.map((p) => {
+        let newCurrentAmount = p.currentAmount;
+
+        if (isEdit && oldTx?.savingPocketId === p.id) {
+          if (
+            oldTx.type === TransactionType.INCOME ||
+            oldTx.type === TransactionType.ACCOUNT_OPENING
+          )
+            newCurrentAmount -= oldTx.amount;
+          else newCurrentAmount += oldTx.amount;
+        }
+
+        if (tx.savingPocketId === p.id) {
+          if (
+            tx.type === TransactionType.INCOME ||
+            tx.type === TransactionType.ACCOUNT_OPENING
+          )
+            newCurrentAmount += tx.amount;
+          else newCurrentAmount -= tx.amount;
+        }
+
+        if (newCurrentAmount !== p.currentAmount) {
+          const updated = {
+            ...p,
+            currentAmount: newCurrentAmount,
+            updatedAt: Date.now(),
+          };
+          if (isCloudEnabled) SheetService.updateOne("Pockets", p.id, updated);
+          return updated;
+        }
+        return p;
+      });
+      setPockets(updatedPockets);
+      StorageService.savePockets(updatedPockets);
+    }
+
     showToast("Transaction saved", "success");
   };
 
@@ -1452,6 +1502,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         });
         setPots(updatedPots);
         StorageService.savePots(updatedPots);
+      }
+
+      if (tx.savingPocketId) {
+        const updatedPockets = pockets.map((p) => {
+          if (p.id === tx.savingPocketId) {
+            let amountRestore = 0;
+            if (
+              tx.type === TransactionType.INCOME ||
+              tx.type === TransactionType.ACCOUNT_OPENING
+            )
+              amountRestore = -tx.amount;
+            else amountRestore = tx.amount;
+            const updated = {
+              ...p,
+              currentAmount: p.currentAmount + amountRestore,
+              updatedAt: Date.now(),
+            };
+            if (isCloudEnabled)
+              SheetService.updateOne("Pockets", p.id, updated);
+            return updated;
+          }
+          return p;
+        });
+        setPockets(updatedPockets);
+        StorageService.savePockets(updatedPockets);
       }
     }
     const updated = transactions.filter((t) => t.id !== id);
@@ -1547,6 +1622,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       StorageService.savePots(updatedPots);
     }
 
+    // Update Pockets
+    const pocketUpdates = new Map<string, number>();
+    txsToDelete.forEach((tx) => {
+      if (tx.savingPocketId) {
+        let amountRestore = 0;
+        if (
+          tx.type === TransactionType.INCOME ||
+          tx.type === TransactionType.ACCOUNT_OPENING
+        )
+          amountRestore = -tx.amount;
+        else amountRestore = tx.amount;
+        pocketUpdates.set(
+          tx.savingPocketId,
+          (pocketUpdates.get(tx.savingPocketId) || 0) + amountRestore,
+        );
+      }
+    });
+
+    if (pocketUpdates.size > 0) {
+      const updatedPockets = pockets.map((p) => {
+        if (pocketUpdates.has(p.id)) {
+          const newCurrentAmount =
+            p.currentAmount + (pocketUpdates.get(p.id) || 0);
+          const updated = {
+            ...p,
+            currentAmount: newCurrentAmount,
+            updatedAt: Date.now(),
+          };
+          if (isCloudEnabled) SheetService.updateOne("Pockets", p.id, updated);
+          return updated;
+        }
+        return p;
+      });
+      setPockets(updatedPockets);
+      StorageService.savePockets(updatedPockets);
+    }
+
     const updatedTransactions = transactions.filter((t) => !ids.includes(t.id));
     setTransactions(updatedTransactions);
     StorageService.saveTransactions(updatedTransactions);
@@ -1571,6 +1683,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       shopName: updates.shopName,
       categoryId: updates.categoryId,
       potId: updates.potId,
+      savingPocketId: updates.savingPocketId,
       date: updates.date,
       time: updates.time,
       updatedAt: Date.now(),
@@ -1582,6 +1695,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
 
     const potDeltaMap = new Map<string, number>();
+    const pocketDeltaMap = new Map<string, number>();
 
     const updatedTransactionsList = transactions.map((t) => {
       if (ids.includes(t.id)) {
@@ -1614,6 +1728,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
+        // Handle Pocket migration if savingPocketId changed
+        if (
+          updates.savingPocketId !== undefined &&
+          updates.savingPocketId !== t.savingPocketId
+        ) {
+          // 1. Remove from old pocket
+          if (t.savingPocketId) {
+            let restore = 0;
+            if (
+              t.type === TransactionType.INCOME ||
+              t.type === TransactionType.ACCOUNT_OPENING
+            )
+              restore = -t.amount;
+            else restore = t.amount;
+            pocketDeltaMap.set(
+              t.savingPocketId,
+              (pocketDeltaMap.get(t.savingPocketId) || 0) + restore,
+            );
+          }
+          // 2. Add to new pocket
+          if (updates.savingPocketId) {
+            let add = 0;
+            if (
+              t.type === TransactionType.INCOME ||
+              t.type === TransactionType.ACCOUNT_OPENING
+            )
+              add = t.amount;
+            else add = -t.amount;
+            pocketDeltaMap.set(
+              updates.savingPocketId,
+              (pocketDeltaMap.get(updates.savingPocketId) || 0) + add,
+            );
+          }
+        }
+
         return { ...t, ...allowedUpdates };
       }
       return t;
@@ -1640,6 +1789,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       setPots(updatedPots);
       StorageService.savePots(updatedPots);
+    }
+
+    // Update Pockets if needed
+    if (pocketDeltaMap.size > 0) {
+      const updatedPockets = pockets.map((p) => {
+        if (pocketDeltaMap.has(p.id)) {
+          const newCurrentAmount =
+            p.currentAmount + (pocketDeltaMap.get(p.id) || 0);
+          const updated = {
+            ...p,
+            currentAmount: newCurrentAmount,
+            updatedAt: Date.now(),
+          };
+          if (isCloudEnabled) SheetService.updateOne("Pockets", p.id, updated);
+          return updated;
+        }
+        return p;
+      });
+      setPockets(updatedPockets);
+      StorageService.savePockets(updatedPockets);
     }
 
     if (isCloudEnabled) {
@@ -1733,6 +1902,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     StorageService.savePots(updated);
     if (isCloudEnabled) await SheetService.deleteOne("Pots", id);
     showToast("Pot deleted", "success");
+  };
+
+  const handlePocketSave = async (pocket: Omit<SavingPocket, "userId">) => {
+    const isNew = !pockets.find((p) => p.id === pocket.id);
+    const pocketWithUser = {
+      ...pocket,
+      userId: profile.id || "local",
+      updatedAt: Date.now(),
+    } as SavingPocket;
+
+    let updated;
+    if (isNew) {
+      updated = [...pockets, pocketWithUser];
+      if (isCloudEnabled)
+        await SheetService.insertOne("Pockets", pocketWithUser);
+    } else {
+      updated = pockets.map((p) => (p.id === pocket.id ? pocketWithUser : p));
+      if (isCloudEnabled)
+        await SheetService.updateOne("Pockets", pocket.id, pocketWithUser);
+    }
+    setPockets(updated);
+    StorageService.savePockets(updated);
+    showToast("Saving Pocket saved", "success");
+  };
+
+  const handlePocketDelete = async (id: string) => {
+    try {
+      const pocketToDelete = pockets.find((p) => p.id === id);
+      if (!pocketToDelete) return;
+
+      const newPockets = pockets.filter((p) => p.id !== id);
+      setPockets(newPockets);
+      StorageService.savePockets(newPockets);
+
+      // Update transactions that were linked to this pocket
+      const updatedTransactions = transactions.map((t) =>
+        t.savingPocketId === id ? { ...t, savingPocketId: null as any } : t,
+      );
+
+      const transactionsChanged = updatedTransactions.some(
+        (t, i) => t !== transactions[i],
+      );
+
+      if (transactionsChanged) {
+        setTransactions(updatedTransactions);
+        StorageService.saveTransactions(updatedTransactions);
+      }
+
+      if (isCloudEnabled) {
+        await SheetService.deleteOne("Pockets", id);
+        if (transactionsChanged) {
+          // Sync to push transaction changes
+          await syncData();
+        }
+      }
+      showToast("Saving pocket deleted", "success");
+    } catch (error) {
+      console.error("Error deleting pocket:", error);
+      showToast("Failed to delete pocket", "alert");
+    }
   };
 
   const handleAddSubscription = async (sub: Omit<Subscription, "userId">) => {
@@ -1847,6 +2076,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       StorageService.saveGoals(cloudData.goals);
       StorageService.saveSubscriptions(cloudData.subscriptions || []);
       StorageService.savePots(cloudData.pots || []);
+      StorageService.savePockets(cloudData.pockets || []);
       StorageService.saveChatSessions(cloudData.chatSessions || []);
       loadData();
       showToast("Sync reset complete", "success");
@@ -1863,6 +2093,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         goals,
         subscriptions,
         pots,
+        pockets,
         chatSessions,
         usdRate,
         cryptoPrices,
@@ -1892,6 +2123,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setGoals,
         setSubscriptions,
         setPots,
+        setPockets,
         setChatSessions,
         handleAccountSave,
         handleAccountDelete,
@@ -1904,6 +2136,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         handleGoalDelete,
         handlePotSave,
         handlePotDelete,
+        handlePocketSave,
+        handlePocketDelete,
         handleAddSubscription,
         handleDeleteSubscription,
         handleSaveChatSession,

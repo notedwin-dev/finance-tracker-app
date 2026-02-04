@@ -38,6 +38,7 @@ const MainLayout: React.FC = () => {
     transactions,
     categories,
     pots,
+    pockets,
     goals,
     subscriptions,
     chatSessions,
@@ -408,6 +409,7 @@ const MainLayout: React.FC = () => {
           accounts={accounts}
           categories={categories}
           pots={pots}
+          pockets={pockets}
           subscriptions={subscriptions}
           initialTransaction={editingTransaction}
           onClose={() => {

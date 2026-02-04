@@ -6,11 +6,14 @@ const GoalsPage: React.FC = () => {
   const {
     goals,
     pots,
+    pockets,
     accounts,
     handleGoalUpdate,
     handleGoalDelete,
     handlePotSave,
     handlePotDelete,
+    handlePocketSave,
+    handlePocketDelete,
   } = useData();
 
   return (
@@ -18,11 +21,14 @@ const GoalsPage: React.FC = () => {
       <Goals
         goals={goals}
         pots={pots}
+        pockets={pockets}
         accounts={accounts}
         onAddGoal={handleGoalUpdate}
         onDeleteGoal={handleGoalDelete}
         onSavePot={handlePotSave}
         onDeletePot={handlePotDelete}
+        onSavePocket={handlePocketSave}
+        onDeletePocket={handlePocketDelete}
       />
     </div>
   );

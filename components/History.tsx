@@ -710,9 +710,11 @@ const History: React.FC<Props> = ({
           setBatchUpdates({});
         }}
         title={`Batch Edit ${selectedIds.length} items`}
+        maxWidth="max-w-md"
       >
-        <div className="space-y-6">
-          <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
+        <div className="flex flex-col max-h-[70vh]">
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6 -mr-2">
+            <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">
               Note
             </p>
@@ -879,8 +881,9 @@ const History: React.FC<Props> = ({
               </select>
             </div>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-4">
+        <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5 bg-surface mt-2">
             <button
               onClick={() => {
                 setShowBatchEditModal(false);

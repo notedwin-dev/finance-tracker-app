@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   format,
   startOfMonth,
@@ -41,6 +42,46 @@ const DatePicker: React.FC<Props> = ({
     value ? parseISO(value) : new Date(),
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+    position: "bottom" as "top" | "bottom",
+  });
+
+  const updateCoords = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const pickerHeight = 440; // Estimated max height including padding/mt
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      let position: "top" | "bottom" = "bottom";
+      if (spaceBelow < pickerHeight && spaceAbove > spaceBelow) {
+        position = "top";
+      }
+
+      setCoords({
+        top: position === "bottom" ? rect.bottom : rect.top,
+        left: rect.left,
+        width: rect.width,
+        position,
+      });
+    }
+  };
+
+  // Update coords when opening or window resized/scrolled
+  useEffect(() => {
+    if (isOpen) {
+      updateCoords();
+      window.addEventListener("scroll", updateCoords, true);
+      window.addEventListener("resize", updateCoords);
+    }
+    return () => {
+      window.removeEventListener("scroll", updateCoords, true);
+      window.removeEventListener("resize", updateCoords);
+    };
+  }, [isOpen]);
 
   // Close on outside click
   useEffect(() => {
@@ -114,190 +155,222 @@ const DatePicker: React.FC<Props> = ({
         </span>
       </div>
 
-      {isOpen && (
-        <div className="absolute top-full left-0 sm:right-0 sm:left-auto mt-2 z-100 bg-surface border border-white/10 rounded-4xl shadow-2xl p-5 w-[320px] animate-fadeIn backdrop-blur-2xl">
-          {view === "calendar" && (
-            <>
-              <div className="flex items-center justify-between mb-6">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCurrentMonth(subMonths(currentMonth, 1));
-                  }}
-                  className="p-2 hover:bg-white/5 rounded-xl text-gray-400 transition-colors"
-                >
-                  <ChevronLeftIcon className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setView("month");
-                  }}
-                  className="px-4 py-1.5 hover:bg-white/5 rounded-xl transition-all"
-                >
-                  <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-white">
-                    {format(currentMonth, "MMMM yyyy")}
-                  </h3>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCurrentMonth(addMonths(currentMonth, 1));
-                  }}
-                  className="p-2 hover:bg-white/5 rounded-xl text-gray-400 transition-colors"
-                >
-                  <ChevronRightIcon className="w-5 h-5" />
-                </button>
-              </div>
+      {isOpen &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-1000 bg-black/20 backdrop-blur-[2px] sm:bg-transparent sm:backdrop-blur-none animate-fadeIn"
+              onClick={() => setIsOpen(false)}
+            />
+            <div
+              className="fixed inset-0 z-1001 flex items-center justify-center p-4 pointer-events-none sm:inset-auto sm:block sm:p-0 sm:pointer-events-auto"
+              style={
+                window.innerWidth >= 640
+                  ? {
+                      top: `${coords.top + (coords.position === "bottom" ? 8 : -8)}px`,
+                      left: `${coords.left + coords.width - 320}px`,
+                      position: "fixed",
+                      transform:
+                        coords.position === "top"
+                          ? "translateY(-100%)"
+                          : "none",
+                    }
+                  : {}
+              }
+            >
+              <div
+                className="bg-surface border border-white/10 rounded-4xl shadow-2xl p-5 w-[320px] animate-fadeIn backdrop-blur-2xl pointer-events-auto mx-auto sm:mx-0 shadow-black/50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {view === "calendar" && (
+                  <>
+                    <div className="flex items-center justify-between mb-6">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentMonth(subMonths(currentMonth, 1));
+                        }}
+                        className="p-2 hover:bg-white/5 rounded-xl text-gray-400 transition-colors"
+                      >
+                        <ChevronLeftIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setView("month");
+                        }}
+                        className="px-4 py-1.5 hover:bg-white/5 rounded-xl transition-all"
+                      >
+                        <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-white">
+                          {format(currentMonth, "MMMM yyyy")}
+                        </h3>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentMonth(addMonths(currentMonth, 1));
+                        }}
+                        className="p-2 hover:bg-white/5 rounded-xl text-gray-400 transition-colors"
+                      >
+                        <ChevronRightIcon className="w-5 h-5" />
+                      </button>
+                    </div>
 
-              <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-                  <span
-                    key={d}
-                    className="text-[10px] font-black text-gray-600 uppercase tracking-widest"
-                  >
-                    {d}
-                  </span>
-                ))}
-              </div>
+                    <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                      {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                        <span
+                          key={d}
+                          className="text-[10px] font-black text-gray-600 uppercase tracking-widest"
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
 
-              <div className="grid grid-cols-7 gap-1">
-                {days.map((day, i) => {
-                  const isSelected =
-                    selectedDate && isSameDay(day, selectedDate);
-                  const isCurrentMonth = isSameMonth(day, currentMonth);
-                  const isToday = isSameDay(day, new Date());
+                    <div className="grid grid-cols-7 gap-1">
+                      {days.map((day, i) => {
+                        const isSelected =
+                          selectedDate && isSameDay(day, selectedDate);
+                        const isCurrentMonth = isSameMonth(day, currentMonth);
+                        const isToday = isSameDay(day, new Date());
 
-                  return (
-                    <button
-                      key={i}
-                      onClick={(e) => handleDateClick(day, e)}
-                      className={`
+                        return (
+                          <button
+                            key={i}
+                            onClick={(e) => handleDateClick(day, e)}
+                            className={`
                         h-10 w-10 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center
                         ${!isCurrentMonth ? "text-gray-800" : "text-white"}
                         ${isSelected ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 scale-110 z-10" : "hover:bg-white/5"}
                         ${isToday && !isSelected ? "border border-indigo-500/30 text-indigo-400" : ""}
                       `}
-                    >
-                      {format(day, "d")}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                          >
+                            {format(day, "d")}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
 
-          {view === "month" && (
-            <div className="animate-fadeIn">
-              <div className="flex items-center justify-between mb-6">
-                <div />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setView("year");
-                  }}
-                  className="px-4 py-2 hover:bg-white/5 rounded-xl text-white font-black text-[10px] uppercase tracking-[0.2em]"
-                >
-                  {getYear(currentMonth)}
-                </button>
-                <div />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {months.map((m, i) => (
+                {view === "month" && (
+                  <div className="animate-fadeIn">
+                    <div className="flex items-center justify-between mb-6">
+                      <div />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setView("year");
+                        }}
+                        className="px-4 py-2 hover:bg-white/5 rounded-xl text-white font-black text-[10px] uppercase tracking-[0.2em]"
+                      >
+                        {getYear(currentMonth)}
+                      </button>
+                      <div />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {months.map((m, i) => (
+                        <button
+                          key={m}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentMonth(setMonth(currentMonth, i));
+                            setView("calendar");
+                          }}
+                          className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                            getMonth(currentMonth) === i
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
+                              : "text-gray-400 hover:bg-white/5 hover:text-white"
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {view === "year" && (
+                  <div className="animate-fadeIn">
+                    <div className="flex items-center justify-between mb-6">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentMonth(
+                            setYear(currentMonth, currentYear - 10),
+                          );
+                        }}
+                        className="p-2 hover:bg-white/5 rounded-xl text-gray-400"
+                      >
+                        <ChevronLeftIcon className="w-5 h-5" />
+                      </button>
+                      <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-white">
+                        Select Year
+                      </h3>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentMonth(
+                            setYear(currentMonth, currentYear + 10),
+                          );
+                        }}
+                        className="p-2 hover:bg-white/5 rounded-xl text-gray-400"
+                      >
+                        <ChevronRightIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto scrollbar-hide pr-1">
+                      {years.map((y) => (
+                        <button
+                          key={y}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentMonth(setYear(currentMonth, y));
+                            setView("month");
+                          }}
+                          className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                            getYear(currentMonth) === y
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
+                              : "text-gray-400 hover:bg-white/5 hover:text-white"
+                          }`}
+                        >
+                          {y}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-6 flex justify-between items-center px-1">
                   <button
-                    key={m}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setCurrentMonth(setMonth(currentMonth, i));
-                      setView("calendar");
+                      onChange(format(new Date(), "yyyy-MM-dd"));
+                      setIsOpen(false);
                     }}
-                    className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                      getMonth(currentMonth) === i
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                        : "text-gray-400 hover:bg-white/5 hover:text-white"
-                    }`}
+                    className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors"
                   >
-                    {m}
+                    Today
                   </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {view === "year" && (
-            <div className="animate-fadeIn">
-              <div className="flex items-center justify-between mb-6">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCurrentMonth(setYear(currentMonth, currentYear - 10));
-                  }}
-                  className="p-2 hover:bg-white/5 rounded-xl text-gray-400"
-                >
-                  <ChevronLeftIcon className="w-5 h-5" />
-                </button>
-                <h3 className="font-black text-[10px] uppercase tracking-[0.2em] text-white">
-                  Select Year
-                </h3>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCurrentMonth(setYear(currentMonth, currentYear + 10));
-                  }}
-                  className="p-2 hover:bg-white/5 rounded-xl text-gray-400"
-                >
-                  <ChevronRightIcon className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto scrollbar-hide pr-1">
-                {years.map((y) => (
                   <button
-                    key={y}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setCurrentMonth(setYear(currentMonth, y));
-                      setView("month");
+                      if (view !== "calendar") {
+                        setView("calendar");
+                      } else {
+                        setIsOpen(false);
+                      }
                     }}
-                    className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                      getYear(currentMonth) === y
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                        : "text-gray-400 hover:bg-white/5 hover:text-white"
-                    }`}
+                    className="text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors"
                   >
-                    {y}
+                    {view !== "calendar" ? "Back" : "Close"}
                   </button>
-                ))}
+                </div>
               </div>
             </div>
-          )}
-
-          <div className="mt-6 flex justify-between items-center px-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange(format(new Date(), "yyyy-MM-dd"));
-                setIsOpen(false);
-              }}
-              className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors"
-            >
-              Today
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (view !== "calendar") {
-                  setView("calendar");
-                } else {
-                  setIsOpen(false);
-                }
-              }}
-              className="text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors"
-            >
-              {view !== "calendar" ? "Back" : "Close"}
-            </button>
-          </div>
-        </div>
-      )}
+          </>,
+          document.body,
+        )}
     </div>
   );
 };

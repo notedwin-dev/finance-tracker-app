@@ -82,6 +82,7 @@ export interface Transaction {
   transferDirection?: "OUT" | "IN";
   potId?: string; // Linked Spending Pot / Limit
   savingPocketId?: string; // Linked Saving Pocket
+  toSavingPocketId?: string; // Destination Saving Pocket (for transfers)
   subscriptionId?: string; // Linked Subscription
 }
 

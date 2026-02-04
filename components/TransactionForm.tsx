@@ -72,6 +72,9 @@ const TransactionForm: React.FC<Props> = ({
   const [savingPocketId, setSavingPocketId] = useState(
     initialTransaction ? initialTransaction.savingPocketId || "" : "",
   );
+  const [toSavingPocketId, setToSavingPocketId] = useState(
+    initialTransaction ? initialTransaction.toSavingPocketId || "" : "",
+  );
   const [subscriptionId, setSubscriptionId] = useState(
     initialTransaction ? initialTransaction.subscriptionId || "" : "",
   );
@@ -248,6 +251,8 @@ const TransactionForm: React.FC<Props> = ({
         accountId,
         potId: potId || undefined,
         savingPocketId: savingPocketId || undefined,
+        toSavingPocketId:
+          type === TransactionType.TRANSFER ? toSavingPocketId : undefined,
         subscriptionId: subscriptionId || undefined,
         toAccountId:
           type === TransactionType.TRANSFER ? toAccountId : undefined,
@@ -460,6 +465,57 @@ const TransactionForm: React.FC<Props> = ({
               </div>
             )}
 
+            {/* Saving Pocket (Available for Expense, Income & Transfer) */}
+            {(type === TransactionType.EXPENSE ||
+              type === TransactionType.INCOME ||
+              type === TransactionType.TRANSFER) &&
+              pockets.length > 0 && (
+                <div className="animate-fadeIn space-y-4">
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+                      <SparklesIcon className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>
+                        {type === TransactionType.TRANSFER
+                          ? "Source Pocket (Optional)"
+                          : "Saving Pocket (Optional)"}
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={savingPocketId}
+                        onChange={(e) => setSavingPocketId(e.target.value)}
+                        className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
+                      >
+                        <option value="">No Pocket Selected</option>
+                        {pockets.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.icon} {p.name} ({p.currency}{" "}
+                            {p.currentAmount.toLocaleString()})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {type === TransactionType.EXPENSE && savingPocketId && (
+                    <p className="mt-1 text-[9px] text-gray-500 italic">
+                      This will deduct from the pocket balance.
+                    </p>
+                  )}
+                  {type === TransactionType.INCOME && savingPocketId && (
+                    <p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
+                      This will add to your pocket savings!
+                    </p>
+                  )}
+                  {type === TransactionType.TRANSFER &&
+                    (savingPocketId || toSavingPocketId) && (
+                      <p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
+                        Balances will be updated for the selected pockets.
+                      </p>
+                    )}
+                </div>
+              )}
+
             {type === TransactionType.TRANSFER && (
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">
@@ -481,6 +537,32 @@ const TransactionForm: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          {type === TransactionType.TRANSFER && (
+            <div className="animate-fadeIn">
+              <label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+                <SparklesIcon className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Destination Pocket (Optional)</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={toSavingPocketId}
+                  onChange={(e) => setToSavingPocketId(e.target.value)}
+                  className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
+                >
+                  <option value="">No Pocket Selected</option>
+                  {pockets
+                    .filter((p) => p.id !== savingPocketId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.icon} {p.name} ({p.currency}{" "}
+                        {p.currentAmount.toLocaleString()})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Category Selection (Expense & Income) */}
           {(type === TransactionType.EXPENSE ||
@@ -771,43 +853,6 @@ const TransactionForm: React.FC<Props> = ({
                 )}
               </div>
             )}
-
-            {/* Saving Pocket (Available for Expense & Income) */}
-            {(type === TransactionType.EXPENSE ||
-              type === TransactionType.INCOME) &&
-              pockets.length > 0 && (
-                <div className="animate-fadeIn">
-                  <label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-                    <SparklesIcon className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Saving Pocket (Optional)</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={savingPocketId}
-                      onChange={(e) => setSavingPocketId(e.target.value)}
-                      className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
-                    >
-                      <option value="">No Pocket Linked</option>
-                      {pockets.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.icon} {p.name} ({p.currency}{" "}
-                          {p.currentAmount.toLocaleString()})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {type === TransactionType.EXPENSE && savingPocketId && (
-                    <p className="mt-1 text-[9px] text-gray-500 italic">
-                      This will deduct from the pocket balance.
-                    </p>
-                  )}
-                  {type === TransactionType.INCOME && savingPocketId && (
-                    <p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
-                      This will add to your pocket savings!
-                    </p>
-                  )}
-                </div>
-              )}
           </div>
         </form>
 

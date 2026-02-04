@@ -1404,19 +1404,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       StorageService.savePots(updatedPots);
     }
 
-    if (tx.savingPocketId || (isEdit && oldTx?.savingPocketId)) {
+    if (
+      tx.savingPocketId ||
+      tx.toSavingPocketId ||
+      (isEdit && (oldTx?.savingPocketId || oldTx?.toSavingPocketId))
+    ) {
       const updatedPockets = pockets.map((p) => {
         let newCurrentAmount = p.currentAmount;
 
-        if (isEdit && oldTx?.savingPocketId === p.id) {
+        // Old Transaction Restoration
+        if (isEdit) {
+          if (oldTx?.savingPocketId === p.id) {
+            if (
+              oldTx.type === TransactionType.INCOME ||
+              oldTx.type === TransactionType.ACCOUNT_OPENING
+            )
+              newCurrentAmount -= oldTx.amount;
+            else newCurrentAmount += oldTx.amount;
+          }
           if (
-            oldTx.type === TransactionType.INCOME ||
-            oldTx.type === TransactionType.ACCOUNT_OPENING
-          )
+            oldTx?.type === TransactionType.TRANSFER &&
+            oldTx?.toSavingPocketId === p.id
+          ) {
             newCurrentAmount -= oldTx.amount;
-          else newCurrentAmount += oldTx.amount;
+          }
         }
 
+        // New Transaction Application
         if (tx.savingPocketId === p.id) {
           if (
             tx.type === TransactionType.INCOME ||
@@ -1424,6 +1438,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           )
             newCurrentAmount += tx.amount;
           else newCurrentAmount -= tx.amount;
+        }
+
+        if (
+          tx.type === TransactionType.TRANSFER &&
+          tx.toSavingPocketId === p.id
+        ) {
+          newCurrentAmount += tx.amount;
         }
 
         if (newCurrentAmount !== p.currentAmount) {
@@ -1504,19 +1525,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         StorageService.savePots(updatedPots);
       }
 
-      if (tx.savingPocketId) {
+      if (
+        tx.savingPocketId ||
+        (tx.type === TransactionType.TRANSFER && tx.toSavingPocketId)
+      ) {
         const updatedPockets = pockets.map((p) => {
+          let delta = 0;
           if (p.id === tx.savingPocketId) {
-            let amountRestore = 0;
             if (
               tx.type === TransactionType.INCOME ||
               tx.type === TransactionType.ACCOUNT_OPENING
             )
-              amountRestore = -tx.amount;
-            else amountRestore = tx.amount;
+              delta = -tx.amount;
+            else delta = tx.amount;
+          }
+          if (
+            tx.type === TransactionType.TRANSFER &&
+            p.id === tx.toSavingPocketId
+          ) {
+            delta = -tx.amount;
+          }
+
+          if (delta !== 0) {
             const updated = {
               ...p,
-              currentAmount: p.currentAmount + amountRestore,
+              currentAmount: p.currentAmount + delta,
               updatedAt: Date.now(),
             };
             if (isCloudEnabled)
@@ -1638,6 +1671,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           (pocketUpdates.get(tx.savingPocketId) || 0) + amountRestore,
         );
       }
+      if (tx.type === TransactionType.TRANSFER && tx.toSavingPocketId) {
+        pocketUpdates.set(
+          tx.toSavingPocketId,
+          (pocketUpdates.get(tx.toSavingPocketId) || 0) - tx.amount,
+        );
+      }
     });
 
     if (pocketUpdates.size > 0) {
@@ -1684,6 +1723,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       categoryId: updates.categoryId,
       potId: updates.potId,
       savingPocketId: updates.savingPocketId,
+      toSavingPocketId: updates.toSavingPocketId,
       date: updates.date,
       time: updates.time,
       updatedAt: Date.now(),
@@ -1759,6 +1799,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             pocketDeltaMap.set(
               updates.savingPocketId,
               (pocketDeltaMap.get(updates.savingPocketId) || 0) + add,
+            );
+          }
+        }
+
+        // Handle toSavingPocketId migration for transfers
+        if (
+          t.type === TransactionType.TRANSFER &&
+          updates.toSavingPocketId !== undefined &&
+          updates.toSavingPocketId !== t.toSavingPocketId
+        ) {
+          // 1. Remove from old destination pocket
+          if (t.toSavingPocketId) {
+            pocketDeltaMap.set(
+              t.toSavingPocketId,
+              (pocketDeltaMap.get(t.toSavingPocketId) || 0) - t.amount,
+            );
+          }
+          // 2. Add to new destination pocket
+          if (updates.toSavingPocketId) {
+            pocketDeltaMap.set(
+              updates.toSavingPocketId,
+              (pocketDeltaMap.get(updates.toSavingPocketId) || 0) + t.amount,
             );
           }
         }

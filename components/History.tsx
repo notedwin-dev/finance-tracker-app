@@ -605,6 +605,38 @@ const History: React.FC<Props> = ({
                             </span>
                           )}
                           <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+                          {t.savingPocketId && (
+                            <>
+                              <div className="flex items-center gap-1 bg-indigo-500/10 px-1.5 py-0.5 rounded-md border border-indigo-500/20">
+                                <SparklesIcon className="w-2.5 h-2.5 text-indigo-400" />
+                                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-tight">
+                                  {
+                                    pockets.find(
+                                      (p) => p.id === t.savingPocketId,
+                                    )?.name
+                                  }
+                                </span>
+                              </div>
+                              <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+                            </>
+                          )}
+                          {(t.type === TransactionType.TRANSFER ||
+                            t.linkedTransaction) &&
+                            t.toSavingPocketId && (
+                              <>
+                                <div className="flex items-center gap-1 bg-emerald-500/10 px-1.5 py-0.5 rounded-md border border-emerald-500/20">
+                                  <SparklesIcon className="w-2.5 h-2.5 text-emerald-400" />
+                                  <span className="text-[9px] font-black text-emerald-400 uppercase tracking-tight">
+                                    {
+                                      pockets.find(
+                                        (p) => p.id === t.toSavingPocketId,
+                                      )?.name
+                                    }
+                                  </span>
+                                </div>
+                                <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+                              </>
+                            )}
                           {t.linkedTransaction ? (
                             <p className="text-[11px] sm:text-[11px] font-semibold sm:font-bold text-indigo-400/70 truncate uppercase tracking-wider">
                               INTERNAL TRANSFER
@@ -715,175 +747,221 @@ const History: React.FC<Props> = ({
         <div className="flex flex-col max-h-[70vh]">
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6 -mr-2">
             <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
-            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">
-              Note
-            </p>
-            <p className="text-gray-400 text-xs leading-relaxed">
-              Batch editing is limited to non-financial fields to prevent
-              accidental balance corruption. Amounts and accounts must be edited
-              individually.
-            </p>
+              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">
+                Note
+              </p>
+              <p className="text-gray-400 text-xs leading-relaxed">
+                Batch editing is limited to non-financial fields to prevent
+                accidental balance corruption. Amounts and accounts must be
+                edited individually.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Title / Shop Name */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <PencilIcon className="w-3.5 h-3.5" /> Title
+                </label>
+                <input
+                  type="text"
+                  value={batchUpdates.shopName || ""}
+                  onChange={(e) =>
+                    setBatchUpdates((prev) => ({
+                      ...prev,
+                      shopName: e.target.value,
+                    }))
+                  }
+                  placeholder="Leave blank to keep unchanged"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+                />
+              </div>
+
+              {/* Category */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <FunnelIcon className="w-3.5 h-3.5" /> Category
+                </label>
+                <select
+                  value={batchUpdates.categoryId || "KEEP"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBatchUpdates((prev) => {
+                      const next = { ...prev };
+                      if (val === "KEEP") delete next.categoryId;
+                      else next.categoryId = val;
+                      return next;
+                    });
+                  }}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+                >
+                  <option value="KEEP" className="bg-surface">
+                    — Keep Unchanged —
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-surface">
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <CalendarIcon className="w-3.5 h-3.5" /> Date
+                </label>
+                <DatePicker
+                  value={batchUpdates.date || ""}
+                  onChange={(date) =>
+                    setBatchUpdates((prev) => ({ ...prev, date }))
+                  }
+                />
+              </div>
+
+              {/* Time */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <ClockIcon className="w-3.5 h-3.5" /> Time
+                </label>
+                <input
+                  type="time"
+                  value={batchUpdates.time || ""}
+                  onChange={(e) =>
+                    setBatchUpdates((prev) => ({
+                      ...prev,
+                      time: e.target.value,
+                    }))
+                  }
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+                />
+              </div>
+
+              {/* Spending Limit / Pot */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <InboxIcon className="w-3.5 h-3.5" /> Assign to Limit (Pot)
+                </label>
+                <select
+                  value={
+                    batchUpdates.potId === undefined
+                      ? "KEEP"
+                      : batchUpdates.potId === null
+                        ? "REMOVE"
+                        : batchUpdates.potId
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBatchUpdates((prev) => {
+                      const next = { ...prev };
+                      if (val === "KEEP") delete next.potId;
+                      else if (val === "REMOVE") next.potId = null as any;
+                      else next.potId = val;
+                      return next;
+                    });
+                  }}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+                >
+                  <option value="KEEP" className="bg-surface">
+                    — Keep Unchanged —
+                  </option>
+                  <option value="REMOVE" className="bg-surface">
+                    None (Remove from Pot)
+                  </option>
+                  {pots.map((p) => (
+                    <option key={p.id} value={p.id} className="bg-surface">
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Saving Pocket */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                    <SparklesIcon className="w-3.5 h-3.5" /> Assign to source
+                    pocket
+                  </label>
+                  <select
+                    value={
+                      batchUpdates.savingPocketId === undefined
+                        ? "KEEP"
+                        : batchUpdates.savingPocketId === null
+                          ? "REMOVE"
+                          : batchUpdates.savingPocketId
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBatchUpdates((prev) => {
+                        const next = { ...prev };
+                        if (val === "KEEP") delete next.savingPocketId;
+                        else if (val === "REMOVE")
+                          next.savingPocketId = null as any;
+                        else next.savingPocketId = val;
+                        return next;
+                      });
+                    }}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+                  >
+                    <option value="KEEP" className="bg-surface">
+                      — Keep Unchanged —
+                    </option>
+                    <option value="REMOVE" className="bg-surface">
+                      None (Remove from Pocket)
+                    </option>
+                    {pockets.map((p) => (
+                      <option key={p.id} value={p.id} className="bg-surface">
+                        {p.icon} {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                    <SparklesIcon className="w-3.5 h-3.5 text-emerald-400" />{" "}
+                    Assign to destination pocket
+                  </label>
+                  <select
+                    value={
+                      batchUpdates.toSavingPocketId === undefined
+                        ? "KEEP"
+                        : batchUpdates.toSavingPocketId === null
+                          ? "REMOVE"
+                          : batchUpdates.toSavingPocketId
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBatchUpdates((prev) => {
+                        const next = { ...prev };
+                        if (val === "KEEP") delete next.toSavingPocketId;
+                        else if (val === "REMOVE")
+                          next.toSavingPocketId = null as any;
+                        else next.toSavingPocketId = val;
+                        return next;
+                      });
+                    }}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+                  >
+                    <option value="KEEP" className="bg-surface">
+                      — Keep Unchanged —
+                    </option>
+                    <option value="REMOVE" className="bg-surface">
+                      None (Remove from Pocket)
+                    </option>
+                    {pockets.map((p) => (
+                      <option key={p.id} value={p.id} className="bg-surface">
+                        {p.icon} {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {/* Title / Shop Name */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                <PencilIcon className="w-3.5 h-3.5" /> Title
-              </label>
-              <input
-                type="text"
-                value={batchUpdates.shopName || ""}
-                onChange={(e) =>
-                  setBatchUpdates((prev) => ({
-                    ...prev,
-                    shopName: e.target.value,
-                  }))
-                }
-                placeholder="Leave blank to keep unchanged"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
-              />
-            </div>
-
-            {/* Category */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                <FunnelIcon className="w-3.5 h-3.5" /> Category
-              </label>
-              <select
-                value={batchUpdates.categoryId || "KEEP"}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setBatchUpdates((prev) => {
-                    const next = { ...prev };
-                    if (val === "KEEP") delete next.categoryId;
-                    else next.categoryId = val;
-                    return next;
-                  });
-                }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
-              >
-                <option value="KEEP" className="bg-surface">
-                  — Keep Unchanged —
-                </option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id} className="bg-surface">
-                    {c.icon} {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Date */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                <CalendarIcon className="w-3.5 h-3.5" /> Date
-              </label>
-              <DatePicker
-                value={batchUpdates.date || ""}
-                onChange={(date) =>
-                  setBatchUpdates((prev) => ({ ...prev, date }))
-                }
-              />
-            </div>
-
-            {/* Time */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                <ClockIcon className="w-3.5 h-3.5" /> Time
-              </label>
-              <input
-                type="time"
-                value={batchUpdates.time || ""}
-                onChange={(e) =>
-                  setBatchUpdates((prev) => ({ ...prev, time: e.target.value }))
-                }
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
-              />
-            </div>
-
-            {/* Spending Limit / Pot */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                <InboxIcon className="w-3.5 h-3.5" /> Assign to Limit (Pot)
-              </label>
-              <select
-                value={
-                  batchUpdates.potId === undefined
-                    ? "KEEP"
-                    : batchUpdates.potId === null
-                      ? "REMOVE"
-                      : batchUpdates.potId
-                }
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setBatchUpdates((prev) => {
-                    const next = { ...prev };
-                    if (val === "KEEP") delete next.potId;
-                    else if (val === "REMOVE") next.potId = null as any;
-                    else next.potId = val;
-                    return next;
-                  });
-                }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
-              >
-                <option value="KEEP" className="bg-surface">
-                  — Keep Unchanged —
-                </option>
-                <option value="REMOVE" className="bg-surface">
-                  None (Remove from Pot)
-                </option>
-                {pots.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-surface">
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Saving Pocket */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                <SparklesIcon className="w-3.5 h-3.5" /> Assign to saving pocket
-              </label>
-              <select
-                value={
-                  batchUpdates.savingPocketId === undefined
-                    ? "KEEP"
-                    : batchUpdates.savingPocketId === null
-                      ? "REMOVE"
-                      : batchUpdates.savingPocketId
-                }
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setBatchUpdates((prev) => {
-                    const next = { ...prev };
-                    if (val === "KEEP") delete next.savingPocketId;
-                    else if (val === "REMOVE")
-                      next.savingPocketId = null as any;
-                    else next.savingPocketId = val;
-                    return next;
-                  });
-                }}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
-              >
-                <option value="KEEP" className="bg-surface">
-                  — Keep Unchanged —
-                </option>
-                <option value="REMOVE" className="bg-surface">
-                  None (Remove from Pocket)
-                </option>
-                {pockets.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-surface">
-                    {p.icon} {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5 bg-surface mt-2">
+          <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5 bg-surface mt-2">
             <button
               onClick={() => {
                 setShowBatchEditModal(false);

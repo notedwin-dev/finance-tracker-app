@@ -484,6 +484,53 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Account List - Gallery View */}
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex justify-between items-center px-1">
+            <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest">
+              My Assets
+            </h2>
+            <Link
+              to="/app/assets"
+              className="text-indigo-400 text-[10px] sm:text-xs font-black uppercase tracking-widest hover:text-indigo-300 transition-all"
+            >
+              Manage All →
+            </Link>
+          </div>
+
+          <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 snap-x">
+            {accounts.map((acc) => (
+              <div
+                key={acc.id}
+                className="shrink-0 w-70 sm:w-[320px] snap-start"
+              >
+                <AccountCard
+                  account={acc}
+                  pots={pots}
+                  transactions={transactions}
+                  onClick={(a) => navigate(`/app/account/${a.id}`)}
+                  displayCurrency={displayCurrency}
+                  usdRate={usdRate}
+                  cryptoPrices={cryptoPrices}
+                />
+              </div>
+            ))}
+
+            {/* Add Asset Card */}
+            <button
+              onClick={() => setShowAccountForm(true)}
+              className="shrink-0 w-60 sm:w-70 h-60 sm:h-70 rounded-[2.5rem] bg-indigo-500/5 border-2 border-dashed border-indigo-500/20 flex flex-col items-center justify-center gap-4 hover:bg-indigo-500/10 hover:border-indigo-500/40 transition-all group snap-start"
+            >
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <PlusIcon className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-400 stroke-3" />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">
+                Add New Asset
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* Analytics Section */}
         <div className="grid lg:grid-cols-12 gap-6 sm:gap-8">
           <div className="lg:col-span-12">
@@ -664,50 +711,6 @@ const DashboardPage: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Account List - Gallery View */}
-      <div className="space-y-4 sm:space-y-6">
-        <div className="flex justify-between items-center px-1">
-          <h2 className="text-lg sm:text-xl font-black text-white uppercase tracking-widest">
-            My Assets
-          </h2>
-          <Link
-            to="/app/assets"
-            className="text-indigo-400 text-[10px] sm:text-xs font-black uppercase tracking-widest hover:text-indigo-300 transition-all"
-          >
-            Manage All →
-          </Link>
-        </div>
-
-        <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 snap-x">
-          {accounts.map((acc) => (
-            <div key={acc.id} className="shrink-0 w-70 sm:w-[320px] snap-start">
-              <AccountCard
-                account={acc}
-                pots={pots}
-                transactions={transactions}
-                onClick={(a) => navigate(`/app/account/${a.id}`)}
-                displayCurrency={displayCurrency}
-                usdRate={usdRate}
-                cryptoPrices={cryptoPrices}
-              />
-            </div>
-          ))}
-
-          {/* Add Asset Card */}
-          <button
-            onClick={() => setShowAccountForm(true)}
-            className="shrink-0 w-60 sm:w-70 h-60 sm:h-70 rounded-[2.5rem] bg-indigo-500/5 border-2 border-dashed border-indigo-500/20 flex flex-col items-center justify-center gap-4 hover:bg-indigo-500/10 hover:border-indigo-500/40 transition-all group snap-start"
-          >
-            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <PlusIcon className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-400 stroke-3" />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">
-              Add New Asset
-            </span>
-          </button>
         </div>
       </div>
 

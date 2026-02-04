@@ -15,6 +15,7 @@ import {
 import { Line, Pie } from "react-chartjs-2";
 import { Transaction, TransactionType } from "../types";
 import { useData } from "../context/DataContext";
+import Modal from "./Modal";
 
 // Register ChartJS components
 ChartJS.register(
@@ -313,13 +314,22 @@ export const RevenueChart: React.FC<Props> = ({
   usdRate = 4.5,
   displayCurrency = "MYR",
 }) => {
+  const [months, setMonths] = React.useState(6);
+  const [showCustomModal, setShowCustomModal] = React.useState(false);
+  const [customValue, setCustomValue] = React.useState("1");
+  const [customUnit, setCustomUnit] = React.useState<"M" | "Y">("M");
+
+  const ytdMonths = useMemo(() => {
+    return new Date().getMonth() + 1;
+  }, []);
+
   const chartData = useMemo(() => {
-    // Generate last 6 months labels
+    // Generate months labels based on range
     const labels = [];
     const incomeData = [];
     const expenseData = [];
 
-    for (let i = 5; i >= 0; i--) {
+    for (let i = months - 1; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
       // Use Local time for Month generation to match user expectation
@@ -408,7 +418,7 @@ export const RevenueChart: React.FC<Props> = ({
         },
       ],
     };
-  }, [transactions]);
+  }, [transactions, months, usdRate, displayCurrency]);
 
   const hasData = chartData.datasets.some((ds) =>
     ds.data.some((val) => (val as number) > 0),
@@ -455,6 +465,11 @@ export const RevenueChart: React.FC<Props> = ({
         },
         ticks: {
           color: "#94a3b8",
+          font: {
+            size: 10,
+          },
+          autoSkip: true,
+          maxTicksLimit: months > 12 ? 8 : 12,
         },
       },
       y: {
@@ -465,6 +480,9 @@ export const RevenueChart: React.FC<Props> = ({
         },
         ticks: {
           color: "#94a3b8",
+          font: {
+            size: 10,
+          },
           callback: (value: any) => {
             if (value >= 1000)
               return `${displayCurrency === "MYR" ? "RM" : "$"}${(value / 1000).toFixed(1)}k`;
@@ -476,15 +494,108 @@ export const RevenueChart: React.FC<Props> = ({
   };
 
   return (
-    <div className="bg-surface rounded-2xl p-6 border border-gray-800 shadow-lg h-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="bg-surface rounded-2xl p-6 border border-gray-800 shadow-lg h-auto relative">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h3 className="font-bold text-lg text-white">Monthly Analytics</h3>
           <p className="text-gray-400 text-sm">
-            Income vs Expenses (Last 6 Months)
+            Income vs Expenses (Last{" "}
+            {months >= 12
+              ? `${months / 12} ${months === 12 ? "Year" : "Years"}`
+              : `${months} Months`}
+            )
           </p>
         </div>
+
+        {/* Range Selector */}
+        <div className="flex bg-gray-900/50 p-1 rounded-xl border border-gray-800 self-end sm:self-auto">
+          {[1, 3, 6, 12, "YTD"].map((m) => {
+            const isYTD = m === "YTD";
+            const val = isYTD ? ytdMonths : (m as number);
+            const isActive = months === val;
+
+            return (
+              <button
+                key={m}
+                onClick={() => setMonths(val)}
+                className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all whitespace-nowrap ${
+                  isActive
+                    ? "bg-white text-black shadow-lg"
+                    : "text-gray-500 hover:text-white"
+                }`}
+              >
+                {isYTD ? "YTD" : m === 12 ? "1Y" : `${m}M`}
+              </button>
+            );
+          })}
+          {/* Simple Custom Entry */}
+          <button
+            onClick={() => setShowCustomModal(true)}
+            className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black tracking-widest uppercase transition-all whitespace-nowrap ${
+              ![1, 3, 6, 12, ytdMonths].includes(months)
+                ? "bg-indigo-600 text-white shadow-lg"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            ...
+          </button>
+        </div>
       </div>
+
+      {/* Custom Range Modal */}
+      <Modal
+        isOpen={showCustomModal}
+        onClose={() => setShowCustomModal(false)}
+        title="Custom Analytics Range"
+        description="Enter the number of months or years to display"
+      >
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)}
+              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold"
+              placeholder="Number"
+              min="1"
+            />
+            <select
+              value={customUnit}
+              onChange={(e) => setCustomUnit(e.target.value as "M" | "Y")}
+              className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-bold appearance-none cursor-pointer"
+            >
+              <option value="M" className="bg-surface">
+                Month(s)
+              </option>
+              <option value="Y" className="bg-surface">
+                Year(s)
+              </option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button
+              onClick={() => setShowCustomModal(false)}
+              className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest bg-white/5 hover:bg-white/10 text-gray-400 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const val = parseInt(customValue);
+                if (!isNaN(val) && val > 0) {
+                  setMonths(customUnit === "Y" ? val * 12 : val);
+                  setShowCustomModal(false);
+                }
+              }}
+              className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest bg-indigo-500 hover:bg-indigo-600 text-white transition-all shadow-xl shadow-indigo-500/20"
+            >
+              Apply Range
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <div className="w-full h-75">
         {hasData ? (
           <Line data={chartData} options={options} />

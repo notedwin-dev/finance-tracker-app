@@ -102,7 +102,7 @@ const History: React.FC<Props> = ({
       isLongPressActive.current = true;
       toggleSelection(id);
       if (window.navigator.vibrate) window.navigator.vibrate(20);
-    }, 3000); // Increased to 3s for more deliberate selection
+    }, 2500); // Increased to 2.5s for more deliberate selection
   };
 
   const handleItemPointerMove = (e: React.PointerEvent) => {

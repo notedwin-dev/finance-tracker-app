@@ -9,6 +9,8 @@ import {
   XMarkIcon,
   ArrowPathIcon,
   SparklesIcon,
+  PencilIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import { parseBankStatement } from "../services/gemini.services";
 import { Transaction, TransactionType } from "../types";
@@ -41,6 +43,7 @@ const BulkImportModal: React.FC<Props> = ({
     Partial<Transaction>[]
   >([]);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
 
   const reset = () => {
     setFile(null);
@@ -48,6 +51,20 @@ const BulkImportModal: React.FC<Props> = ({
     setError(null);
     setParsedTransactions([]);
     setIsFinalizing(false);
+    setEditingIdx(null);
+  };
+
+  const updateTransaction = (idx: number, updates: Partial<Transaction>) => {
+    setParsedTransactions((prev) =>
+      prev.map((tx, i) => (i === idx ? { ...tx, ...updates } : tx)),
+    );
+  };
+
+  const removeTransaction = (idx: number) => {
+    setParsedTransactions((prev) => prev.filter((_, i) => i !== idx));
+    if (editingIdx === idx) setEditingIdx(null);
+    else if (editingIdx !== null && editingIdx > idx)
+      setEditingIdx(editingIdx - 1);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -206,28 +223,166 @@ const BulkImportModal: React.FC<Props> = ({
               </button>
             </div>
 
-            <div className="max-h-75 overflow-y-auto space-y-2 pr-2 scrollbar-thin scrollbar-thumb-white/10">
+            <div className="max-h-75 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-white/10">
               {parsedTransactions.map((tx, idx) => (
                 <div
                   key={idx}
-                  className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center justify-between gap-4"
+                  className={`bg-white/5 border rounded-2xl p-4 transition-all ${
+                    editingIdx === idx
+                      ? "border-primary ring-1 ring-primary/20 bg-primary/5"
+                      : "border-white/5"
+                  }`}
                 >
-                  <div className="min-w-0">
-                    <p className="text-white font-bold text-sm truncate">
-                      {tx.shopName}
-                    </p>
-                    <p className="text-gray-500 text-[10px] uppercase font-black tracking-widest">
-                      {tx.date}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p
-                      className={`font-black text-sm ${tx.type === TransactionType.INCOME ? "text-emerald-400" : "text-rose-400"}`}
-                    >
-                      {tx.type === TransactionType.INCOME ? "+" : "-"}{" "}
-                      {tx.amount} {tx.currency}
-                    </p>
-                  </div>
+                  {editingIdx === idx ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">
+                            Name
+                          </label>
+                          <input
+                            type="text"
+                            value={tx.shopName}
+                            onChange={(e) =>
+                              updateTransaction(idx, {
+                                shopName: e.target.value,
+                              })
+                            }
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">
+                            Date
+                          </label>
+                          <input
+                            type="date"
+                            value={tx.date}
+                            onChange={(e) =>
+                              updateTransaction(idx, { date: e.target.value })
+                            }
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">
+                            Amount ({tx.currency})
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={tx.amount}
+                            onChange={(e) =>
+                              updateTransaction(idx, {
+                                amount: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">
+                            Type
+                          </label>
+                          <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateTransaction(idx, {
+                                  type: TransactionType.EXPENSE,
+                                })
+                              }
+                              className={`flex-1 py-1 text-[10px] font-black rounded-lg transition-all ${
+                                tx.type === TransactionType.EXPENSE
+                                  ? "bg-rose-500 text-white shadow-lg"
+                                  : "text-gray-500 hover:text-white"
+                              }`}
+                            >
+                              EXPENSE
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateTransaction(idx, {
+                                  type: TransactionType.INCOME,
+                                })
+                              }
+                              className={`flex-1 py-1 text-[10px] font-black rounded-lg transition-all ${
+                                tx.type === TransactionType.INCOME
+                                  ? "bg-emerald-500 text-white shadow-lg"
+                                  : "text-gray-500 hover:text-white"
+                              }`}
+                            >
+                              INCOME
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-1 border-t border-white/10">
+                        <button
+                          onClick={() => removeTransaction(idx)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors text-[10px] font-black uppercase tracking-widest"
+                        >
+                          <TrashIcon className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => setEditingIdx(null)}
+                          className="px-4 py-1.5 rounded-lg bg-primary text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-white font-bold text-sm truncate">
+                          {tx.shopName}
+                        </p>
+                        <p className="text-gray-500 text-[10px] uppercase font-black tracking-widest mt-0.5">
+                          {tx.date}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0 flex items-center gap-4">
+                        <div>
+                          <p
+                            className={`font-black text-sm ${
+                              tx.type === TransactionType.INCOME
+                                ? "text-emerald-400"
+                                : "text-rose-400"
+                            }`}
+                          >
+                            {tx.type === TransactionType.INCOME ? "+" : "-"}{" "}
+                            {tx.amount?.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                            })}{" "}
+                            {tx.currency}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 border-l border-white/10 pl-3">
+                          <button
+                            onClick={() => setEditingIdx(idx)}
+                            className="p-2 text-gray-500 hover:text-primary transition-colors hover:bg-primary/10 rounded-lg group"
+                            title="Edit"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => removeTransaction(idx)}
+                            className="p-2 text-gray-500 hover:text-rose-500 transition-colors hover:bg-rose-500/10 rounded-lg"
+                            title="Delete"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

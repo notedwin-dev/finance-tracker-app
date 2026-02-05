@@ -151,7 +151,13 @@ const AccountPage: React.FC = () => {
   const filteredTransactions = useMemo(() => {
     const results: any[] = [];
     transactions.forEach((t) => {
-      if (t.type === TransactionType.TRANSFER && t.toAccountId) {
+      const isLegacySingleRecordTransfer =
+        t.type === TransactionType.TRANSFER &&
+        t.toAccountId &&
+        !t.transferDirection &&
+        !t.linkedTransactionId;
+
+      if (isLegacySingleRecordTransfer) {
         if (t.accountId === id) {
           results.push({ ...t, transferDirection: "OUT" });
         } else if (t.toAccountId === id) {

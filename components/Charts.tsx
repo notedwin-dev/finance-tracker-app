@@ -118,13 +118,21 @@ export const NetWorthChart: React.FC<Props> = ({
 
         if (t.type === TransactionType.INCOME) effect = absAmount;
         else if (t.type === TransactionType.EXPENSE) effect = -absAmount;
-        else if (
-          t.type === TransactionType.TRANSFER &&
-          t.fee &&
-          t.feeType === "EXCLUSIVE"
-        )
-          effect = -Math.abs(t.fee);
-        else if (
+        else if (t.type === TransactionType.TRANSFER) {
+          // Global balance shift only comes from fees
+          if (t.fee) {
+            const fee = Math.abs(t.fee);
+            if (t.transferDirection === "IN" && t.feeType === "EXCLUSIVE") {
+              effect = -fee;
+            } else if (
+              (t.transferDirection === "OUT" || !t.transferDirection) &&
+              (t.feeType === "INCLUSIVE" || !t.transferDirection)
+            ) {
+              // For legacy or OUT/INCLUSIVE, fee is an extra cost
+              effect = -fee;
+            }
+          }
+        } else if (
           t.type === TransactionType.ADJUSTMENT ||
           t.type === TransactionType.ACCOUNT_OPENING
         )

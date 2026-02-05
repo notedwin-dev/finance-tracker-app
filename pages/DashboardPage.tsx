@@ -657,6 +657,22 @@ const DashboardPage: React.FC = () => {
                             </p>
                             <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">
                               {t.time || "??:??"} • {normalizeDate(t.date)}
+                              {t.isHistorical && !t.linkedTransaction && (
+                                <span className="ml-2 text-amber-500/80">
+                                  • HIST.
+                                </span>
+                              )}
+                              {t.linkedTransaction &&
+                                (t.isHistorical ||
+                                  t.linkedTransaction.isHistorical) && (
+                                  <span className="ml-2 text-amber-500/80">
+                                    • HIST ({t.isHistorical ? "S" : ""}
+                                    {t.linkedTransaction.isHistorical
+                                      ? "D"
+                                      : ""}
+                                    )
+                                  </span>
+                                )}
                             </p>
                           </div>
                         </div>

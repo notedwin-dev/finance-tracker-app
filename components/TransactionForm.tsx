@@ -35,6 +35,7 @@ interface Props {
   onSubmit: (
     transaction: Omit<Transaction, "userId">,
     newSubscription?: Omit<Subscription, "userId" | "id">,
+    isDestHistorical?: boolean,
   ) => void;
   onManageCategories: () => void;
 }
@@ -139,6 +140,9 @@ const TransactionForm: React.FC<Props> = ({
   );
   const [isHistorical, setIsHistorical] = useState(
     initialTransaction?.isHistorical || false,
+  );
+  const [isToAccountHistorical, setIsToAccountHistorical] = useState(
+    (initialTransaction as any)?.linkedTransaction?.isHistorical || false,
   );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -323,6 +327,8 @@ const TransactionForm: React.FC<Props> = ({
               }))
             : undefined,
         createdAt: initialTransaction?.createdAt || Date.now(),
+        linkedTransactionId: initialTransaction?.linkedTransactionId,
+        transferDirection: initialTransaction?.transferDirection,
       };
 
       const newSubData = isSubscription
@@ -338,7 +344,11 @@ const TransactionForm: React.FC<Props> = ({
           }
         : undefined;
 
-      await onSubmit(txData, newSubData);
+      await onSubmit(
+        txData,
+        newSubData,
+        type === TransactionType.TRANSFER ? isToAccountHistorical : undefined,
+      );
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -461,20 +471,22 @@ const TransactionForm: React.FC<Props> = ({
                 </p>
               </div>
             )}
-            <div className="mt-2 text-right">
-              <button
-                type="button"
-                onClick={() => setIsSubsidized(!isSubsidized)}
-                className={`inline-flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-                  isSubsidized
-                    ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
-                    : "text-gray-500 hover:text-white"
-                }`}
-              >
-                <SparklesIcon className="w-3 h-3" />
-                {isSubsidized ? "SUBSIDIZED" : "MARK AS SUBSIDIZED"}
-              </button>
-            </div>
+            {type === TransactionType.EXPENSE && (
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setIsSubsidized(!isSubsidized)}
+                  className={`inline-flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
+                    isSubsidized
+                      ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                      : "text-gray-500 hover:text-white"
+                  }`}
+                >
+                  <SparklesIcon className="w-3 h-3" />
+                  {isSubsidized ? "SUBSIDIZED" : "MARK AS SUBSIDIZED"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Account Selection */}
@@ -903,26 +915,50 @@ const TransactionForm: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Historical Checkbox */}
-          <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="isHistorical"
-                checked={isHistorical}
-                onChange={(e) => setIsHistorical(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
-              />
-              <label
-                htmlFor="isHistorical"
-                className="text-xs font-bold text-amber-200 cursor-pointer"
-              >
-                Historical Record (No Balance Change)
-              </label>
+          {/* Historical Checkboxes */}
+          <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="isHistorical"
+                  checked={isHistorical}
+                  onChange={(e) => setIsHistorical(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
+                />
+                <label
+                  htmlFor="isHistorical"
+                  className="text-xs font-bold text-amber-200 cursor-pointer"
+                >
+                  {type === TransactionType.TRANSFER
+                    ? "Source Account: Historical Record"
+                    : "Historical Record (No Balance Change)"}
+                </label>
+              </div>
+
+              {type === TransactionType.TRANSFER && (
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="isToAccountHistorical"
+                    checked={isToAccountHistorical}
+                    onChange={(e) => setIsToAccountHistorical(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
+                  />
+                  <label
+                    htmlFor="isToAccountHistorical"
+                    className="text-xs font-bold text-amber-200 cursor-pointer"
+                  >
+                    Destination Account: Historical Record
+                  </label>
+                </div>
+              )}
             </div>
+
             <p className="text-[10px] text-amber-200/60 leading-relaxed font-medium pl-7">
-              This will add the transaction to your history without affecting
-              your current account balance. Perfect for old records.
+              {type === TransactionType.TRANSFER
+                ? "Historical legs will not change the balance of their respective accounts. You can set this individually for each side of the transfer."
+                : "This will add the transaction to your history without affecting your current account balance. Perfect for old records."}
             </p>
           </div>
 

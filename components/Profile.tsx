@@ -16,11 +16,13 @@ import {
   LockClosedIcon,
   FingerPrintIcon,
   EyeSlashIcon,
+  CalculatorIcon,
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
 import * as SecurityService from "../services/security.services";
 import { getDeviceId } from "../services/storage.services";
 import Modal from "./Modal";
+import DatePicker from "./DatePicker";
 
 interface Props {
   profile: UserProfile;
@@ -29,7 +31,7 @@ interface Props {
   onUpdate: (updates: Partial<UserProfile>) => void;
   onManageCategories?: () => void;
   onManageSubscriptions?: () => void;
-  onExport?: () => void;
+  onExport?: (startDate?: string, endDate?: string) => void;
   onMigrate?: () => void;
   onSync?: () => void;
   onUnlinkCloud?: () => void;
@@ -63,6 +65,7 @@ const Profile: React.FC<Props> = ({
     enableVault,
     disableVault,
     showToast,
+    recalculateBalances,
   } = useData();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(profile.name);
@@ -71,6 +74,9 @@ const Profile: React.FC<Props> = ({
   const [showBiometricManagement, setShowBiometricManagement] = useState(false);
   const [vaultError, setVaultError] = useState("");
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
   const [confirmationModal, setConfirmationModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -191,6 +197,69 @@ const Profile: React.FC<Props> = ({
 
   return (
     <div className="flex flex-col h-full max-w-2xl mx-auto animate-fadeIn pb-20">
+      {/* Export Backup Modal */}
+      <Modal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        title="Export Backup"
+        maxWidth="max-w-sm"
+      >
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-1">
+              Select Range (Optional)
+            </p>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">
+                  Start Date
+                </label>
+                <DatePicker
+                  value={exportStartDate}
+                  onChange={setExportStartDate}
+                  placeholder="Earliest"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">
+                  End Date
+                </label>
+                <DatePicker
+                  value={exportEndDate}
+                  onChange={setExportEndDate}
+                  placeholder="Latest"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-600 italic mt-2">
+              Note: If no dates are selected, all transactions will be exported.
+              Accounts, Categories, and Goals are always included.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              onClick={() => {
+                if (onExport) onExport(exportStartDate, exportEndDate);
+                setShowExportModal(false);
+              }}
+              className="w-full py-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
+            >
+              Download JSON
+            </button>
+            <button
+              onClick={() => {
+                setExportStartDate("");
+                setExportEndDate("");
+              }}
+              className="w-full py-2 text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors"
+            >
+              Reset Filters
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Vault Modal */}
       {showVaultPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -878,8 +947,15 @@ const Profile: React.FC<Props> = ({
               icon={DocumentArrowDownIcon}
               label="Export Backup"
               description="Download all data as JSON"
-              onClick={onExport}
+              onClick={() => setShowExportModal(true)}
               color="text-gray-400"
+            />
+            <SettingItem
+              icon={CalculatorIcon}
+              label="Recalculate Balances"
+              description="Fix account balance desyncs from history"
+              onClick={recalculateBalances}
+              color="text-emerald-400"
             />
 
             <SectionHeader title="AI Assistant" />

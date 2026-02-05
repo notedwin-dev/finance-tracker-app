@@ -66,6 +66,7 @@ const History: React.FC<Props> = ({
   const [swipedId, setSwipedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showBatchEditModal, setShowBatchEditModal] = useState(false);
   const [batchUpdates, setBatchUpdates] = useState<Partial<Transaction>>({});
 
@@ -193,6 +194,7 @@ const History: React.FC<Props> = ({
   };
 
   const handleBatchDelete = async () => {
+    setIsSubmitting(true);
     if (
       window.confirm(
         `Delete ${selectedIds.length} transactions? This cannot be undone.`,
@@ -202,14 +204,17 @@ const History: React.FC<Props> = ({
       setSelectedIds([]);
       setIsBatchMode(false);
     }
+    setIsSubmitting(false);
   };
 
   const handleBatchEditSubmit = async () => {
+    setIsSubmitting(true);
     await handleBatchTransactionEdit(selectedIds, batchUpdates);
     setSelectedIds([]);
     setShowBatchEditModal(false);
     setBatchUpdates({});
     setIsBatchMode(false);
+    setIsSubmitting(false);
   };
 
   const getFilteredTransactions = () => {
@@ -239,31 +244,16 @@ const History: React.FC<Props> = ({
     );
   }
 
-  // 1. Sort transactions by date and time (Newest first)
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
-    const dateA = normalizeDate(a.date);
-    const dateB = normalizeDate(b.date);
-    if (dateA !== dateB) return dateB.localeCompare(dateA);
+  // 1. Group transactions (handles Transfer pairing and sorting)
+  const groupedList = groupTransactions(filteredTransactions);
 
-    // If dates are equal, sort by time (HH:mm)
-    const timeA = a.time || "";
-    const timeB = b.time || "";
-    if (timeA !== timeB) return timeB.localeCompare(timeA);
+  // 2. Apply Pagination to grouped items
+  const paginatedGrouped = groupedList.slice(0, visibleCount);
 
-    // If times are equal (or missing), sort by createdAt
-    return (b.createdAt || 0) - (a.createdAt || 0);
-  });
-
-  // Apply Pagination
-  const paginatedTransactions = sortedTransactions.slice(0, visibleCount);
-
-  // Group grouped transactions first, then by date
-  const groupedList = groupTransactions(paginatedTransactions);
-
-  const grouped = groupedList.reduce(
+  // 3. Group by date for headers
+  const grouped = paginatedGrouped.reduce(
     (acc, t) => {
       // Use just the date part (YYYY-MM-DD) for grouping headers
-      // Handle cases where t.date might be full ISO including time
       const dateKey = normalizeDate(t.date);
       if (!acc[dateKey]) acc[dateKey] = [];
       acc[dateKey].push(t);
@@ -616,6 +606,35 @@ const History: React.FC<Props> = ({
                             </span>
                           )}
                           <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+
+                          {/* Historical Badges */}
+                          {t.isHistorical && !t.linkedTransaction && (
+                            <>
+                              <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded uppercase tracking-widest">
+                                Hist.
+                              </span>
+                              <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+                            </>
+                          )}
+                          {t.linkedTransaction && (
+                            <>
+                              {t.isHistorical && (
+                                <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.2 py-0.3 rounded-sm uppercase tracking-tighter">
+                                  Src Hist.
+                                </span>
+                              )}
+                              {t.linkedTransaction.isHistorical && (
+                                <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.2 py-0.3 rounded-sm uppercase tracking-tighter">
+                                  Dest Hist.
+                                </span>
+                              )}
+                              {(t.isHistorical ||
+                                t.linkedTransaction.isHistorical) && (
+                                <span className="w-0.5 h-0.5 rounded-full bg-gray-700"></span>
+                              )}
+                            </>
+                          )}
+
                           {t.savingPocketId && (
                             <>
                               <div className="flex items-center gap-1 bg-indigo-500/10 px-1.5 py-0.5 rounded-md border border-indigo-500/20">
@@ -1005,10 +1024,10 @@ const History: React.FC<Props> = ({
             </button>
             <button
               onClick={handleBatchEditSubmit}
-              disabled={Object.keys(batchUpdates).length === 0}
+              disabled={Object.keys(batchUpdates).length === 0 || isSubmitting}
               className="py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all shadow-xl shadow-indigo-500/20"
             >
-              Apply Changes
+              {isSubmitting ? "Applying Changes..." : "Apply Changes"}
             </button>
           </div>
         </div>

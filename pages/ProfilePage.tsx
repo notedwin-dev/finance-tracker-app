@@ -24,11 +24,24 @@ const ProfilePage: React.FC = () => {
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
 
-  const handleExportData = () => {
+  const handleExportData = (startDate?: string, endDate?: string) => {
+    let filteredTransactions = [...transactions];
+
+    if (startDate) {
+      filteredTransactions = filteredTransactions.filter(
+        (t) => t.date >= startDate,
+      );
+    }
+    if (endDate) {
+      filteredTransactions = filteredTransactions.filter(
+        (t) => t.date <= endDate,
+      );
+    }
+
     const data = {
       profile,
       accounts,
-      transactions,
+      transactions: filteredTransactions,
       categories,
       goals,
       subscriptions,
@@ -36,6 +49,10 @@ const ProfilePage: React.FC = () => {
       pockets,
       chatSessions,
       exportedAt: new Date().toISOString(),
+      exportRange: {
+        startDate: startDate || "all",
+        endDate: endDate || "all",
+      },
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",

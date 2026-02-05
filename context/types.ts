@@ -63,6 +63,7 @@ export interface DataContextType {
   handleTransactionSubmit: (
     tx: Omit<Transaction, "userId">,
     newSubscription?: Omit<Subscription, "userId" | "id">,
+    isDestHistorical?: boolean,
   ) => Promise<void>;
   handleBulkTransactionImport: (
     newTxs: Partial<Transaction>[],
@@ -89,6 +90,7 @@ export interface DataContextType {
   handleDeleteChatSession: (id: string) => void;
   handleMigrateData: () => Promise<void>;
   handleResetAndSync: () => Promise<void>;
+  recalculateBalances: () => Promise<void>;
   getTotalValueReceived: (tx: Transaction) => number;
   calculateGXBankInterest: (
     balance: number,

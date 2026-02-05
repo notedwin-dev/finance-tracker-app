@@ -133,7 +133,7 @@ const CategoryManager: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
+    <div className="fixed inset-0 z-80 flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
       <div className="w-full max-w-md bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col h-[85vh] sm:h-auto max-h-[90vh] animate-slideUp sm:animate-fadeIn">
         <div className="flex justify-between items-center p-4 sm:p-5 border-b border-gray-700 bg-surface shrink-0">
           <h2 className="text-base sm:text-lg font-bold text-white">
@@ -205,7 +205,7 @@ const CategoryManager: React.FC<Props> = ({
             {/* Budget Settings */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="text-[10px] text-gray-500 uppercase font-black uppercase mb-1 block">
+                <label className="text-[10px] text-gray-500 font-black uppercase mb-1 block">
                   Budget Limit
                 </label>
                 <input
@@ -217,7 +217,7 @@ const CategoryManager: React.FC<Props> = ({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase font-black uppercase mb-1 block">
+                <label className="text-[10px] text-gray-500 font-black uppercase mb-1 block">
                   Period
                 </label>
                 <select
@@ -237,7 +237,7 @@ const CategoryManager: React.FC<Props> = ({
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={`w-6 h-6 rounded-full flex-shrink-0 transition-transform ${c} ${color === c ? "ring-2 ring-white scale-110" : "opacity-50 hover:opacity-100"}`}
+                  className={`w-6 h-6 rounded-full shrink-0 transition-transform ${c} ${color === c ? "ring-2 ring-white scale-110" : "opacity-50 hover:opacity-100"}`}
                 />
               ))}
             </div>

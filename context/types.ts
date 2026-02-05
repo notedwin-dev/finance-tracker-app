@@ -89,4 +89,10 @@ export interface DataContextType {
   handleDeleteChatSession: (id: string) => void;
   handleMigrateData: () => Promise<void>;
   handleResetAndSync: () => Promise<void>;
+  getTotalValueReceived: (tx: Transaction) => number;
+  calculateGXBankInterest: (
+    balance: number,
+    pocketType: "SAVING_POCKET" | "BONUS_POCKET",
+    tenureMonths?: 2 | 3,
+  ) => number;
 }

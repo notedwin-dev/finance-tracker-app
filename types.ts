@@ -77,6 +77,9 @@ export interface Transaction {
   amountBreakdown?: AmountBreakdownItem[];
   fee?: number; // Optional transaction fee for transfers
   feeType?: "INCLUSIVE" | "EXCLUSIVE"; // INCLUSIVE: Add to total (Target gets full), EXCLUSIVE: Deduct from total (Target gets less)
+  isSubsidized?: boolean; // If true, amount is effectively 0, but marketValue tracks value received
+  marketValue?: number; // Value of the subsidy/benefit
+  isHistorical?: boolean; // If true, this transaction does not affect account balance
   createdAt: number; // For sorting and conflict resolution
   note?: string;
   updatedAt?: number;
@@ -149,6 +152,8 @@ export interface SavingPocket {
   name: string;
   currentAmount: number; // Balance in this pocket
   currency: Currency;
+  pocketType?: "SAVING_POCKET" | "BONUS_POCKET"; // For GXBANK provider
+  tenureMonths?: 2 | 3; // For BONUS_POCKET
   color: string;
   icon: string;
   updatedAt?: number;

@@ -49,6 +49,12 @@ const Goals: React.FC<Props> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // GXBank Specific State
+  const [pocketType, setPocketType] = useState<
+    "SAVING_POCKET" | "BONUS_POCKET"
+  >("SAVING_POCKET");
+  const [tenureMonths, setTenureMonths] = useState<2 | 3>(3);
+
   // Pot form state
   const [potName, setPotName] = useState("");
   const [potAccountId, setPotAccountId] = useState("");
@@ -169,6 +175,8 @@ const Goals: React.FC<Props> = ({
     setPocketCurrency(pocket.currency);
     setPocketIcon(pocket.icon);
     setPocketColor(pocket.color);
+    setPocketType(pocket.pocketType || "SAVING_POCKET");
+    setTenureMonths(pocket.tenureMonths || 3);
     setShowPocketModal(true);
   };
 
@@ -176,6 +184,9 @@ const Goals: React.FC<Props> = ({
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const selectedAccount = accounts.find((a) => a.id === pocketAccountId);
+      const isGXBank = selectedAccount?.providerId === "GXBANK";
+
       const pocketData: Omit<SavingPocket, "userId"> = {
         id: editingId || crypto.randomUUID(),
         name: pocketName,
@@ -184,11 +195,16 @@ const Goals: React.FC<Props> = ({
         currency: pocketCurrency,
         icon: pocketIcon,
         color: pocketColor,
+        pocketType: isGXBank ? pocketType : "SAVING_POCKET",
+        tenureMonths:
+          isGXBank && pocketType === "BONUS_POCKET" ? tenureMonths : undefined,
       };
       await onSavePocket(pocketData);
       setPocketName("");
       setPocketAccountId("");
       setPocketCurrent("");
+      setPocketType("SAVING_POCKET");
+      setTenureMonths(3);
       setEditingId(null);
       setShowPocketModal(false);
     } finally {
@@ -800,6 +816,63 @@ const Goals: React.FC<Props> = ({
                   ))}
                 </select>
               </div>
+
+              {accounts.find((a) => a.id === pocketAccountId)?.providerId ===
+                "GXBANK" && (
+                <div className="animate-fadeIn space-y-4 bg-indigo-500/5 p-4 rounded-2xl border border-indigo-500/10">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">
+                      GXBank Pocket Type
+                    </label>
+                    <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                      {(["SAVING_POCKET", "BONUS_POCKET"] as const).map(
+                        (type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setPocketType(type)}
+                            className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${
+                              pocketType === type
+                                ? "bg-indigo-500 text-white shadow-lg"
+                                : "text-gray-500 hover:text-white"
+                            }`}
+                          >
+                            {type.replace("_", " ")}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+
+                  {pocketType === "BONUS_POCKET" && (
+                    <div className="space-y-2 animate-fadeIn">
+                      <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">
+                        Bonus Tenure (Months)
+                      </label>
+                      <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                        {([2, 3] as const).map((months) => (
+                          <button
+                            key={months}
+                            type="button"
+                            onClick={() => setTenureMonths(months)}
+                            className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${
+                              tenureMonths === months
+                                ? "bg-indigo-500 text-white shadow-lg"
+                                : "text-gray-500 hover:text-white"
+                            }`}
+                          >
+                            {months} MONTHS
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-gray-500 italic px-1">
+                        Bonus Pockets get higher interest (5%) if held for the
+                        tenure.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">

@@ -131,6 +131,15 @@ const TransactionForm: React.FC<Props> = ({
         }))
       : [],
   );
+  const [isSubsidized, setIsSubsidized] = useState(
+    initialTransaction?.isSubsidized || false,
+  );
+  const [marketValue, setMarketValue] = useState(
+    initialTransaction?.marketValue?.toString() || "",
+  );
+  const [isHistorical, setIsHistorical] = useState(
+    initialTransaction?.isHistorical || false,
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -237,7 +246,10 @@ const TransactionForm: React.FC<Props> = ({
     setValidationError(null);
 
     const missingFields: string[] = [];
-    if (!amount || parseFloat(amount) <= 0) missingFields.push("Amount");
+    if (!isSubsidized && (!amount || parseFloat(amount) <= 0))
+      missingFields.push("Amount");
+    if (isSubsidized && (!marketValue || parseFloat(marketValue) <= 0))
+      missingFields.push("Market Value");
     if (!accountId) missingFields.push("Account");
     if (type === TransactionType.TRANSFER && !toAccountId)
       missingFields.push("To Account");
@@ -285,7 +297,10 @@ const TransactionForm: React.FC<Props> = ({
         subscriptionId: subscriptionId || undefined,
         toAccountId:
           type === TransactionType.TRANSFER ? toAccountId : undefined,
-        amount: Math.abs(parseFloat(amount)),
+        amount: isSubsidized ? 0 : Math.abs(parseFloat(amount)),
+        isSubsidized,
+        marketValue: isSubsidized ? parseFloat(marketValue) : undefined,
+        isHistorical,
         fee:
           type === TransactionType.TRANSFER && fee
             ? Math.abs(parseFloat(fee))
@@ -401,7 +416,7 @@ const TransactionForm: React.FC<Props> = ({
           {/* Amount & Currency */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Amount
+              {isSubsidized ? "Cash Outflow (Usually 0.00)" : "Amount"}
             </label>
             <div className="flex gap-2">
               <select
@@ -415,13 +430,50 @@ const TransactionForm: React.FC<Props> = ({
               <input
                 type="text"
                 inputMode="decimal"
-                required
+                required={!isSubsidized}
                 value={amount}
                 onChange={(e) => handleAmountChange(e.target.value)}
                 className="flex-1 min-w-0 bg-surface border border-gray-700 rounded-xl py-2.5 sm:py-3 px-3 sm:px-4 text-white text-lg sm:text-xl font-bold focus:outline-none focus:border-primary"
                 placeholder="0.00"
                 autoFocus
               />
+            </div>
+            {isSubsidized && (
+              <div className="mt-3 animate-fadeIn">
+                <label className="block text-xs font-medium text-indigo-400 mb-1.5">
+                  Market Value (Original Price)
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">
+                    {currency === "MYR" ? "RM" : "$"}
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={marketValue}
+                    onChange={(e) => setMarketValue(e.target.value)}
+                    className="w-full bg-surface border border-indigo-500/30 rounded-xl py-2.5 px-10 text-white font-bold focus:outline-none focus:border-indigo-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-gray-400 italic">
+                  Value received from subsidy/gift.
+                </p>
+              </div>
+            )}
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setIsSubsidized(!isSubsidized)}
+                className={`inline-flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
+                  isSubsidized
+                    ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
+                    : "text-gray-500 hover:text-white"
+                }`}
+              >
+                <SparklesIcon className="w-3 h-3" />
+                {isSubsidized ? "SUBSIDIZED" : "MARK AS SUBSIDIZED"}
+              </button>
             </div>
           </div>
 
@@ -849,6 +901,29 @@ const TransactionForm: React.FC<Props> = ({
                 className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
               />
             </div>
+          </div>
+
+          {/* Historical Checkbox */}
+          <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="isHistorical"
+                checked={isHistorical}
+                onChange={(e) => setIsHistorical(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
+              />
+              <label
+                htmlFor="isHistorical"
+                className="text-xs font-bold text-amber-200 cursor-pointer"
+              >
+                Historical Record (No Balance Change)
+              </label>
+            </div>
+            <p className="text-[10px] text-amber-200/60 leading-relaxed font-medium pl-7">
+              This will add the transaction to your history without affecting
+              your current account balance. Perfect for old records.
+            </p>
           </div>
 
           {/* Amount Breakdown Section */}

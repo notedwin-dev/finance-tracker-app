@@ -1174,6 +1174,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           id: crypto.randomUUID(),
           userId: profile.id || "local",
           accountId,
+          isHistorical,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         }) as Transaction,
@@ -1321,7 +1322,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         return amount;
       };
 
-      if (isEdit && oldTx) {
+      if (isEdit && oldTx && !oldTx.isHistorical) {
         const oldAmount = getConvertedAmount(
           oldTx.amount,
           oldTx.currency,
@@ -1351,24 +1352,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      const newAmount = getConvertedAmount(tx.amount, tx.currency, a.currency);
-      const newFee = tx.fee
-        ? getConvertedAmount(tx.fee, tx.currency, a.currency)
-        : 0;
-      const newFeeType = tx.feeType || "INCLUSIVE";
+      if (!tx.isHistorical) {
+        const newAmount = getConvertedAmount(tx.amount, tx.currency, a.currency);
+        const newFee = tx.fee
+          ? getConvertedAmount(tx.fee, tx.currency, a.currency)
+          : 0;
+        const newFeeType = tx.feeType || "INCLUSIVE";
 
-      if (a.id === tx.accountId) {
-        isChanged = true;
-        if (
-          tx.type === TransactionType.INCOME ||
-          tx.type === TransactionType.ACCOUNT_OPENING
-        )
-          balance += newAmount;
-        else balance -= newAmount;
-      }
-      if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
-        isChanged = true;
-        balance += newFeeType === "EXCLUSIVE" ? newAmount - newFee : newAmount;
+        if (a.id === tx.accountId) {
+          isChanged = true;
+          if (
+            tx.type === TransactionType.INCOME ||
+            tx.type === TransactionType.ACCOUNT_OPENING
+          )
+            balance += newAmount;
+          else balance -= newAmount;
+        }
+        if (tx.type === TransactionType.TRANSFER && a.id === tx.toAccountId) {
+          isChanged = true;
+          balance +=
+            newFeeType === "EXCLUSIVE" ? newAmount - newFee : newAmount;
+        }
       }
 
       return isChanged ? { ...a, balance, updatedAt: Date.now() } : a;
@@ -1381,7 +1385,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const updatedPots = pots.map((p) => {
         let newUsedAmount = p.usedAmount;
 
-        if (isEdit && oldTx?.potId === p.id) {
+        if (isEdit && oldTx?.potId === p.id && !oldTx.isHistorical) {
           if (
             oldTx.type === TransactionType.INCOME ||
             oldTx.type === TransactionType.ACCOUNT_OPENING
@@ -1390,7 +1394,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           else newUsedAmount -= oldTx.amount;
         }
 
-        if (tx.potId === p.id) {
+        if (tx.potId === p.id && !tx.isHistorical) {
           if (
             tx.type === TransactionType.INCOME ||
             tx.type === TransactionType.ACCOUNT_OPENING
@@ -1424,7 +1428,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         let newCurrentAmount = p.currentAmount;
 
         // Old Transaction Restoration
-        if (isEdit && oldTx) {
+        if (isEdit && oldTx && !oldTx.isHistorical) {
           const oldFee = oldTx.fee || 0;
           const oldFeeType = oldTx.feeType || "INCLUSIVE";
           const oldSourceAmount = oldTx.amount;
@@ -1448,26 +1452,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         }
 
         // New Transaction Application
-        const newFee = tx.fee || 0;
-        const newFeeType = tx.feeType || "INCLUSIVE";
-        const newSourceAmount = tx.amount;
-        const newTargetAmount =
-          newFeeType === "EXCLUSIVE" ? tx.amount - newFee : tx.amount;
+        if (!tx.isHistorical) {
+          const newFee = tx.fee || 0;
+          const newFeeType = tx.feeType || "INCLUSIVE";
+          const newSourceAmount = tx.amount;
+          const newTargetAmount =
+            newFeeType === "EXCLUSIVE" ? tx.amount - newFee : tx.amount;
 
-        if (tx.savingPocketId === p.id) {
+          if (tx.savingPocketId === p.id) {
+            if (
+              tx.type === TransactionType.INCOME ||
+              tx.type === TransactionType.ACCOUNT_OPENING
+            )
+              newCurrentAmount += tx.amount;
+            else newCurrentAmount -= newSourceAmount;
+          }
+
           if (
-            tx.type === TransactionType.INCOME ||
-            tx.type === TransactionType.ACCOUNT_OPENING
-          )
-            newCurrentAmount += tx.amount;
-          else newCurrentAmount -= newSourceAmount;
-        }
-
-        if (
-          tx.type === TransactionType.TRANSFER &&
-          tx.toSavingPocketId === p.id
-        ) {
-          newCurrentAmount += newTargetAmount;
+            tx.type === TransactionType.TRANSFER &&
+            tx.toSavingPocketId === p.id
+          ) {
+            newCurrentAmount += newTargetAmount;
+          }
         }
 
         if (newCurrentAmount !== p.currentAmount) {
@@ -1490,7 +1496,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleTransactionDelete = async (id: string) => {
     const tx = transactions.find((t) => t.id === id);
-    if (tx) {
+    if (tx && !tx.isHistorical) {
       const updatedAccounts = accounts.map((a) => {
         const amount =
           tx.currency === a.currency
@@ -1620,6 +1626,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     // Update Accounts
     const accountUpdates = new Map<string, number>();
     txsToDelete.forEach((tx) => {
+      if (tx.isHistorical) return;
       accounts.forEach((a) => {
         const amount =
           tx.currency === a.currency
@@ -1679,6 +1686,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     // Update Pots
     const potUpdates = new Map<string, number>();
     txsToDelete.forEach((tx) => {
+      if (tx.isHistorical) return;
       if (tx.potId) {
         let balanceRestore = 0;
         if (
@@ -1716,6 +1724,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     // Update Pockets
     const pocketUpdates = new Map<string, number>();
     txsToDelete.forEach((tx) => {
+      if (tx.isHistorical) return;
       const fee = tx.fee || 0;
       const feeType = tx.feeType || "INCLUSIVE";
       const sourceAmount = tx.amount;
@@ -1803,8 +1812,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const updatedTransactionsList = transactions.map((t) => {
       if (ids.includes(t.id)) {
-        // Handle Pot migration if potId changed
-        if (updates.potId !== undefined && updates.potId !== t.potId) {
+        // Handle Pot migration if potId changed (skip if historical)
+        if (
+          !t.isHistorical &&
+          updates.potId !== undefined &&
+          updates.potId !== t.potId
+        ) {
           // 1. Remove from old pot
           if (t.potId) {
             let restore = 0;
@@ -1832,8 +1845,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        // Handle Pocket migration if savingPocketId changed
+        // Handle Pocket migration if savingPocketId changed (skip if historical)
         if (
+          !t.isHistorical &&
           updates.savingPocketId !== undefined &&
           updates.savingPocketId !== t.savingPocketId
         ) {
@@ -1867,8 +1881,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        // Handle toSavingPocketId migration for transfers
+        // Handle toSavingPocketId migration for transfers (skip if historical)
         if (
+          !t.isHistorical &&
           t.type === TransactionType.TRANSFER &&
           updates.toSavingPocketId !== undefined &&
           updates.toSavingPocketId !== t.toSavingPocketId
@@ -2210,6 +2225,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsSyncing(false);
   };
 
+  const getTotalValueReceived = (tx: Transaction) => {
+    if (tx.isSubsidized && tx.marketValue) {
+      return tx.marketValue;
+    }
+    return tx.amount;
+  };
+
+  const calculateGXBankInterest = (
+    balance: number,
+    pocketType: "SAVING_POCKET" | "BONUS_POCKET",
+    tenureMonths?: 2 | 3,
+  ) => {
+    if (balance < 500) return 0;
+    const effectiveBalance = Math.min(balance, 25000);
+
+    const baseRate = 0.02; // 2%
+    let bonusRate = 0;
+
+    if (pocketType === "BONUS_POCKET") {
+      if (tenureMonths === 2)
+        bonusRate = 0.0058; // 0.58%
+      else if (tenureMonths === 3) bonusRate = 0.02; // 2%
+    }
+
+    const rate = baseRate + bonusRate;
+    return (effectiveBalance * rate) / 365;
+  };
+
   return (
     <DataContext.Provider
       value={{
@@ -2272,6 +2315,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         handleBatchTransactionEdit,
         handleMigrateData,
         handleResetAndSync,
+        getTotalValueReceived,
+        calculateGXBankInterest,
       }}
     >
       {children}

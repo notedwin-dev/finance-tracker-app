@@ -102,7 +102,7 @@ const History: React.FC<Props> = ({
       isLongPressActive.current = true;
       toggleSelection(id);
       if (window.navigator.vibrate) window.navigator.vibrate(20);
-    }, 1500); // Increased to 1.5s for more deliberate selection
+    }, 3000); // Increased to 3s for more deliberate selection
   };
 
   const handleItemPointerMove = (e: React.PointerEvent) => {
@@ -605,6 +605,9 @@ const History: React.FC<Props> = ({
                               maskText(t.shopName || "UNTITLED")
                             )}
                           </p>
+                          {t.isSubsidized && (
+                            <SparklesIcon className="w-4 h-4 text-indigo-400 shrink-0 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
                           {t.time && (
@@ -708,6 +711,17 @@ const History: React.FC<Props> = ({
                             </span>
                           )}
                         </span>
+                        {t.isSubsidized && t.marketValue && (
+                          <span className="text-[9px] text-indigo-400/80 font-bold italic mt-1">
+                            Val:{" "}
+                            {maskAmount(
+                              t.marketValue.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }),
+                            )}
+                          </span>
+                        )}
                       </div>
 
                       {/* Desktop/Laptop Action Toggle (Chevron) */}

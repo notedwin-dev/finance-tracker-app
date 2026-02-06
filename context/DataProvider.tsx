@@ -1526,34 +1526,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // 2. Pots
       if (t.potId) {
-        let potDelta = 0;
-        if (
-          t.type === TransactionType.INCOME ||
-          t.type === TransactionType.ACCOUNT_OPENING
-        ) {
-          potDelta = -t.amount * factor;
-        } else {
-          potDelta = t.amount * factor;
+        const pot = pots.find((p) => p.id === t.potId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPotReset =
+          !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
+
+        if (isAfterPotReset) {
+          let potDelta = 0;
+          if (
+            t.type === TransactionType.INCOME ||
+            t.type === TransactionType.ACCOUNT_OPENING
+          ) {
+            potDelta = -t.amount * factor;
+          } else {
+            potDelta = t.amount * factor;
+          }
+          potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
         }
-        potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
       }
 
       // 3. Pockets
       if (t.savingPocketId) {
-        const sourceAmount = t.amount;
-        let pocketDelta = 0;
-        if (
-          t.type === TransactionType.INCOME ||
-          t.type === TransactionType.ACCOUNT_OPENING
-        ) {
-          pocketDelta = t.amount * factor;
-        } else {
-          pocketDelta = -sourceAmount * factor;
+        const pocket = pockets.find((p) => p.id === t.savingPocketId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPocketReset =
+          !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+        if (isAfterPocketReset) {
+          const sourceAmount = t.amount;
+          let pocketDelta = 0;
+          if (
+            t.type === TransactionType.INCOME ||
+            t.type === TransactionType.ACCOUNT_OPENING
+          ) {
+            pocketDelta = t.amount * factor;
+          } else {
+            pocketDelta = -sourceAmount * factor;
+          }
+          pocketUpdates.set(
+            t.savingPocketId,
+            (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
+          );
         }
-        pocketUpdates.set(
-          t.savingPocketId,
-          (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
-        );
       }
 
       // Legacy single-record pocket logic
@@ -1563,14 +1577,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         !t.transferDirection &&
         !t.linkedTransactionId
       ) {
-        const fee = t.fee || 0;
-        const feeType = t.feeType || "INCLUSIVE";
-        const targetAmount =
-          feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-        pocketUpdates.set(
-          t.toSavingPocketId,
-          (pocketUpdates.get(t.toSavingPocketId) || 0) + targetAmount * factor,
-        );
+        const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPocketReset =
+          !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+        if (isAfterPocketReset) {
+          const fee = t.fee || 0;
+          const feeType = t.feeType || "INCLUSIVE";
+          const targetAmount =
+            feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+          pocketUpdates.set(
+            t.toSavingPocketId,
+            (pocketUpdates.get(t.toSavingPocketId) || 0) +
+              targetAmount * factor,
+          );
+        }
       }
     };
 
@@ -1613,7 +1635,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (potUpdates.size > 0) {
       const updatedPotList = pots.map((p) => {
         if (potUpdates.has(p.id)) {
-          const newUsedAmount = p.usedAmount + (potUpdates.get(p.id) || 0);
+          const newUsedAmount = Math.max(
+            0,
+            p.usedAmount + (potUpdates.get(p.id) || 0),
+          );
           return {
             ...p,
             usedAmount: newUsedAmount,
@@ -1638,8 +1663,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (pocketUpdates.size > 0) {
       const updatedPocketList = pockets.map((p) => {
         if (pocketUpdates.has(p.id)) {
-          const newCurrentAmount =
-            p.currentAmount + (pocketUpdates.get(p.id) || 0);
+          const newCurrentAmount = Math.max(
+            0,
+            p.currentAmount + (pocketUpdates.get(p.id) || 0),
+          );
           return {
             ...p,
             currentAmount: newCurrentAmount,
@@ -1830,7 +1857,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (potUpdates.size > 0) {
       const updatedPots = pots.map((p) => {
         if (potUpdates.has(p.id)) {
-          const newUsedAmount = p.usedAmount + (potUpdates.get(p.id) || 0);
+          const newUsedAmount = Math.max(
+            0,
+            p.usedAmount + (potUpdates.get(p.id) || 0),
+          );
           return {
             ...p,
             usedAmount: newUsedAmount,
@@ -1855,8 +1885,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (pocketUpdates.size > 0) {
       const updatedPockets = pockets.map((p) => {
         if (pocketUpdates.has(p.id)) {
-          const newCurrentAmount =
-            p.currentAmount + (pocketUpdates.get(p.id) || 0);
+          const newCurrentAmount = Math.max(
+            0,
+            p.currentAmount + (pocketUpdates.get(p.id) || 0),
+          );
           return {
             ...p,
             currentAmount: newCurrentAmount,
@@ -1997,34 +2029,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // 2. Pots
       if (t.potId) {
-        let potDelta = 0;
-        if (
-          t.type === TransactionType.INCOME ||
-          t.type === TransactionType.ACCOUNT_OPENING
-        ) {
-          potDelta = -t.amount * factor;
-        } else {
-          potDelta = t.amount * factor;
+        const pot = pots.find((p) => p.id === t.potId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPotReset =
+          !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
+
+        if (isAfterPotReset) {
+          let potDelta = 0;
+          if (
+            t.type === TransactionType.INCOME ||
+            t.type === TransactionType.ACCOUNT_OPENING
+          ) {
+            potDelta = -t.amount * factor;
+          } else {
+            potDelta = t.amount * factor;
+          }
+          potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
         }
-        potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
       }
 
       // 3. Pockets
       if (t.savingPocketId) {
-        const sourceAmount = t.amount;
-        let pocketDelta = 0;
-        if (
-          t.type === TransactionType.INCOME ||
-          t.type === TransactionType.ACCOUNT_OPENING
-        ) {
-          pocketDelta = t.amount * factor;
-        } else {
-          pocketDelta = -sourceAmount * factor;
+        const pocket = pockets.find((p) => p.id === t.savingPocketId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPocketReset =
+          !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+        if (isAfterPocketReset) {
+          const sourceAmount = t.amount;
+          let pocketDelta = 0;
+          if (
+            t.type === TransactionType.INCOME ||
+            t.type === TransactionType.ACCOUNT_OPENING
+          ) {
+            pocketDelta = t.amount * factor;
+          } else {
+            pocketDelta = -sourceAmount * factor;
+          }
+          pocketUpdates.set(
+            t.savingPocketId,
+            (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
+          );
         }
-        pocketUpdates.set(
-          t.savingPocketId,
-          (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
-        );
       }
 
       // Legacy single-record pocket logic
@@ -2034,14 +2080,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         !t.transferDirection &&
         !t.linkedTransactionId
       ) {
-        const fee = t.fee || 0;
-        const feeType = t.feeType || "INCLUSIVE";
-        const targetAmount =
-          feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-        pocketUpdates.set(
-          t.toSavingPocketId,
-          (pocketUpdates.get(t.toSavingPocketId) || 0) + targetAmount * factor,
-        );
+        const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPocketReset =
+          !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+        if (isAfterPocketReset) {
+          const fee = t.fee || 0;
+          const feeType = t.feeType || "INCLUSIVE";
+          const targetAmount =
+            feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+          pocketUpdates.set(
+            t.toSavingPocketId,
+            (pocketUpdates.get(t.toSavingPocketId) || 0) +
+              targetAmount * factor,
+          );
+        }
       }
     };
 
@@ -2067,7 +2121,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (potUpdates.size > 0) {
       const updatedPots = pots.map((p) => {
         if (potUpdates.has(p.id)) {
-          const newUsedAmount = p.usedAmount + (potUpdates.get(p.id) || 0);
+          const newUsedAmount = Math.max(
+            0,
+            p.usedAmount + (potUpdates.get(p.id) || 0),
+          );
           return {
             ...p,
             usedAmount: newUsedAmount,
@@ -2092,8 +2149,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (pocketUpdates.size > 0) {
       const updatedPockets = pockets.map((p) => {
         if (pocketUpdates.has(p.id)) {
-          const newCurrentAmount =
-            p.currentAmount + (pocketUpdates.get(p.id) || 0);
+          const newCurrentAmount = Math.max(
+            0,
+            p.currentAmount + (pocketUpdates.get(p.id) || 0),
+          );
           return {
             ...p,
             currentAmount: newCurrentAmount,
@@ -2244,36 +2303,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Handle Pots
       if (t.potId) {
-        let potDelta = 0;
-        if (
-          t.type === TransactionType.INCOME ||
-          t.type === TransactionType.ACCOUNT_OPENING
-        ) {
-          potDelta = -t.amount;
-        } else {
-          potDelta = t.amount;
+        const pot = pots.find((p) => p.id === t.potId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPotReset =
+          !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
+
+        if (isAfterPotReset) {
+          let potDelta = 0;
+          if (
+            t.type === TransactionType.INCOME ||
+            t.type === TransactionType.ACCOUNT_OPENING
+          ) {
+            potDelta = -t.amount;
+          } else {
+            potDelta = t.amount;
+          }
+          potUpdates.set(
+            t.potId,
+            (potUpdates.get(t.potId) || 0) + potDelta * factor,
+          );
         }
-        potUpdates.set(
-          t.potId,
-          (potUpdates.get(t.potId) || 0) + potDelta * factor,
-        );
       }
 
       // Handle Pockets
       if (t.savingPocketId) {
-        let pocketDelta = 0;
-        if (
-          t.type === TransactionType.INCOME ||
-          t.type === TransactionType.ACCOUNT_OPENING
-        ) {
-          pocketDelta = t.amount;
-        } else {
-          pocketDelta = -t.amount;
+        const pocket = pockets.find((p) => p.id === t.savingPocketId);
+        const txDateStr = normalizeDate(t.date);
+        const isAfterPocketReset =
+          !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+        if (isAfterPocketReset) {
+          let pocketDelta = 0;
+          if (
+            t.type === TransactionType.INCOME ||
+            t.type === TransactionType.ACCOUNT_OPENING
+          ) {
+            pocketDelta = t.amount;
+          } else {
+            pocketDelta = -t.amount;
+          }
+          pocketUpdates.set(
+            t.savingPocketId,
+            (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta * factor,
+          );
         }
-        pocketUpdates.set(
-          t.savingPocketId,
-          (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta * factor,
-        );
       }
     };
 
@@ -2708,7 +2781,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           const isInflow =
             t.type === TransactionType.INCOME ||
             t.type === TransactionType.ACCOUNT_OPENING ||
-            t.type === TransactionType.ADJUSTMENT || // Adjustments here are treated as positive additions for now
+            (t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
             (t.type === TransactionType.TRANSFER &&
               t.transferDirection === "IN");
 
@@ -2808,14 +2881,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           !t.transferDirection &&
           !t.linkedTransactionId
         ) {
-          const fee = t.fee || 0;
-          const feeType = t.feeType || "INCLUSIVE";
-          const targetAmount =
-            feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-          pocketUpdates.set(
-            t.toSavingPocketId,
-            (pocketUpdates.get(t.toSavingPocketId) || 0) + targetAmount,
-          );
+          const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
+          const isAfterPocketReset =
+            !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+          if (isAfterPocketReset) {
+            const fee = t.fee || 0;
+            const feeType = t.feeType || "INCLUSIVE";
+            const targetAmount =
+              feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+            pocketUpdates.set(
+              t.toSavingPocketId,
+              (pocketUpdates.get(t.toSavingPocketId) || 0) + targetAmount,
+            );
+          }
         }
       };
 

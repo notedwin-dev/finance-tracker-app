@@ -186,6 +186,8 @@ const Goals: React.FC<Props> = ({
 
   const handlePocketSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
     try {
       const selectedAccount = accounts.find((a) => a.id === pocketAccountId);

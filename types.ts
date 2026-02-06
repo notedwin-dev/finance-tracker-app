@@ -142,6 +142,7 @@ export interface Pot {
   currency: Currency;
   color: string;
   icon: string;
+  resetDate?: string; // Cutoff date (YYYY-MM-DD) for recalculation - only count transactions from this date onwards
   updatedAt?: number;
 }
 
@@ -156,6 +157,7 @@ export interface SavingPocket {
   tenureMonths?: 2 | 3; // For BONUS_POCKET
   color: string;
   icon: string;
+  resetDate?: string; // Cutoff date (YYYY-MM-DD) for recalculation - only count transactions from this date onwards
   updatedAt?: number;
 }
 

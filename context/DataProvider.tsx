@@ -2755,36 +2755,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        // 2. Pots (Spending Limits)
+        // 2. Pots (Spending Limits) - respect pot's reset date cutoff
         if (t.potId) {
-          let potDelta = 0;
-          // Use the transaction amount directly (pots track in transaction currency)
-          if (
-            t.type === TransactionType.INCOME ||
-            t.type === TransactionType.ACCOUNT_OPENING
-          ) {
-            potDelta = -t.amount; // Incoming money restores pot limit
-          } else {
-            potDelta = t.amount; // Spending uses pot limit
+          const pot = pots.find((p) => p.id === t.potId);
+          // Only count this transaction if it's on or after the pot's reset date
+          const isAfterPotReset =
+            !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
+
+          if (isAfterPotReset) {
+            let potDelta = 0;
+            // Use the transaction amount directly (pots track in transaction currency)
+            if (
+              t.type === TransactionType.INCOME ||
+              t.type === TransactionType.ACCOUNT_OPENING
+            ) {
+              potDelta = -t.amount; // Incoming money restores pot limit
+            } else {
+              potDelta = t.amount; // Spending uses pot limit
+            }
+            potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
           }
-          potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
         }
 
-        // 3. Pockets (Goals/Savings)
+        // 3. Pockets (Goals/Savings) - respect pocket's reset date cutoff
         if (t.savingPocketId) {
-          let pocketDelta = 0;
-          if (
-            t.type === TransactionType.INCOME ||
-            t.type === TransactionType.ACCOUNT_OPENING
-          ) {
-            pocketDelta = t.amount;
-          } else {
-            pocketDelta = -t.amount;
+          const pocket = pockets.find((p) => p.id === t.savingPocketId);
+          // Only count this transaction if it's on or after the pocket's reset date
+          const isAfterPocketReset =
+            !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+          if (isAfterPocketReset) {
+            let pocketDelta = 0;
+            if (
+              t.type === TransactionType.INCOME ||
+              t.type === TransactionType.ACCOUNT_OPENING
+            ) {
+              pocketDelta = t.amount;
+            } else {
+              pocketDelta = -t.amount;
+            }
+            pocketUpdates.set(
+              t.savingPocketId,
+              (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
+            );
           }
-          pocketUpdates.set(
-            t.savingPocketId,
-            (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
-          );
         }
 
         // Legacy single-record pocket logic

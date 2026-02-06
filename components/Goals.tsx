@@ -60,6 +60,7 @@ const Goals: React.FC<Props> = ({
   const [potAccountId, setPotAccountId] = useState("");
   const [potTarget, setPotTarget] = useState("");
   const [potCurrent, setPotCurrent] = useState("");
+  const [potResetDate, setPotResetDate] = useState("");
 
   // Saving Pocket form state
   const [pocketName, setPocketName] = useState("");
@@ -68,6 +69,7 @@ const Goals: React.FC<Props> = ({
   const [pocketCurrency, setPocketCurrency] = useState("MYR");
   const [pocketIcon, setPocketIcon] = useState("🚀");
   const [pocketColor, setPocketColor] = useState("indigo-500");
+  const [pocketResetDate, setPocketResetDate] = useState("");
 
   // Goal form state
   const [goalName, setGoalName] = useState("");
@@ -164,6 +166,7 @@ const Goals: React.FC<Props> = ({
     setPotAccountId(pot.accountId);
     setPotTarget(pot.limitAmount.toFixed(2));
     setPotCurrent(pot.usedAmount.toFixed(2));
+    setPotResetDate(pot.resetDate ? normalizeDate(pot.resetDate) : "");
     setShowPotModal(true);
   };
 
@@ -177,6 +180,7 @@ const Goals: React.FC<Props> = ({
     setPocketColor(pocket.color);
     setPocketType(pocket.pocketType || "SAVING_POCKET");
     setTenureMonths(pocket.tenureMonths || 3);
+    setPocketResetDate(pocket.resetDate ? normalizeDate(pocket.resetDate) : "");
     setShowPocketModal(true);
   };
 
@@ -198,11 +202,13 @@ const Goals: React.FC<Props> = ({
         pocketType: isGXBank ? pocketType : "SAVING_POCKET",
         tenureMonths:
           isGXBank && pocketType === "BONUS_POCKET" ? tenureMonths : undefined,
+        resetDate: pocketResetDate || undefined,
       };
       await onSavePocket(pocketData);
       setPocketName("");
       setPocketAccountId("");
       setPocketCurrent("");
+      setPocketResetDate("");
       setPocketType("SAVING_POCKET");
       setTenureMonths(3);
       setEditingId(null);
@@ -242,12 +248,14 @@ const Goals: React.FC<Props> = ({
           accounts.find((a) => a.id === potAccountId)?.currency || "MYR",
         icon: "💰",
         color: "bg-primary",
+        resetDate: potResetDate || undefined,
         updatedAt: Date.now(),
       });
       setPotName("");
       setPotAccountId("");
       setPotTarget("");
       setPotCurrent("");
+      setPotResetDate("");
       setEditingId(null);
       setShowPotModal(false);
     } finally {
@@ -658,6 +666,7 @@ const Goals: React.FC<Props> = ({
                   setPotAccountId("");
                   setPotTarget("");
                   setPotCurrent("");
+                  setPotResetDate("");
                 }}
                 className="text-gray-400 hover:text-white p-1"
               >
@@ -745,6 +754,17 @@ const Goals: React.FC<Props> = ({
                 </div>
               </div>
 
+              <div>
+                <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1.5 block">
+                  Reset Date (Optional)
+                </label>
+                <DatePicker value={potResetDate} onChange={setPotResetDate} />
+                <p className="text-[10px] text-gray-500 mt-1.5 font-medium">
+                  Only count transactions from this date onwards. Leave empty to
+                  include all transactions.
+                </p>
+              </div>
+
               {potAccountId && (
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 sm:p-4">
                   <p className="text-[10px] sm:text-xs text-primary/80 font-medium leading-relaxed">
@@ -791,6 +811,7 @@ const Goals: React.FC<Props> = ({
                   setPocketName("");
                   setPocketAccountId("");
                   setPocketCurrent("");
+                  setPocketResetDate("");
                 }}
                 className="p-2 text-gray-500 hover:text-white transition-colors"
               >
@@ -953,6 +974,20 @@ const Goals: React.FC<Props> = ({
                     <option value="purple-500">Purple</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                  Reset Date (Optional)
+                </label>
+                <DatePicker
+                  value={pocketResetDate}
+                  onChange={setPocketResetDate}
+                />
+                <p className="text-[9px] text-gray-500 mt-1 italic px-1">
+                  Only count transactions from this date onwards. Leave empty to
+                  include all transactions.
+                </p>
               </div>
 
               <button

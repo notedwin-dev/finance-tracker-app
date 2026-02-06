@@ -36,7 +36,7 @@ interface Props {
   onSync?: () => void;
   onUnlinkCloud?: () => void;
   onResetSync?: () => void;
-  onSelectSheet?: () => void;
+  onSelectSheet?: (sheetId: string) => void;
   isSyncing?: boolean;
 }
 
@@ -157,7 +157,7 @@ const Profile: React.FC<Props> = ({
     icon: any;
     label: string;
     description?: string;
-    onClick?: () => void;
+    onClick?: (props?: any) => void;
     action?: React.ReactNode;
     color?: string;
   }) => (

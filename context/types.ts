@@ -48,7 +48,7 @@ export interface DataContextType {
   toast: { message: string; type: "success" | "alert" | "info" } | null;
   showToast: (message: string, type: "success" | "alert" | "info") => void;
   syncData: () => Promise<void>;
-  handleSelectExistingSheet: () => Promise<void>;
+  handleSelectExistingSheet: (sheetId: string) => Promise<void>;
   loadData: () => Promise<void>;
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
@@ -90,7 +90,10 @@ export interface DataContextType {
   handleDeleteChatSession: (id: string) => void;
   handleMigrateData: () => Promise<void>;
   handleResetAndSync: () => Promise<void>;
-  recalculateBalances: () => Promise<void>;
+  recalculateBalances: (
+    startDateArg?: string | any,
+    endDateArg?: string | any,
+  ) => Promise<void>;
   getTotalValueReceived: (tx: Transaction) => number;
   calculateGXBankInterest: (
     balance: number,

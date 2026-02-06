@@ -1614,19 +1614,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const updatedPotList = pots.map((p) => {
         if (potUpdates.has(p.id)) {
           const newUsedAmount = p.usedAmount + (potUpdates.get(p.id) || 0);
-          const updated = {
+          return {
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
             updatedAt: Date.now(),
           };
-          if (isCloudEnabled) SheetService.updateOne("Pots", p.id, updated);
-          return updated;
         }
         return p;
       });
       setPots(updatedPotList);
       StorageService.savePots(updatedPotList);
+
+      // Batch update affected pots to cloud
+      if (isCloudEnabled) {
+        const affectedPots = updatedPotList.filter((p) => potUpdates.has(p.id));
+        if (affectedPots.length > 0) {
+          await SheetService.updateMany("Pots", affectedPots);
+        }
+      }
     }
 
     if (pocketUpdates.size > 0) {
@@ -1634,18 +1640,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (pocketUpdates.has(p.id)) {
           const newCurrentAmount =
             p.currentAmount + (pocketUpdates.get(p.id) || 0);
-          const updated = {
+          return {
             ...p,
             currentAmount: newCurrentAmount,
             updatedAt: Date.now(),
           };
-          if (isCloudEnabled) SheetService.updateOne("Pockets", p.id, updated);
-          return updated;
         }
         return p;
       });
       setPockets(updatedPocketList);
       StorageService.savePockets(updatedPocketList);
+
+      // Batch update affected pockets to cloud
+      if (isCloudEnabled) {
+        const affectedPockets = updatedPocketList.filter((p) =>
+          pocketUpdates.has(p.id),
+        );
+        if (affectedPockets.length > 0) {
+          await SheetService.updateMany("Pockets", affectedPockets);
+        }
+      }
     }
 
     showToast("Transaction saved", "success");
@@ -1817,19 +1831,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const updatedPots = pots.map((p) => {
         if (potUpdates.has(p.id)) {
           const newUsedAmount = p.usedAmount + (potUpdates.get(p.id) || 0);
-          const updated = {
+          return {
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
             updatedAt: Date.now(),
           };
-          if (isCloudEnabled) SheetService.updateOne("Pots", p.id, updated);
-          return updated;
         }
         return p;
       });
       setPots(updatedPots);
       StorageService.savePots(updatedPots);
+
+      // Batch update affected pots to cloud
+      if (isCloudEnabled) {
+        const affectedPots = updatedPots.filter((p) => potUpdates.has(p.id));
+        if (affectedPots.length > 0) {
+          await SheetService.updateMany("Pots", affectedPots);
+        }
+      }
     }
 
     if (pocketUpdates.size > 0) {
@@ -1837,18 +1857,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (pocketUpdates.has(p.id)) {
           const newCurrentAmount =
             p.currentAmount + (pocketUpdates.get(p.id) || 0);
-          const updated = {
+          return {
             ...p,
             currentAmount: newCurrentAmount,
             updatedAt: Date.now(),
           };
-          if (isCloudEnabled) SheetService.updateOne("Pockets", p.id, updated);
-          return updated;
         }
         return p;
       });
       setPockets(updatedPockets);
       StorageService.savePockets(updatedPockets);
+
+      // Batch update affected pockets to cloud
+      if (isCloudEnabled) {
+        const affectedPockets = updatedPockets.filter((p) =>
+          pocketUpdates.has(p.id),
+        );
+        if (affectedPockets.length > 0) {
+          await SheetService.updateMany("Pockets", affectedPockets);
+        }
+      }
     }
 
     const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
@@ -2040,19 +2068,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const updatedPots = pots.map((p) => {
         if (potUpdates.has(p.id)) {
           const newUsedAmount = p.usedAmount + (potUpdates.get(p.id) || 0);
-          const updated = {
+          return {
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
             updatedAt: Date.now(),
           };
-          if (isCloudEnabled) SheetService.updateOne("Pots", p.id, updated);
-          return updated;
         }
         return p;
       });
       setPots(updatedPots);
       StorageService.savePots(updatedPots);
+
+      // Batch update affected pots to cloud
+      if (isCloudEnabled) {
+        const affectedPots = updatedPots.filter((p) => potUpdates.has(p.id));
+        if (affectedPots.length > 0) {
+          await SheetService.updateMany("Pots", affectedPots);
+        }
+      }
     }
 
     if (pocketUpdates.size > 0) {
@@ -2060,18 +2094,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         if (pocketUpdates.has(p.id)) {
           const newCurrentAmount =
             p.currentAmount + (pocketUpdates.get(p.id) || 0);
-          const updated = {
+          return {
             ...p,
             currentAmount: newCurrentAmount,
             updatedAt: Date.now(),
           };
-          if (isCloudEnabled) SheetService.updateOne("Pockets", p.id, updated);
-          return updated;
         }
         return p;
       });
       setPockets(updatedPockets);
       StorageService.savePockets(updatedPockets);
+
+      // Batch update affected pockets to cloud
+      if (isCloudEnabled) {
+        const affectedPockets = updatedPockets.filter((p) =>
+          pocketUpdates.has(p.id),
+        );
+        if (affectedPockets.length > 0) {
+          await SheetService.updateMany("Pockets", affectedPockets);
+        }
+      }
     }
 
     const idsToDelete = Array.from(idsToDeleteSet);
@@ -2096,52 +2138,76 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     transactions.forEach((t) => txMap.set(t.id, t));
 
     const finalUpdatesMap = new Map<string, Partial<Transaction>>();
+    const affectedTransactionIds = new Set<string>();
+
+    // Separate updates into: explicit values (to apply) and nullified fields (to clear)
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, v]) => v !== undefined),
+    ) as Partial<Transaction>;
+
+    const nullifiedFields = Object.keys(updates).filter(
+      (k) =>
+        updates[k as keyof Transaction] === undefined &&
+        ["potId", "savingPocketId", "toSavingPocketId"].includes(k),
+    );
 
     ids.forEach((id) => {
       const tx = txMap.get(id);
       if (!tx) return;
 
+      affectedTransactionIds.add(id);
+
       // Prepare updates for THIS transaction
-      const thisUpdates: any = { ...updates };
+      const thisUpdates: any = { ...cleanUpdates };
       delete thisUpdates.id;
       delete thisUpdates.userId;
+
+      // Explicitly set nullified fields to undefined so they get cleared
+      for (const field of nullifiedFields) {
+        thisUpdates[field] = undefined;
+      }
+
       thisUpdates.updatedAt = Date.now();
 
-      finalUpdatesMap.set(id, {
-        ...(finalUpdatesMap.get(id) || {}),
-        ...thisUpdates,
-      });
+      finalUpdatesMap.set(id, thisUpdates);
 
-      // Handle Partner Synchronization
+      // Handle Partner Synchronization - only if linked transaction is in selection or affected
       if (tx.linkedTransactionId) {
         const partner = txMap.get(tx.linkedTransactionId);
         if (partner) {
-          const partnerUpdates: any = { ...thisUpdates };
+          affectedTransactionIds.add(partner.id);
+          const partnerUpdates: any = { ...cleanUpdates };
+          delete partnerUpdates.id;
+          delete partnerUpdates.userId;
 
-          // Account synchronization
-          if (updates.accountId !== undefined) {
+          // Apply nullified fields to partner as well
+          for (const field of nullifiedFields) {
+            partnerUpdates[field] = undefined;
+          }
+
+          // Account synchronization - swap accounts for partner
+          if (cleanUpdates.accountId !== undefined) {
+            partnerUpdates.toAccountId = cleanUpdates.accountId;
             delete partnerUpdates.accountId;
-            partnerUpdates.toAccountId = updates.accountId;
           }
-          if (updates.toAccountId !== undefined) {
+          if (cleanUpdates.toAccountId !== undefined) {
+            partnerUpdates.accountId = cleanUpdates.toAccountId;
             delete partnerUpdates.toAccountId;
-            partnerUpdates.accountId = updates.toAccountId;
           }
 
-          // Pocket synchronization is reciprocal
-          if (updates.savingPocketId !== undefined) {
+          // Pocket synchronization is reciprocal - swap pockets for partner
+          if (cleanUpdates.savingPocketId !== undefined) {
+            partnerUpdates.toSavingPocketId = cleanUpdates.savingPocketId;
             delete partnerUpdates.savingPocketId;
-            partnerUpdates.toSavingPocketId = updates.savingPocketId;
           }
-          if (updates.toSavingPocketId !== undefined) {
+          if (cleanUpdates.toSavingPocketId !== undefined) {
+            partnerUpdates.savingPocketId = cleanUpdates.toSavingPocketId;
             delete partnerUpdates.toSavingPocketId;
-            partnerUpdates.savingPocketId = updates.toSavingPocketId;
           }
 
-          finalUpdatesMap.set(partner.id, {
-            ...(finalUpdatesMap.get(partner.id) || {}),
-            ...partnerUpdates,
-          });
+          // Always set updatedAt for partner
+          partnerUpdates.updatedAt = Date.now();
+          finalUpdatesMap.set(partner.id, partnerUpdates);
         }
       }
     });
@@ -2157,15 +2223,203 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setTransactions(updatedTransactionsList);
     StorageService.saveTransactions(updatedTransactionsList);
 
-    // Update Cloud
-    if (isCloudEnabled) {
-      for (const [id, upds] of finalUpdatesMap.entries()) {
-        await SheetService.updateOne("Transactions", id, upds);
+    // Update Cloud Transactions - only for affected transactions (batch update)
+    // Send the FULL transaction object, not just the partial updates, to preserve all fields
+    if (isCloudEnabled && affectedTransactionIds.size > 0) {
+      const affectedTxs = Array.from(affectedTransactionIds)
+        .map((id) => updatedTransactionsList.find((t) => t.id === id))
+        .filter((tx) => tx !== undefined) as Transaction[];
+      if (affectedTxs.length > 0) {
+        await SheetService.updateMany("Transactions", affectedTxs);
       }
     }
 
-    // Refresh all balances (Accounts, Pots, Pockets)
-    await recalculateBalances();
+    // Calculate pot and pocket updates ONLY for edited transactions
+    const potUpdates = new Map<string, number>();
+    const pocketUpdates = new Map<string, number>();
+    const accountUpdates = new Map<string, number>();
+
+    const applyLegToPotsPockets = (t: Transaction, factor: 1 | -1) => {
+      if (t.isHistorical) return;
+
+      // Handle Pots
+      if (t.potId) {
+        let potDelta = 0;
+        if (
+          t.type === TransactionType.INCOME ||
+          t.type === TransactionType.ACCOUNT_OPENING
+        ) {
+          potDelta = -t.amount;
+        } else {
+          potDelta = t.amount;
+        }
+        potUpdates.set(
+          t.potId,
+          (potUpdates.get(t.potId) || 0) + potDelta * factor,
+        );
+      }
+
+      // Handle Pockets
+      if (t.savingPocketId) {
+        let pocketDelta = 0;
+        if (
+          t.type === TransactionType.INCOME ||
+          t.type === TransactionType.ACCOUNT_OPENING
+        ) {
+          pocketDelta = t.amount;
+        } else {
+          pocketDelta = -t.amount;
+        }
+        pocketUpdates.set(
+          t.savingPocketId,
+          (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta * factor,
+        );
+      }
+    };
+
+    const applyLegToAccounts = (t: Transaction, factor: 1 | -1) => {
+      if (t.isHistorical) return;
+
+      const acc = accounts.find((a) => a.id === t.accountId);
+      if (!acc) return;
+
+      const amt =
+        t.currency === acc.currency
+          ? t.amount
+          : t.currency === "USD"
+            ? t.amount * usdRate
+            : t.amount / usdRate;
+
+      const fee = t.fee
+        ? t.currency === acc.currency
+          ? t.fee
+          : t.currency === "USD"
+            ? t.fee * usdRate
+            : t.fee / usdRate
+        : 0;
+
+      const feeType = t.feeType || "INCLUSIVE";
+
+      let delta = 0;
+      const isInflow =
+        t.type === TransactionType.INCOME ||
+        t.type === TransactionType.ACCOUNT_OPENING ||
+        (t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
+        (t.type === TransactionType.TRANSFER && t.transferDirection === "IN");
+
+      if (isInflow) {
+        const addedAmount =
+          t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
+            ? amt - fee
+            : amt;
+        delta = addedAmount * factor;
+      } else {
+        const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
+        delta = -removedAmount * factor;
+      }
+      accountUpdates.set(
+        t.accountId,
+        (accountUpdates.get(t.accountId) || 0) + delta,
+      );
+    };
+
+    // Only recalculate impacts for affected transactions (including pot removal)
+    affectedTransactionIds.forEach((txId) => {
+      const newTx = updatedTransactionsList.find((t) => t.id === txId);
+      const oldTx = transactions.find((t) => t.id === txId);
+
+      if (oldTx && newTx) {
+        applyLegToPotsPockets(oldTx, -1);
+        applyLegToPotsPockets(newTx, 1);
+
+        // Only apply account impacts if account fields changed
+        if (
+          cleanUpdates.accountId !== undefined ||
+          cleanUpdates.toAccountId !== undefined
+        ) {
+          applyLegToAccounts(oldTx, -1);
+          applyLegToAccounts(newTx, 1);
+        }
+      }
+    });
+
+    // Update Pots in Storage and Cloud - only affected pots (batch update)
+    if (potUpdates.size > 0) {
+      const updatedPotList = pots.map((p) => {
+        if (potUpdates.has(p.id)) {
+          const delta = potUpdates.get(p.id) || 0;
+          const newUsedAmount = p.usedAmount + delta;
+          return {
+            ...p,
+            usedAmount: Math.max(0, newUsedAmount),
+            amountLeft: p.limitAmount - Math.max(0, newUsedAmount),
+            updatedAt: Date.now(),
+          };
+        }
+        return p;
+      });
+      setPots(updatedPotList);
+
+      // Only save affected pots to storage and cloud (batch)
+      const affectedPots = updatedPotList.filter((p) => potUpdates.has(p.id));
+      StorageService.savePots(updatedPotList); // Full list for local storage consistency
+      if (isCloudEnabled && affectedPots.length > 0) {
+        await SheetService.updateMany("Pots", affectedPots);
+      }
+    }
+
+    // Update Pockets in Storage and Cloud - only affected pockets (batch update)
+    if (pocketUpdates.size > 0) {
+      const updatedPocketList = pockets.map((p) => {
+        if (pocketUpdates.has(p.id)) {
+          return {
+            ...p,
+            currentAmount: Math.max(
+              0,
+              p.currentAmount + (pocketUpdates.get(p.id) || 0),
+            ),
+            updatedAt: Date.now(),
+          };
+        }
+        return p;
+      });
+      setPockets(updatedPocketList);
+
+      // Only save affected pockets to storage and cloud (batch)
+      const affectedPockets = updatedPocketList.filter((p) =>
+        pocketUpdates.has(p.id),
+      );
+      StorageService.savePockets(updatedPocketList); // Full list for local storage consistency
+      if (isCloudEnabled && affectedPockets.length > 0) {
+        await SheetService.updateMany("Pockets", affectedPockets);
+      }
+    }
+
+    // Update Accounts - only if affected by balance changes (batch update)
+    if (accountUpdates.size > 0) {
+      const updatedAccountList = accounts.map((a) => {
+        if (accountUpdates.has(a.id)) {
+          return {
+            ...a,
+            balance: a.balance + (accountUpdates.get(a.id) || 0),
+            updatedAt: Date.now(),
+          };
+        }
+        return a;
+      });
+      setAccounts(updatedAccountList);
+      StorageService.saveAccounts(updatedAccountList);
+
+      // Batch update affected accounts to cloud
+      if (isCloudEnabled) {
+        const affectedAccounts = updatedAccountList.filter((a) =>
+          accountUpdates.has(a.id),
+        );
+        if (affectedAccounts.length > 0) {
+          await SheetService.updateMany("Accounts", affectedAccounts);
+        }
+      }
+    }
 
     showToast(`Updated ${finalUpdatesMap.size} transactions`, "success");
   };
@@ -2504,6 +2758,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         // 2. Pots (Spending Limits)
         if (t.potId) {
           let potDelta = 0;
+          // Use the transaction amount directly (pots track in transaction currency)
           if (
             t.type === TransactionType.INCOME ||
             t.type === TransactionType.ACCOUNT_OPENING
@@ -2584,12 +2839,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       StorageService.savePockets(updatedPockets);
 
       if (isCloudEnabled) {
-        for (const a of updatedAccounts)
-          await SheetService.updateOne("Accounts", a.id, a);
-        for (const p of updatedPots)
-          await SheetService.updateOne("Pots", p.id, p);
-        for (const p of updatedPockets)
-          await SheetService.updateOne("Pockets", p.id, p);
+        // Batch update all accounts
+        if (updatedAccounts.length > 0) {
+          await SheetService.updateMany("Accounts", updatedAccounts);
+        }
+        // Batch update all pots
+        if (updatedPots.length > 0) {
+          await SheetService.updateMany("Pots", updatedPots);
+        }
+        // Batch update all pockets
+        if (updatedPockets.length > 0) {
+          await SheetService.updateMany("Pockets", updatedPockets);
+        }
       }
 
       showToast("Recalculation complete", "success");

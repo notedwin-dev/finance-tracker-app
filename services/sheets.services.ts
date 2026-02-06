@@ -912,6 +912,81 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 };
 
 /**
+ * Batch update multiple rows in a sheet (much more efficient than individual updateOne calls).
+ * Only fetches headers once and finds all rows, then updates in bulk.
+ */
+export const updateMany = async (sheetName: string, items: any[]) => {
+  if (!gapiInited || !hasAccessToken || items.length === 0) return;
+
+  try {
+    const fileId = await getSpreadsheetId();
+    if (!fileId) return;
+
+    // 1. Get Headers once
+    const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!1:1`,
+    });
+    const headers = headerRes.result.values?.[0] || [];
+    const idColumnIndex = headers.indexOf("id");
+
+    if (idColumnIndex === -1) {
+      console.warn(`No id column in ${sheetName}, falling back to insertMany`);
+      return insertMany(sheetName, items);
+    }
+
+    const idColLetter = getColumnLetter(idColumnIndex);
+
+    // 2. Get all IDs in the sheet once
+    const res = await window.gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: fileId,
+      range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
+    });
+
+    const sheetIds = res.result.values || [];
+    const idToRowIndex = new Map<string, number>();
+    sheetIds.forEach((row: any[], idx: number) => {
+      if (row[0]) idToRowIndex.set(row[0], idx);
+    });
+
+    // 3. Prepare batch update with data and ranges
+    const data: any[] = [];
+    items.forEach((item) => {
+      const rowIndex = idToRowIndex.get(item.id);
+      if (rowIndex !== undefined && rowIndex > 0) {
+        // Convert to values row
+        const row = headers.map((header: string) => {
+          const val = item[header];
+          if (typeof val === "object" && val !== null) {
+            return JSON.stringify(val);
+          }
+          return val ?? "";
+        });
+
+        data.push({
+          range: `'${sheetName}'!A${rowIndex + 1}`,
+          values: [row],
+        });
+      }
+    });
+
+    // 4. Execute batch update if there are items to update
+    if (data.length > 0) {
+      await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: fileId,
+        resource: {
+          data,
+          valueInputOption: "USER_ENTERED",
+        },
+      });
+      console.log(`Batch updated ${data.length} rows in ${sheetName}`);
+    }
+  } catch (e) {
+    console.warn(`Error batch updating ${sheetName}`, e);
+  }
+};
+
+/**
  * Deletes a specific row based on the 'id' field.
  */
 export const deleteOne = async (sheetName: string, id: string) => {

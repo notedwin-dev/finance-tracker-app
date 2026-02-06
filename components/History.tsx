@@ -897,7 +897,7 @@ const History: React.FC<Props> = ({
                   value={
                     batchUpdates.potId === undefined
                       ? "KEEP"
-                      : batchUpdates.potId === null
+                      : batchUpdates.potId === null || batchUpdates.potId === ""
                         ? "REMOVE"
                         : batchUpdates.potId
                   }
@@ -906,7 +906,7 @@ const History: React.FC<Props> = ({
                     setBatchUpdates((prev) => {
                       const next = { ...prev };
                       if (val === "KEEP") delete next.potId;
-                      else if (val === "REMOVE") next.potId = null as any;
+                      else if (val === "REMOVE") next.potId = undefined;
                       else next.potId = val;
                       return next;
                     });
@@ -938,7 +938,8 @@ const History: React.FC<Props> = ({
                     value={
                       batchUpdates.savingPocketId === undefined
                         ? "KEEP"
-                        : batchUpdates.savingPocketId === null
+                        : batchUpdates.savingPocketId === null ||
+                            batchUpdates.savingPocketId === ""
                           ? "REMOVE"
                           : batchUpdates.savingPocketId
                     }
@@ -948,7 +949,7 @@ const History: React.FC<Props> = ({
                         const next = { ...prev };
                         if (val === "KEEP") delete next.savingPocketId;
                         else if (val === "REMOVE")
-                          next.savingPocketId = null as any;
+                          next.savingPocketId = undefined;
                         else next.savingPocketId = val;
                         return next;
                       });
@@ -978,7 +979,8 @@ const History: React.FC<Props> = ({
                     value={
                       batchUpdates.toSavingPocketId === undefined
                         ? "KEEP"
-                        : batchUpdates.toSavingPocketId === null
+                        : batchUpdates.toSavingPocketId === null ||
+                            batchUpdates.toSavingPocketId === ""
                           ? "REMOVE"
                           : batchUpdates.toSavingPocketId
                     }
@@ -988,7 +990,7 @@ const History: React.FC<Props> = ({
                         const next = { ...prev };
                         if (val === "KEEP") delete next.toSavingPocketId;
                         else if (val === "REMOVE")
-                          next.toSavingPocketId = null as any;
+                          next.toSavingPocketId = undefined;
                         else next.toSavingPocketId = val;
                         return next;
                       });

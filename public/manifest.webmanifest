@@ -1,0 +1,20 @@
+{
+  "name": "ZenFinance Tracker",
+  "short_name": "ZenFinance",
+  "description": "Your Finance. Your Data. Your Sovereignty. Private finance tracker using Google Sheets and AI.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/images/ZenFinance.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "screenshots": []
+}

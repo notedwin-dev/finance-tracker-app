@@ -38,10 +38,11 @@ export interface Account {
   color: string;
   iconType: "EMOJI" | "IMAGE";
   iconValue: string; // Emoji char or Image URL
-  updatedAt?: number; // Timestamp for sync
+  updatedAt?: string; // Timestamp for sync
   userId: string; // User ID owner
   providerId?: string;
   details?: AccountDetails | string;
+  isEncrypted?: boolean;
 }
 
 export interface Category {
@@ -52,7 +53,7 @@ export interface Category {
   budgetLimit: number;
   budgetPeriod?: "WEEKLY" | "MONTHLY";
   color: string;
-  updatedAt?: number;
+  updatedAt?: string;
   isDefault?: boolean;
 }
 
@@ -80,9 +81,9 @@ export interface Transaction {
   isSubsidized?: boolean; // If true, amount is effectively 0, but marketValue tracks value received
   marketValue?: number; // Value of the subsidy/benefit
   isHistorical?: boolean; // If true, this transaction does not affect account balance
-  createdAt: number; // For sorting and conflict resolution
+  createdAt: string; // ISO 8601 timestamp for sorting and conflict resolution
   note?: string;
-  updatedAt?: number;
+  updatedAt?: string;
   linkedTransactionId?: string; // For split transfers
   transferDirection?: "OUT" | "IN";
   potId?: string; // Linked Spending Pot / Limit
@@ -92,16 +93,16 @@ export interface Transaction {
 }
 
 export interface UserCloudSettings {
-  isVaultEnabled?: boolean;
-  isVaultCreated?: boolean;
-  isVaultLocked?: boolean;
-  vaultSalt?: string;
-  biometricCredId?: string; // Legacy
-  biometricCredIds?: string[];
-  devices?: string[];
+  isSecurityEnabled?: boolean; // Replaces isVaultEnabled - enables encryption for sensitive data
+  totpSecret?: string; // TOTP secret for 2FA (stored encrypted in cloud)
+  totpEnabled?: boolean; // Whether 2FA is enabled
+  biometricEnabled?: boolean; // Whether biometrics is enabled on this device
+  encryptionKey?: string; // Encrypted master key for data encryption (encrypted with biometric + 2FA)
+  biometricCredIds?: string[]; // Credential ID for WebAuthn biometric auth
+  devices?: string[]; // List of registered devices for biometric auth
   privacyMode?: boolean;
-  lastSyncAt?: number;
-  lastUpdatedAt?: number; // Timestamp when data was last modified in Sheets (for re-linking comparison)
+  lastSyncAt?: string;
+  lastUpdatedAt?: string; // Timestamp when data was last modified in Sheets (for re-linking comparison)
 }
 
 export interface UserProfile extends UserCloudSettings {
@@ -110,7 +111,7 @@ export interface UserProfile extends UserCloudSettings {
   email: string;
   photoUrl?: string;
   isLoggedIn: boolean;
-  updatedAt?: number;
+  updatedAt?: string;
   showAIAssistant?: boolean;
   geminiApiKey?: string;
   syncChatToSheets?: boolean;
@@ -129,7 +130,7 @@ export interface Goal {
   linkedAccountId?: string; // If linked, currentAmount updates automatically
   color: string;
   icon: string;
-  updatedAt?: number;
+  updatedAt?: string;
 }
 
 export interface Pot {
@@ -144,7 +145,7 @@ export interface Pot {
   color: string;
   icon: string;
   resetDate?: string; // Cutoff date (YYYY-MM-DD) for recalculation - only count transactions from this date onwards
-  updatedAt?: number;
+  updatedAt?: string;
 }
 
 export interface SavingPocket {
@@ -159,7 +160,7 @@ export interface SavingPocket {
   color: string;
   icon: string;
   resetDate?: string; // Cutoff date (YYYY-MM-DD) for recalculation - only count transactions from this date onwards
-  updatedAt?: number;
+  updatedAt?: string;
 }
 
 export type SubscriptionFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -175,13 +176,14 @@ export interface Subscription {
   nextPaymentDate: string; // YYYY-MM-DD
   frequency: SubscriptionFrequency;
   active: boolean;
-  updatedAt?: number;
+  createdAt?: string; // ISO 8601 timestamp
+  updatedAt?: string;
 }
 
 export interface ChatMessage {
   role: "user" | "model" | "system";
   content: string;
-  timestamp: number;
+  timestamp: string; // ISO 8601 timestamp
   functionCall?: {
     name: string;
     args: any;
@@ -198,7 +200,7 @@ export interface ChatSession {
   userId: string;
   title: string;
   messages: ChatMessage[];
-  updatedAt: number;
+  updatedAt: string;
 }
 
 // Asset Providers Data

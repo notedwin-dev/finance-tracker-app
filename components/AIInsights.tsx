@@ -102,7 +102,7 @@ const AIInsights: React.FC<Props> = ({
         role: "model",
         content:
           "🚫 **No Internet Connection**\n\nI need an active internet connection to process your request. Please check your connection and try again.",
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
       };
 
       const sessionForError = activeSession
@@ -113,11 +113,11 @@ const AIInsights: React.FC<Props> = ({
               {
                 role: "user",
                 content: userQuery,
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
               } as ChatMessage,
               offlineMsg,
             ],
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           }
         : {
             id: crypto.randomUUID(),
@@ -127,11 +127,11 @@ const AIInsights: React.FC<Props> = ({
               {
                 role: "user",
                 content: userQuery,
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
               } as ChatMessage,
               offlineMsg,
             ],
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
 
       onSaveSession(sessionForError);
@@ -146,7 +146,7 @@ const AIInsights: React.FC<Props> = ({
     const userMessage: ChatMessage = {
       role: "user",
       content: userQuery,
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     };
 
     let currentSession: ChatSession;
@@ -156,7 +156,7 @@ const AIInsights: React.FC<Props> = ({
         userId: accounts[0]?.userId || "guest",
         title: "New Chat",
         messages: [userMessage],
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
       onSaveSession(currentSession);
       onSelectSession(currentSession.id);
@@ -164,7 +164,7 @@ const AIInsights: React.FC<Props> = ({
       currentSession = {
         ...activeSession,
         messages: [...activeSession.messages, userMessage],
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
       onSaveSession(currentSession);
     }
@@ -192,7 +192,7 @@ const AIInsights: React.FC<Props> = ({
       const aiMessage: ChatMessage = {
         role: "model",
         content: result.text,
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
         functionCall: result.functionCall,
         status: result.functionCall ? "pending" : undefined,
       };
@@ -200,7 +200,7 @@ const AIInsights: React.FC<Props> = ({
       const updatedSession = {
         ...currentSession,
         messages: [...currentSession.messages, aiMessage],
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
 
       // Auto-titling if it's the first exchange
@@ -226,12 +226,12 @@ const AIInsights: React.FC<Props> = ({
         content: `🚨 **AI Error**\n\n${
           err?.message || "I encountered an unexpected issue."
         }\n\n*Please ensure your API Key is correct or try again in a few moments.*`,
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
       };
       onSaveSession({
         ...currentSession,
         messages: [...currentSession.messages, errorMessage],
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       });
     } finally {
       setLoading(false);
@@ -250,7 +250,7 @@ const AIInsights: React.FC<Props> = ({
       const systemResponse: ChatMessage = {
         role: "user",
         content: "I denied access to historical data.",
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
         functionResponse: {
           name: msg.functionCall.name,
           response: { error: "User rejected the request" },
@@ -260,7 +260,7 @@ const AIInsights: React.FC<Props> = ({
       const updatedSession = {
         ...activeSession,
         messages: [...messages, systemResponse],
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
       onSaveSession(updatedSession);
 
@@ -300,7 +300,7 @@ const AIInsights: React.FC<Props> = ({
     const functionResponseMessage: ChatMessage = {
       role: "user",
       content: `I've approved the data access. Found ${toolResult?.length || 0} matching transactions.`,
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
       functionResponse: {
         name: msg.functionCall.name,
         response: toolResult || { result: "No data found" },
@@ -310,7 +310,7 @@ const AIInsights: React.FC<Props> = ({
     const nextSession = {
       ...activeSession,
       messages: [...messages, functionResponseMessage],
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     };
     onSaveSession(nextSession);
 
@@ -373,7 +373,11 @@ const AIInsights: React.FC<Props> = ({
 
         <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
           {sessions
-            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .sort(
+              (a, b) =>
+                new Date(b.updatedAt).getTime() -
+                new Date(a.updatedAt).getTime(),
+            )
             .map((s) => (
               <div
                 key={s.id}

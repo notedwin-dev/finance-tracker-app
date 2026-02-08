@@ -29,11 +29,11 @@ export interface DataContextType {
   isVaultEnabled: boolean;
   isVaultCreated: boolean;
   isVaultUnlocked: boolean;
-  unlockVault: (password: string) => Promise<boolean>;
+  unlockVaultWithTOTP: (totpCode: string) => Promise<boolean>;
   unlockVaultWithBiometrics: () => Promise<boolean>;
-  enableBiometricUnlock: (password: string) => Promise<boolean>;
+  enableBiometricUnlock: () => Promise<boolean>;
   lockVault: () => void;
-  enableVault: (password: string) => Promise<void>;
+  enableVault: () => Promise<void>;
   disableVault: () => Promise<void>;
   maskAmount: (
     amount: number | string,

@@ -111,7 +111,7 @@ const MainLayout: React.FC = () => {
       categoryId: sub.categoryId,
       shopName: sub.name,
       date: new Date().toLocaleDateString("en-CA"),
-      createdAt: Date.now(),
+      createdAt: new Date().toISOString(),
       subscriptionId: sub.id,
     } as Transaction);
     setShowAddModal(true);

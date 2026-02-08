@@ -16,14 +16,34 @@ import {
   ChatSession,
   TransactionType,
   ExchangeRateData,
+  UserProfile,
 } from "../types";
 import { DataContext } from "./DataContext";
 import * as SecurityService from "../services/security.services";
 
+// Legacy vault type for backward compatibility during migration
+type LegacyVaultProfile = UserProfile & {
+  isVaultEnabled?: boolean;
+  isVaultCreated?: boolean;
+  isVaultLocked?: boolean;
+  vaultSalt?: string;
+  encryptedVaultPassword?: string;
+  biometricCredId?: string;
+  biometricCredIds?: string[];
+  devices?: any[];
+};
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { profile, loginWithGoogle, isInitialized, updateProfile } = useAuth();
+  const {
+    profile: rawProfile,
+    loginWithGoogle,
+    isInitialized,
+    updateProfile,
+  } = useAuth();
+  // Cast to legacy type for backward compatibility
+  const profile = rawProfile as LegacyVaultProfile;
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -50,21 +70,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     type: "success" | "alert" | "info";
   } | null>(null);
 
-  // Vault/Security State
-  const [vaultPassword, setVaultPassword] = useState<string | null>(() => {
-    // Try sessionStorage first (active tab)
-    let session = sessionStorage.getItem("vault_password_session");
-    if (!session) {
-      // Fallback to legacy localStorage session check for smoother migration
-      session = localStorage.getItem("vault_password_session");
-      if (session) {
-        // Move to sessionStorage and clean up
-        sessionStorage.setItem("vault_password_session", session);
-        localStorage.removeItem("vault_password_session");
-      }
-    }
-    return session;
-  });
+  // Security State (Biometric + 2FA)
+  const [securityUnlocked, setSecurityUnlocked] = useState<boolean>(false);
+  const securityUnlockedRef = React.useRef(false);
+
+  const setSecurityUnlockedWithRef = (val: boolean) => {
+    securityUnlockedRef.current = val;
+    setSecurityUnlocked(val);
+  };
+  const [masterKey, setMasterKey] = useState<CryptoKey | null>(null);
 
   const checkBool = (val: any) => {
     if (typeof val === "boolean") return val;
@@ -77,9 +91,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const privacyMode = checkBool(profile.privacyMode);
-  const isVaultEnabled = checkBool(profile.isVaultEnabled);
-  const isVaultCreated = checkBool(profile.isVaultCreated);
-  const isVaultLockedSetting = checkBool(profile.isVaultLocked);
+  const isSecurityEnabled = checkBool(profile.isSecurityEnabled);
+
+  // Legacy vault compatibility shims - TODO: Remove after full migration
+  const isVaultEnabled = isSecurityEnabled;
+  const isVaultCreated = isSecurityEnabled;
+  const isVaultLockedSetting = !securityUnlocked;
+  const vaultPassword = null; // No longer used
+  const isVaultUnlocked = securityUnlocked || securityUnlockedRef.current;
+  const setVaultPassword = (val: string | null) => {
+    // No-op - vault password deprecated
+  };
 
   const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
 
@@ -98,15 +120,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
    * - Offline: Write to localStorage only
    * - Network error: Abort operation, show error, don't modify state
    */
-  const executeWrite = async <T,>(
-    operation: {
-      cloudWrite: () => Promise<T>;
-      localCache: () => void;
-      onSuccess?: () => void;
-      errorMessage?: string;
-    }
-  ): Promise<boolean> => {
-    const { cloudWrite, localCache, onSuccess, errorMessage = "Operation failed" } = operation;
+  const executeWrite = async <T,>(operation: {
+    cloudWrite: () => Promise<T>;
+    localCache: () => void;
+    onSuccess?: () => void;
+    errorMessage?: string;
+  }): Promise<boolean> => {
+    const {
+      cloudWrite,
+      localCache,
+      onSuccess,
+      errorMessage = "Operation failed",
+    } = operation;
 
     if (shouldUseCloudAsSource()) {
       try {
@@ -139,7 +164,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         await SheetService.updateOne("Profile", profile.id, {
           ...profile,
-          lastUpdatedAt: Date.now(),
+          lastUpdatedAt: new Date().toISOString(),
         });
       } catch (error) {
         console.warn("Failed to update cloud timestamp:", error);
@@ -148,64 +173,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const getVaultSalt = () => {
-    if (profile.vaultSalt) return profile.vaultSalt;
-    const newSalt = Math.random().toString(36).substring(2, 15);
-    updateProfile({ vaultSalt: newSalt });
-    return newSalt;
-  };
-
   const setPrivacyMode = (value: boolean) => {
     updateProfile({ privacyMode: value });
   };
 
-  const encryptAccount = async (
-    acc: Account,
-    customPass?: string,
-    customSalt?: string,
-  ): Promise<Account> => {
-    if (!isVaultEnabled || !acc.details) return acc;
+  const encryptAccount = async (acc: Account): Promise<Account> => {
+    if (!isVaultEnabled || !acc.details || acc.isEncrypted) return acc;
 
     // If already encrypted, don't double encrypt
-    if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
+    if (typeof acc.details === "string" && (acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))) {
+      return { ...acc, isEncrypted: true };
+    }
+
+    if (!profile.totpSecret) {
+      console.warn("Vault is enabled but no TOTP secret found for encryption.");
       return acc;
     }
 
-    const passToUse =
-      customPass ||
-      vaultPassword ||
-      sessionStorage.getItem("vault_password_session") ||
-      localStorage.getItem("vault_password_remembered");
-
-    // If vault is enabled but we have no password, we are in a dangerous state.
-    // If we have a plain object, we MUST NOT return it as is, otherwise it leaks to Sheets.
-    if (!passToUse) {
-      console.warn(
-        "Vault is enabled but no password set. Preserving plain data locally only, but masking for sync safety.",
-      );
-      // For sync safety, if we're about to return this for a sheet save,
-      // we might want to return something that isn't the full object if we can't encrypt it.
-      // However, the real fix is to make sure we don't save to sheets if not encrypted.
-      // For now, let's just return the object and we will handle the "isEncrypted" check in the save handlers.
-      return acc;
-    }
-
-    const salt = customSalt || getVaultSalt();
     try {
-      const encryptedDetails = await SecurityService.encryptData(
+      const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
+      const encryptedDetails = await SecurityService.encryptWithKey(
         JSON.stringify(acc.details),
-        passToUse,
-        salt,
+        key,
       );
-      return { ...acc, details: encryptedDetails as any };
+      return { ...acc, details: encryptedDetails as any, isEncrypted: true };
     } catch (e) {
       console.error("Encryption failed", e);
       return acc;
     }
   };
 
-  const isVaultUnlocked =
-    !!vaultPassword && isVaultEnabled && !isVaultLockedSetting;
+  // isVaultUnlocked now defined in compatibility shims above
 
   const normalizeAccount = (acc: any): Account => {
     // 1. If details is an encrypted string, don't touch it
@@ -256,33 +254,45 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   /**
-   * Unlock vault with biometrics (if enabled on this device)
-   * Biometrics = convenience feature that stores password locally per device
+   * Unlock vault with biometrics
+   * Uses WebAuthn to verify identity, then unlocks with stored encryption key
    */
   const unlockVaultWithBiometrics = async (): Promise<boolean> => {
     try {
-      // Check if biometrics are registered on this device
-      if (!SecurityService.isBiometricRegistered()) {
+      // Check if biometrics are registered
+      if (!(profile.biometricCredIds?.length || profile.biometricCredId)) {
         showToast("Biometrics not set up on this device", "alert");
         return false;
       }
 
       // Verify biometric authentication
-      const verified = await SecurityService.verifyWithBiometrics();
+      const credId = profile.biometricCredIds?.[0] || profile.biometricCredId;
+      if (!credId || typeof credId !== "string") {
+        showToast("Biometric credentials not found", "alert");
+        return false;
+      }
+
+      const verified = await SecurityService.verifyWithBiometrics(credId);
       if (!verified) {
         showToast("Biometric verification failed", "alert");
         return false;
       }
 
-      // Get stored password (only works if user previously enabled "Remember Password" with biometrics)
-      const rememberedPass = localStorage.getItem("vault_password_remembered");
-      if (!rememberedPass) {
-        showToast("Please unlock with password first to enable biometric unlock", "alert");
+      // Check if TOTP is set up (required for vault encryption)
+      if (!profile.totpSecret) {
+        showToast("2FA not set up - please set up TOTP first", "alert");
         return false;
       }
 
-      // Unlock with remembered password
-      return await unlockVault(rememberedPass);
+      // Biometric verification successful - unlock vault
+      setSecurityUnlockedWithRef(true);
+      updateProfile({ isVaultLocked: false } as any);
+
+      // Load decrypted data using TOTP-derived key
+      await loadData(true);
+
+      showToast("Vault unlocked with biometrics", "success");
+      return true;
     } catch (error) {
       console.error("Biometric unlock failed:", error);
       showToast("Failed to unlock with biometrics", "alert");
@@ -291,31 +301,71 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   /**
-   * Enable biometric unlock on this device (stores password locally)
-   * User must have vault password to enable this
+   * Unlock vault with TOTP code
+   * Verifies the code and unlocks if valid
    */
-  const enableBiometricUnlock = async (password: string): Promise<boolean> => {
+  const unlockVaultWithTOTP = async (totpCode: string): Promise<boolean> => {
     try {
-      // Verify password first
-      const isCorrect = await unlockVault(password);
-      if (!isCorrect) {
-        showToast("Incorrect password", "alert");
+      if (!profile.totpSecret) {
+        showToast("2FA not set up", "alert");
+        return false;
+      }
+
+      // Verify TOTP code
+      const isValid = await import("../services/twofa.services").then(
+        (service) => service.verifyTOTP(profile.totpSecret!, totpCode),
+      );
+
+      if (!isValid) {
+        showToast("Invalid 2FA code", "alert");
+        return false;
+      }
+
+      // TOTP verification successful - unlock vault
+      setSecurityUnlockedWithRef(true);
+      updateProfile({ isVaultLocked: false } as any);
+
+      // Load decrypted data using TOTP-derived key
+      await loadData(true);
+
+      showToast("Vault unlocked with 2FA", "success");
+      return true;
+    } catch (error) {
+      console.error("TOTP unlock failed:", error);
+      showToast("Failed to unlock with 2FA", "alert");
+      return false;
+    }
+  };
+
+  /**
+   * Enable biometric unlock on this device
+   * Requires existing TOTP setup
+   */
+  const enableBiometricUnlock = async (): Promise<boolean> => {
+    try {
+      if (!profile.totpSecret) {
+        showToast("Please set up 2FA first", "alert");
         return false;
       }
 
       // Register biometric credential
-      const credId = await SecurityService.registerBiometrics(profile.email || "user");
+      const credId = await SecurityService.registerBiometrics(
+        profile.email || "user",
+        profile.biometricCredIds,
+      );
       if (!credId) {
         showToast("Failed to register biometrics", "alert");
         return false;
       }
 
-      // Store password for biometric unlock
-      const salt = profile.vaultSalt || getVaultSalt();
-      const hashedPass = await SecurityService.hashPassword(password, salt);
-      localStorage.setItem("vault_password_remembered", hashedPass);
+      // Update profile with new credential ID
+      const updatedCredIds = Array.from(
+        new Set([...(profile.biometricCredIds || []), credId]),
+      );
 
-      showToast("Biometric unlock enabled on this device", "success");
+      await updateProfile({ biometricCredIds: updatedCredIds } as any);
+
+      showToast("Biometric unlock enabled", "success");
       return true;
     } catch (error) {
       console.error("Failed to enable biometric unlock:", error);
@@ -324,188 +374,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const unlockVault = async (password: string): Promise<boolean> => {
-    try {
-      const trimmedPass = password?.trim();
-      if (!trimmedPass) return false;
-
-      // CRITICAL FIX: Always use cloud salt as source of truth
-      const salt = profile.vaultSalt || getVaultSalt();
-      
-      // Use consistent iteration count (100,000 is standard)
-      const STANDARD_ITERATIONS = 100000;
-
-      // Try to find encrypted accounts to test against
-      const testAccounts = accounts
-        .filter(
-          (acc) =>
-            acc.details &&
-            typeof acc.details === "string" &&
-            acc.details.startsWith("ENC:"),
-        )
-        .slice(0, 3); // Test against up to 3 accounts for robustness
-
-      if (testAccounts.length === 0) {
-        // No encrypted data - vault not properly set up
-        // This should only happen on first setup
-        if (!profile.isVaultCreated) {
-          showToast("Please set up your vault first", "alert");
-          return false;
-        }
-        
-        // Vault is marked as created but no encrypted data found
-        // Accept the password and mark as unlocked
-        const hashedPass = password.startsWith("HASHED:")
-          ? password
-          : await SecurityService.hashPassword(password, salt, STANDARD_ITERATIONS);
-        setVaultPassword(hashedPass);
-        sessionStorage.setItem("vault_password_session", hashedPass);
-        if (localStorage.getItem("vault_password_remembered")) {
-          localStorage.setItem("vault_password_remembered", hashedPass);
-        }
-        updateProfile({ isVaultLocked: false });
-        return true;
-      }
-
-      // MIGRATION LOGIC: Try new standard first, then fallback to legacy combinations
-      const attemptUnlock = async (testSalt: string, iterations: number): Promise<boolean> => {
-        const hashedPass = password.startsWith("HASHED:")
-          ? password
-          : await SecurityService.hashPassword(trimmedPass, testSalt, iterations);
-
-        for (const testAcc of testAccounts) {
-          const decryptedStr = await SecurityService.decryptData(
-            testAcc.details as string,
-            hashedPass,
-            testSalt,
-          );
-
-          if (decryptedStr) {
-            try {
-              JSON.parse(decryptedStr);
-              console.log(`✅ Vault unlocked with salt=${testSalt.substring(0, 8)}... iterations=${iterations}`);
-
-              // Successfully unlocked!
-              setVaultPassword(hashedPass);
-              sessionStorage.setItem("vault_password_session", hashedPass);
-              if (localStorage.getItem("vault_password_remembered")) {
-                localStorage.setItem("vault_password_remembered", hashedPass);
-              }
-
-              await loadData(hashedPass);
-              
-              // MIGRATION: Update to standard if using legacy
-              if (testSalt !== salt || iterations !== STANDARD_ITERATIONS) {
-                console.log("🔄 Migrating vault to standard salt and iterations...");
-                updateProfile({ vaultSalt: salt });
-                // Re-encrypt all accounts with new standard
-                const reEncryptedAccounts = await Promise.all(
-                  accounts.map(async (acc) => {
-                    if (acc.details && typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
-                      try {
-                        const decrypted = await SecurityService.decryptData(acc.details, hashedPass, testSalt);
-                        const newHash = await SecurityService.hashPassword(trimmedPass, salt, STANDARD_ITERATIONS);
-                        const reEncrypted = await SecurityService.encryptData(decrypted, newHash, salt);
-                        return { ...acc, details: reEncrypted as any };
-                      } catch {
-                        return acc;
-                      }
-                    }
-                    return acc;
-                  })
-                );
-                setAccounts(reEncryptedAccounts);
-                StorageService.saveAccounts(reEncryptedAccounts);
-                
-                // Update password hash to new standard
-                const newHashedPass = await SecurityService.hashPassword(trimmedPass, salt, STANDARD_ITERATIONS);
-                setVaultPassword(newHashedPass);
-                sessionStorage.setItem("vault_password_session", newHashedPass);
-                if (localStorage.getItem("vault_password_remembered")) {
-                  localStorage.setItem("vault_password_remembered", newHashedPass);
-                }
-                
-                showToast("Vault migrated to new standard", "success");
-              } else {
-                updateProfile({ isVaultLocked: false });
-                showToast("Vault unlocked", "success");
-              }
-              
-              return true;
-            } catch (e) {
-              // Decryption worked but not valid JSON - continue testing
-            }
-          }
-        }
-        return false;
-      };
-
-      // Try new standard first
-      if (await attemptUnlock(salt, STANDARD_ITERATIONS)) {
-        return true;
-      }
-
-      // BACKWARD COMPATIBILITY: Try legacy combinations (Gemini's old code)
-      console.log("⚠️ Standard unlock failed, trying legacy combinations...");
-      const legacySalts = [salt, getVaultSalt(), localStorage.getItem("vault_salt") || ""].filter(s => s);
-      const legacyIterations = [100000, 1000000, 10000, 5000, 2048, 1024, 1000, 256, 128, 1];
-      
-      for (const legacySalt of [...new Set(legacySalts)]) {
-        for (const iterations of legacyIterations) {
-          if (legacySalt === salt && iterations === STANDARD_ITERATIONS) continue; // Already tried
-          if (await attemptUnlock(legacySalt, iterations)) {
-            return true;
-          }
-        }
-      }
-
-      // If we reach here, password was incorrect
-      showToast("Incorrect password", "alert");
-      return false;
-    } catch (error) {
-      console.error("Failed to unlock vault:", error);
-      showToast("Failed to unlock vault", "alert");
-      return false;
+  const enableVault = async () => {
+    // Check if TOTP is set up
+    if (!profile.totpSecret) {
+      showToast("Please set up 2FA first to enable vault", "alert");
+      return;
     }
-  };
 
-  const enableVault = async (password: string) => {
-    // Use cloud salt as source of truth
-    const salt = profile.vaultSalt || getVaultSalt();
-    const hashedPass = await SecurityService.hashPassword(password, salt);
+    // Update local state and profile to enable vault (skip cloud, will sync below)
+    setSecurityUnlockedWithRef(true); // Vault starts unlocked when first enabled
+    updateProfile(
+      {
+        isSecurityEnabled: true,
+        isVaultLocked: false,
+      } as any,
+      true,
+    ); // skipCloud = true
 
-    setVaultPassword(hashedPass);
-    sessionStorage.setItem("vault_password_session", hashedPass);
-
-    // Update profile with vault settings AND salt
-    updateProfile({
-      isVaultEnabled: true,
-      isVaultCreated: true,
-      isVaultLocked: false,
-      vaultSalt: salt,
-    });
-
-    // Encrypt all current accounts and save
+    // Encrypt all current accounts with TOTP-derived key
+    const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
     const encryptedAccounts = await Promise.all(
       accounts.map(async (acc) => {
         if (acc.details && typeof acc.details === "object") {
-          const encryptedStr = await SecurityService.encryptData(
+          const encryptedStr = await SecurityService.encryptWithKey(
             JSON.stringify(acc.details),
-            hashedPass,
-            salt,
+            key,
           );
-          return { ...acc, details: encryptedStr as any };
+          return { ...acc, details: encryptedStr as any, isEncrypted: true };
         }
         return acc;
       }),
     );
     StorageService.saveAccounts(encryptedAccounts);
 
-    // Password is now set - user can optionally enable biometrics on each device
-    // Biometrics will store the password locally for convenience
-    showToast("Vault enabled! Optionally enable biometrics in Settings.", "success");
+    showToast(
+      "Vault enabled! Your account details are now encrypted.",
+      "success",
+    );
 
     if (isCloudEnabled) {
+      // Include updated profile in sync to avoid duplicate updateUser call
+      const updatedProfile = {
+        ...profile,
+        isSecurityEnabled: true,
+        isVaultLocked: false,
+      };
+
       await SheetService.syncWithGoogleSheets(
         encryptedAccounts,
         transactions,
@@ -515,104 +429,157 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         pots,
         pockets,
         profile.syncChatToSheets ? chatSessions : undefined,
+        updatedProfile,
       );
     }
   };
 
   const lockVault = () => {
-    setVaultPassword(null);
-    localStorage.removeItem("vault_password_session");
-    sessionStorage.removeItem("vault_password_session");
-    // We keep vault_password_remembered if they chose to "remember" for biometrics
+    setSecurityUnlockedWithRef(false);
     showToast("Vault locked", "info");
-    updateProfile({ isVaultLocked: true });
-    loadData(null); // Explicitly pass null to skip decryption
+    updateProfile({ isVaultLocked: true } as any);
+    loadData(); // Reload data
   };
 
   const disableVault = async () => {
-    // Decrypt all before disabling
-    const decryptedAccounts = await Promise.all(
-      accounts.map(async (acc) => {
-        if (
-          acc.details &&
-          typeof acc.details === "string" &&
-          acc.details.startsWith("ENC:")
-        ) {
-          const salt = getVaultSalt();
-          try {
-            const decryptedStr = await SecurityService.decryptData(
-              acc.details,
-              vaultPassword || "",
-              salt,
-            );
-            return { ...acc, details: JSON.parse(decryptedStr) };
-          } catch (e) {
-            return acc;
-          }
-        }
-        return acc;
-      }),
-    );
-    updateProfile({ isVaultEnabled: false });
-    setVaultPassword(null);
-    localStorage.removeItem("vault_password_session");
-    sessionStorage.removeItem("vault_password_session");
-    localStorage.removeItem("vault_password_remembered");
-    localStorage.removeItem("biometric_cred_id");
-    localStorage.removeItem("biometric_cred_ids");
+    if (!profile.totpSecret) {
+      showToast("TOTP secret not found", "alert");
+      return;
+    }
 
-    setAccounts(decryptedAccounts);
-    StorageService.saveAccounts(decryptedAccounts);
-    if (isCloudEnabled) {
-      await SheetService.syncWithGoogleSheets(
-        decryptedAccounts,
-        transactions,
-        categories,
-        goals,
-        subscriptions,
-        pots,
-        pockets,
-        profile.syncChatToSheets ? chatSessions : undefined,
+    try {
+      const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
+
+      // Decrypt all before disabling
+      const decryptedAccounts = await Promise.all(
+        accounts.map(async (acc) => {
+          if (
+            acc.details &&
+            typeof acc.details === "string" &&
+            acc.details.startsWith("ENC:")
+          ) {
+            try {
+              const decryptedStr = await SecurityService.decryptWithKey(
+                acc.details,
+                key,
+              );
+              return {
+                ...acc,
+                details: JSON.parse(decryptedStr),
+                isEncrypted: false,
+              };
+            } catch (e) {
+              console.error(
+                `Failed to decrypt account ${acc.id} during disable:`,
+                e,
+              );
+              return acc;
+            }
+          }
+          return { ...acc, isEncrypted: false };
+        }),
       );
+
+      setSecurityUnlockedWithRef(false);
+
+      // Clean up biometric data from local storage
+      localStorage.removeItem("biometric_cred_id");
+      localStorage.removeItem("biometric_cred_ids");
+
+      setAccounts(decryptedAccounts);
+      StorageService.saveAccounts(decryptedAccounts);
+
+      if (isCloudEnabled) {
+        await SheetService.syncWithGoogleSheets(
+          decryptedAccounts,
+          transactions,
+          categories,
+          goals,
+          subscriptions,
+          pots,
+          pockets,
+          profile.syncChatToSheets ? chatSessions : undefined,
+        );
+      }
+    } catch (err: any) {
+      console.warn(err);
     }
   };
 
   const decryptAccount = async (
     acc: Account,
-    customPass?: string | null,
-    customSalt?: string,
+    forceUnlock: boolean = false,
   ): Promise<Account> => {
-    if (
-      !acc.details ||
-      typeof acc.details !== "string" ||
-      !acc.details.startsWith("ENC:")
-    )
-      return acc;
+    if (!acc.details || typeof acc.details !== "string") return acc;
 
-    const passToUse =
-      customPass === null
-        ? null
-        : customPass ||
-          vaultPassword ||
-          sessionStorage.getItem("vault_password_session") ||
-          localStorage.getItem("vault_password_remembered");
-    if (!passToUse) return acc;
+    // Check if this is encrypted data
+    const isEncrypted =
+      acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:");
+    if (!isEncrypted) return acc;
 
-    const salt = customSalt || getVaultSalt();
-    try {
-      const decryptedStr = await SecurityService.decryptData(
-        acc.details,
-        passToUse,
-        salt,
+    // If vault is locked, cannot decrypt
+    // Use securityUnlockedRef (latest state) rather than profile.isVaultLocked to avoid stale state
+    if (!securityUnlockedRef.current && !forceUnlock) {
+      console.warn(
+        `Account ${acc.id} is encrypted but vault is locked (forceUnlock=${forceUnlock}, isVaultUnlocked=${securityUnlockedRef.current})`,
       );
-      if (!decryptedStr) return acc;
-      return { ...acc, details: JSON.parse(decryptedStr) };
+      return acc;
+    }
+
+    // Check if TOTP secret is available for decryption
+    if (!profile.totpSecret) {
+      console.warn(
+        `Account ${acc.id} is encrypted but no TOTP secret found - resetting to empty`,
+      );
+      return {
+        ...acc,
+        details: {}, // Reset to empty - old encrypted data unrecoverable
+      };
+    }
+
+    try {
+      // Check if this is old ENC: format (password-based) vs new SEC: format (TOTP-based)
+      if (acc.details.startsWith("ENC:")) {
+        console.warn(
+          `Account ${acc.id} uses old password-based encryption. Cannot decrypt without original password. Resetting to empty.`,
+        );
+        return {
+          ...acc,
+          details: {}, // Reset to empty - old encrypted data unrecoverable without migration password
+        };
+      }
+
+      // Derive key from TOTP secret for SEC: encrypted data
+      const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
+      const decryptedStr = await SecurityService.decryptWithKey(
+        acc.details,
+        key,
+      );
+
+      // Check if decryption actually worked
+      if (
+        !decryptedStr ||
+        decryptedStr.startsWith("SEC:") ||
+        decryptedStr.startsWith("ENC:")
+      ) {
+        console.warn(
+          `Failed to decrypt account ${acc.id}, returning encrypted`,
+        );
+        return acc;
+      }
+
+      try {
+        const parsed = JSON.parse(decryptedStr);
+        return { ...acc, details: parsed };
+      } catch (jsonErr) {
+        console.warn("Decrypted string is not valid JSON:", decryptedStr);
+        return acc;
+      }
     } catch (e) {
       console.error("Decryption failed", e);
       return acc;
     }
   };
-
   const maskAmount = (
     amount: number | string,
     currency?: string,
@@ -630,9 +597,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
           if (!isRevealed && isSensitive && isVaultEnabled) {
             // Trigger biometric check for truly sensitive data reveal
-            const verified = await SecurityService.verifyWithBiometrics(
-              profile.biometricCredIds || profile.biometricCredId,
-            );
+            const credId =
+              profile.biometricCredIds?.[0] || profile.biometricCredId;
+            if (!credId || typeof credId !== "string") return;
+            const verified = await SecurityService.verifyWithBiometrics(credId);
             if (!verified) return;
           }
 
@@ -675,9 +643,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           const isRevealed = target.getAttribute("data-revealed") === "true";
 
           if (!isRevealed && isSensitive && isVaultEnabled) {
-            const verified = await SecurityService.verifyWithBiometrics(
-              profile.biometricCredIds || profile.biometricCredId,
-            );
+            const credId =
+              profile.biometricCredIds?.[0] || profile.biometricCredId;
+            if (!credId || typeof credId !== "string") return;
+            const verified = await SecurityService.verifyWithBiometrics(credId);
             if (!verified) return;
           }
 
@@ -699,12 +668,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadData = async (overridePass?: string | null) => {
+  const loadData = async (forceUnlock: boolean = false) => {
     const storedAccounts = StorageService.getStoredAccounts();
     // Decrypt and normalize accounts
     const decryptedAccounts = await Promise.all(
       storedAccounts.map(async (a) => {
-        const decrypted = await decryptAccount(a, overridePass);
+        const decrypted = await decryptAccount(a, forceUnlock);
         return normalizeAccount(decrypted);
       }),
     );
@@ -759,12 +728,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [profile.isLoggedIn, isInitialized, profile.offlineMode, hasSynced]);
 
   useEffect(() => {
-    if (checkBool(profile.isVaultLocked) && vaultPassword) {
+    if (checkBool(profile.isVaultLocked) && securityUnlocked) {
       console.log("Vault locked from remote update/sync");
-      setVaultPassword(null);
-      localStorage.removeItem("vault_password_session");
-      sessionStorage.removeItem("vault_password_session");
-      loadData(null);
+      setSecurityUnlockedWithRef(false);
+      loadData();
     }
   }, [profile.isVaultLocked]);
 
@@ -795,8 +762,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           shopName: sub.name + " (Subscription)",
           date: nextDateStr,
           subscriptionId: sub.id,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
         newTxs.push(newTx);
         const d = parseDateSafe(nextDateStr);
@@ -808,7 +775,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       if (hasProcessed) {
         processedCount++;
-        return { ...sub, nextPaymentDate: nextDateStr, updatedAt: Date.now() };
+        return {
+          ...sub,
+          nextPaymentDate: nextDateStr,
+          updatedAt: new Date().toISOString(),
+        };
       }
       return { ...sub, nextPaymentDate: nextDateStr };
     });
@@ -838,7 +809,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             return {
               ...a,
               balance: a.balance - (accUpdates.get(a.id) || 0),
-              updatedAt: Date.now(),
+              updatedAt: new Date().toISOString(),
             };
           return a;
         });
@@ -854,15 +825,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const syncData = async () => {
     if (syncInProgress.current || profile.offlineMode) return;
-    
+
     // Debounce: Prevent syncs within 5 seconds of last sync
     const now = Date.now();
     const MIN_SYNC_INTERVAL = 5000; // 5 seconds
     if (now - lastSyncTime.current < MIN_SYNC_INTERVAL) {
-      console.log(`⏱️ Sync throttled (last sync ${Math.round((now - lastSyncTime.current) / 1000)}s ago)`);
+      console.log(
+        `⏱️ Sync throttled (last sync ${Math.round((now - lastSyncTime.current) / 1000)}s ago)`,
+      );
       return;
     }
-    
+
     syncInProgress.current = true;
     lastSyncTime.current = now;
     setIsSyncing(true);
@@ -908,12 +881,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
       if (cloudData) {
         // Re-linking detection: Check if Sheets has existing data
-        const hasCloudData = 
+        const hasCloudData =
           (cloudData.accounts && cloudData.accounts.length > 0) ||
           (cloudData.transactions && cloudData.transactions.length > 0) ||
           (cloudData.categories && cloudData.categories.length > 0);
 
-        const hasLocalData = 
+        const hasLocalData =
           StorageService.getStoredAccounts().length > 0 ||
           StorageService.getStoredTransactions().length > 0 ||
           StorageService.getStoredCategories().length > 0;
@@ -922,15 +895,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
         // Re-linking scenario: Both cloud and local have data
         if (hasCloudData && hasLocalData && cloudData.profile) {
-          const cloudLastUpdated = Number(cloudData.profile.lastUpdatedAt || 0);
-          const localLastSynced = Number(profile.lastSyncAt || 0);
-          
+          // Helper to normalize timestamp to comparable number
+          const toTimestamp = (value: any): number => {
+            if (!value) return 0;
+            if (typeof value === "number") return value;
+            if (typeof value === "string") return new Date(value).getTime();
+            return 0;
+          };
+
+          const cloudLastUpdated = toTimestamp(cloudData.profile.lastUpdatedAt);
+          const localLastSynced = toTimestamp(profile.lastSyncAt);
+
           if (localLastSynced > cloudLastUpdated) {
             // Local data is newer - this means user made changes locally after last cloud update
-            console.log("Re-linking: Local data is newer than cloud. Local will update cloud.");
+            console.log(
+              "Re-linking: Local data is newer than cloud. Local will update cloud.",
+            );
             useCloudAsAuthority = false;
           } else {
-            console.log("Re-linking: Cloud data is newer or equal. Cloud is authoritative.");
+            console.log(
+              "Re-linking: Cloud data is newer or equal. Cloud is authoritative.",
+            );
             useCloudAsAuthority = true;
           }
         }
@@ -949,16 +934,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
           // Scalar fields - prefer Cloud
           if (
-            cloudData.profile.isVaultEnabled !== undefined &&
-            cloudData.profile.isVaultEnabled !== profile.isVaultEnabled
+            cloudData.profile.isSecurityEnabled !== undefined &&
+            cloudData.profile.isSecurityEnabled !== profile.isSecurityEnabled
           ) {
-            updates.isVaultEnabled = cloudData.profile.isVaultEnabled;
+            updates.isSecurityEnabled = cloudData.profile.isSecurityEnabled;
           }
+
+          // Backward compatibility: migrate isVaultEnabled to isSecurityEnabled
           if (
-            cloudData.profile.isVaultCreated !== undefined &&
-            cloudData.profile.isVaultCreated !== profile.isVaultCreated
+            cloudData.profile.isSecurityEnabled === undefined &&
+            cloudData.profile.isVaultEnabled !== undefined
           ) {
-            updates.isVaultCreated = cloudData.profile.isVaultCreated;
+            updates.isSecurityEnabled = cloudData.profile.isVaultEnabled;
+          }
+
+          // isVaultCreated is now derived from isSecurityEnabled, no separate sync needed
+          if (false) {
+            // Legacy code - kept for reference
+            updates.isVaultCreated = cloudData.profile.isSecurityEnabled;
           }
           if (
             cloudData.profile.vaultSalt &&
@@ -970,11 +963,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             cloudData.profile.isVaultLocked !== undefined &&
             cloudData.profile.isVaultLocked !== profile.isVaultLocked
           ) {
-            // Only accept a "locked" state from cloud if we aren't currently holding a password.
-            // If we have a password (either in state or sessionStorage), we are definitively UNLOCKED.
-            const isActuallyUnlocked =
-              !!vaultPassword ||
-              !!sessionStorage.getItem("vault_password_session");
+            // Only accept a "locked" state from cloud if we aren't currently UNLOCKED locally.
+            const isActuallyUnlocked = securityUnlocked;
             if (
               checkBool(cloudData.profile.isVaultLocked) &&
               isActuallyUnlocked
@@ -1074,17 +1064,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           trustCloud: boolean = true,
         ): T[] => {
           const map = new Map<string, T>();
-          const now = Date.now();
+          const now = new Date().toISOString();
+
+          // Helper to normalize timestamp to comparable number
+          const toTimestamp = (value: any): number => {
+            if (!value) return 0;
+            if (typeof value === "number") return value;
+            if (typeof value === "string") return new Date(value).getTime();
+            return 0;
+          };
 
           if (trustCloud) {
             // Cloud is authoritative - start with cloud data
             cloud.forEach((i) => {
               if (i.id) {
                 const id = String(i.id);
-                const cloudUpdated = Number(i.updatedAt || 0);
+                const cloudUpdated = toTimestamp(i.updatedAt);
                 map.set(id, {
                   ...i,
-                  updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+                  updatedAt: i.updatedAt || now,
                 });
               }
             });
@@ -1092,16 +1090,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             // Only merge local items that exist in cloud (prevents resurrection of deletions)
             local.forEach((i) => {
               const id = String(i.id);
-              const localUpdated = Number(i.updatedAt || 0);
+              const localUpdated = toTimestamp(i.updatedAt);
 
               if (map.has(id)) {
                 const cloudItem = map.get(id)!;
-                const cloudUpdated = Number(cloudItem.updatedAt || 0);
+                const cloudUpdated = toTimestamp(cloudItem.updatedAt);
                 // Last Write Wins. On tie, prefer Cloud.
                 if (localUpdated > cloudUpdated) {
                   map.set(id, {
                     ...i,
-                    updatedAt: localUpdated === 0 ? now : localUpdated || now,
+                    updatedAt: i.updatedAt || now,
                   });
                 }
               }
@@ -1112,10 +1110,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             local.forEach((i) => {
               if (i.id) {
                 const id = String(i.id);
-                const localUpdated = Number(i.updatedAt || 0);
+                const localUpdated = toTimestamp(i.updatedAt);
                 map.set(id, {
                   ...i,
-                  updatedAt: localUpdated === 0 ? now : localUpdated || now,
+                  updatedAt: i.updatedAt || now,
                 });
               }
             });
@@ -1123,23 +1121,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             // Merge cloud items, but prefer local on conflicts
             cloud.forEach((i) => {
               const id = String(i.id);
-              const cloudUpdated = Number(i.updatedAt || 0);
+              const cloudUpdated = toTimestamp(i.updatedAt);
 
               if (map.has(id)) {
                 const localItem = map.get(id)!;
-                const localUpdated = Number(localItem.updatedAt || 0);
+                const localUpdated = toTimestamp(localItem.updatedAt);
                 // Last Write Wins. On tie, prefer Local.
                 if (cloudUpdated > localUpdated) {
                   map.set(id, {
                     ...i,
-                    updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+                    updatedAt: i.updatedAt || now,
                   });
                 }
               } else if (i.id) {
                 // Cloud-only item - add it
                 map.set(id, {
                   ...i,
-                  updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+                  updatedAt: i.updatedAt || now,
                 });
               }
             });
@@ -1148,24 +1146,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return Array.from(map.values());
         };
 
-        const currentPass =
-          vaultPassword ||
-          sessionStorage.getItem("vault_password_session") ||
-          localStorage.getItem("vault_password_remembered") ||
-          localStorage.getItem("vault_password_session");
-
-        if (currentPass && !vaultPassword) {
-          setVaultPassword(currentPass);
-        }
-        const currentSalt = activeProfile.vaultSalt;
-
         const cloudAccounts = await Promise.all(
           (cloudData.accounts || []).map(async (a: Account) => {
-            const decrypted = await decryptAccount(
-              a,
-              currentPass || undefined,
-              currentSalt,
-            );
+            const decrypted = await decryptAccount(a);
             return normalizeAccount(decrypted);
           }),
         );
@@ -1173,23 +1156,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const localAccountsRaw = StorageService.getStoredAccounts();
         const localAccounts = await Promise.all(
           localAccountsRaw.map(async (a) => {
-            const decrypted = await decryptAccount(
-              a,
-              currentPass || undefined,
-              currentSalt,
-            );
+            const decrypted = await decryptAccount(a);
             return normalizeAccount(decrypted);
           }),
         );
 
-        const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority);
+        const mergedAccounts = merge(
+          localAccounts,
+          cloudAccounts,
+          useCloudAsAuthority,
+        );
         setAccounts(mergedAccounts);
 
         // Encrypt for storage (cache to localStorage)
         const encryptedAccounts = await Promise.all(
-          mergedAccounts.map((a) =>
-            encryptAccount(a, currentPass || undefined, currentSalt),
-          ),
+          mergedAccounts.map((a) => encryptAccount(a)),
         );
         StorageService.saveAccounts(encryptedAccounts);
 
@@ -1249,7 +1230,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         setChatSessions(mergedChatSessions);
         StorageService.saveChatSessions(mergedChatSessions);
 
-        const syncTimestamp = Date.now();
+        const syncTimestamp = new Date().toISOString();
         await SheetService.syncWithGoogleSheets(
           encryptedAccounts,
           mergedTransactions,
@@ -1259,12 +1240,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           mergedPots,
           mergedPockets,
           profile.syncChatToSheets ? mergedChatSessions : undefined,
-          { ...activeProfile, lastSyncAt: syncTimestamp, lastUpdatedAt: syncTimestamp },
+          {
+            ...activeProfile,
+            lastSyncAt: syncTimestamp,
+            lastUpdatedAt: syncTimestamp,
+          },
         );
         processSubscriptions(mergedSubs, mergedTransactions);
 
         // Update sync status and timestamp (locally use updatedAt)
-        updateProfile({ lastSyncAt: syncTimestamp, updatedAt: syncTimestamp }, false);
+        // Skip cloud sync since we already synced the profile in syncWithGoogleSheets above
+        updateProfile(
+          { lastSyncAt: syncTimestamp, updatedAt: syncTimestamp },
+          true, // skipCloud = true to prevent duplicate sync
+        );
         setHasSynced(true);
 
         showToast("Cloud sync complete", "success");
@@ -1285,7 +1274,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const accountWithUser = {
       ...acc,
       userId: profile.id || "local",
-      updatedAt: Date.now(), // Always update timestamp on save to prevent stale cloud overwrites
+      updatedAt: new Date().toISOString(), // Always update timestamp on save to prevent stale cloud overwrites
     } as Account;
 
     // Encrypt for external storage
@@ -1359,8 +1348,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         userId: currentUserId,
         accountId,
         isHistorical,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         transferDirection:
           tx.type === TransactionType.TRANSFER ? "OUT" : undefined,
       } as Transaction;
@@ -1447,7 +1436,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             return {
               ...a,
               balance: a.balance + (accountUpdates.get(a.id) || 0),
-              updatedAt: Date.now(),
+              updatedAt: new Date().toISOString(),
             };
           }
           return a;
@@ -1476,7 +1465,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const txWithUser = {
       ...tx,
       userId: currentUserId,
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
       transferDirection:
         tx.type === TransactionType.TRANSFER
           ? tx.transferDirection || "OUT"
@@ -1514,7 +1503,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           txWithUser.transferDirection === "OUT" ? "IN" : "OUT",
         linkedTransactionId: txWithUser.id,
         isHistorical: isDestHistorical ?? txWithUser.isHistorical,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       } as Transaction;
     } else if (oldTx?.linkedTransactionId) {
       // If it was a transfer but now it's not, delete the partner leg
@@ -1578,7 +1567,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         ...newSubscription,
         id: crypto.randomUUID(),
         userId: currentUserId,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       };
 
       // Calculate next payment date based on frequency
@@ -1616,7 +1605,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           const updatedSub = {
             ...sub,
             nextPaymentDate: nextDateStr,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
           const updatedSubsList = subscriptions.map((s) =>
             s.id === sub.id ? updatedSub : s,
@@ -1805,7 +1794,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...a,
             balance: a.balance + (accountUpdates.get(a.id) || 0),
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return a;
@@ -1825,7 +1814,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -1852,7 +1841,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...p,
             currentAmount: newCurrentAmount,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2027,7 +2016,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...a,
             balance: a.balance + (accountUpdates.get(a.id) || 0),
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return a;
@@ -2047,7 +2036,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2074,7 +2063,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...p,
             currentAmount: newCurrentAmount,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2291,7 +2280,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...a,
             balance: a.balance + (accountUpdates.get(a.id) || 0),
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return a;
@@ -2311,7 +2300,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             ...p,
             usedAmount: newUsedAmount,
             amountLeft: p.limitAmount - newUsedAmount,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2338,7 +2327,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...p,
             currentAmount: newCurrentAmount,
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2408,7 +2397,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         thisUpdates[field] = undefined;
       }
 
-      thisUpdates.updatedAt = Date.now();
+      thisUpdates.updatedAt = new Date().toISOString();
 
       finalUpdatesMap.set(id, thisUpdates);
 
@@ -2447,7 +2436,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           // Always set updatedAt for partner
-          partnerUpdates.updatedAt = Date.now();
+          partnerUpdates.updatedAt = new Date().toISOString();
           finalUpdatesMap.set(partner.id, partnerUpdates);
         }
       }
@@ -2608,7 +2597,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             ...p,
             usedAmount: Math.max(0, newUsedAmount),
             amountLeft: p.limitAmount - Math.max(0, newUsedAmount),
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2633,7 +2622,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
               0,
               p.currentAmount + (pocketUpdates.get(p.id) || 0),
             ),
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return p;
@@ -2657,7 +2646,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           return {
             ...a,
             balance: a.balance + (accountUpdates.get(a.id) || 0),
-            updatedAt: Date.now(),
+            updatedAt: new Date().toISOString(),
           };
         }
         return a;
@@ -2684,7 +2673,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const catWithUser = {
       ...cat,
       userId: profile.id || "local",
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     } as Category;
     const updated = isEdit
       ? categories.map((c) => (c.id === cat.id ? catWithUser : c))
@@ -2712,7 +2701,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const goalWithUser = {
       ...goal,
       userId: profile.id || "local",
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     } as Goal;
     const updated = isEdit
       ? goals.map((g) => (g.id === goal.id ? goalWithUser : g))
@@ -2741,7 +2730,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       ...pot,
       amountLeft,
       userId: profile.id || "local",
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     } as Pot;
     const updated = isEdit
       ? pots.map((p) => (p.id === pot.id ? potWithUser : p))
@@ -2768,7 +2757,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const pocketWithUser = {
       ...pocket,
       userId: profile.id || "local",
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     } as SavingPocket;
 
     let updated;
@@ -2828,7 +2817,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     const newSub: Subscription = {
       ...sub,
       userId: currentUserId,
-      updatedAt: Date.now(),
+      updatedAt: new Date().toISOString(),
     };
     const updated = [...subscriptions, newSub];
     setSubscriptions(updated);
@@ -2846,7 +2835,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleSaveChatSession = async (session: ChatSession) => {
     const isEdit = chatSessions.some((s) => s.id === session.id);
-    const sessionWithUpdate = { ...session, updatedAt: Date.now() };
+    const sessionWithUpdate = {
+      ...session,
+      updatedAt: new Date().toISOString(),
+    };
     const updated = isEdit
       ? chatSessions.map((s) => (s.id === session.id ? sessionWithUpdate : s))
       : [...chatSessions, sessionWithUpdate];
@@ -2866,18 +2858,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const handleSelectExistingSheet = async (fileId?: string) => {
     try {
       let selectedFileId = fileId;
-      
+
       // If no fileId provided, fall back to old picker (deprecated)
       if (!selectedFileId) {
         selectedFileId = await SheetService.selectSpreadsheetWithPicker();
       }
-      
+
       if (selectedFileId) {
         // Store selected file ID to skip search next time
         localStorage.setItem("zenfinance_selected_sheet_id", selectedFileId);
         // Clear cached sheet name when switching spreadsheets
         SheetService.clearSheetNameCache();
-        
+
         showToast("Spreadsheet linked! Synchronizing...", "success");
         // Trigger a fresh sync with the newly linked file
         syncData();
@@ -3110,7 +3102,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       const updatedAccounts = accounts.map((a) => ({
         ...a,
         balance: accountUpdates.get(a.id) ?? 0,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       }));
 
       const updatedPots = pots.map((p) => {
@@ -3119,14 +3111,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           ...p,
           usedAmount: used,
           amountLeft: p.limitAmount - used,
-          updatedAt: Date.now(),
+          updatedAt: new Date().toISOString(),
         };
       });
 
       const updatedPockets = pockets.map((p) => ({
         ...p,
         currentAmount: pocketUpdates.get(p.id) ?? 0,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       }));
 
       setAccounts(updatedAccounts);
@@ -3246,7 +3238,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         isVaultEnabled,
         isVaultCreated,
         isVaultUnlocked,
-        unlockVault,
+        unlockVaultWithTOTP,
         unlockVaultWithBiometrics,
         enableBiometricUnlock,
         lockVault,

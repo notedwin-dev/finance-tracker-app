@@ -326,7 +326,7 @@ const TransactionForm: React.FC<Props> = ({
                 amount: parseFloat(item.amount) || 0,
               }))
             : undefined,
-        createdAt: initialTransaction?.createdAt || Date.now(),
+        createdAt: initialTransaction?.createdAt || new Date().toISOString(),
         linkedTransactionId: initialTransaction?.linkedTransactionId,
         transferDirection: initialTransaction?.transferDirection,
       };

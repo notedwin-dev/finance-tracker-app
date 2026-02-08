@@ -5,6 +5,18 @@ import * as StorageService from "./storage.services";
 import { UserProfile } from "../types";
 import { hashPassword, verifyPassword } from "./crypto.services";
 
+// Legacy vault profile type for backward compatibility
+type LegacyVaultProfile = UserProfile & {
+  isVaultEnabled?: boolean;
+  isVaultCreated?: boolean;
+  isVaultLocked?: boolean;
+  vaultSalt?: string;
+  encryptedVaultPassword?: string;
+  biometricCredId?: string;
+  biometricCredIds?: string[];
+  devices?: any[];
+};
+
 interface AuthContextType {
   profile: UserProfile;
   loginWithGoogle: () => void;
@@ -135,6 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       setAuthStatus("Synchronizing profile...");
+      const legacyProfile = profile as LegacyVaultProfile;
       const newProfile: UserProfile = {
         ...profile,
         id: userId,
@@ -144,18 +157,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         isLoggedIn: true,
         offlineMode: false,
         // Sync cloud settings if they exist
-        isVaultEnabled: cloudUser?.isVaultEnabled ?? profile.isVaultEnabled,
-        isVaultCreated: cloudUser?.isVaultCreated ?? profile.isVaultCreated,
-        isVaultLocked: cloudUser?.isVaultLocked ?? profile.isVaultLocked,
-        vaultSalt: cloudUser?.vaultSalt ?? profile.vaultSalt,
+        ...({
+          isVaultEnabled: cloudUser?.isVaultEnabled ?? legacyProfile.isVaultEnabled,
+          isVaultCreated: cloudUser?.isVaultCreated ?? legacyProfile.isVaultCreated,
+          isVaultLocked: cloudUser?.isVaultLocked ?? legacyProfile.isVaultLocked,
+          vaultSalt: cloudUser?.vaultSalt ?? legacyProfile.vaultSalt,
+        } as any),
         privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
-        biometricCredId: cloudUser?.biometricCredId ?? profile.biometricCredId,
         biometricCredIds: Array.from(
           new Set([
             ...(cloudUser?.biometricCredIds || []),
             ...(profile.biometricCredIds || []),
-            ...(cloudUser?.biometricCredId ? [cloudUser.biometricCredId] : []),
-            ...(profile.biometricCredId ? [profile.biometricCredId] : []),
           ]),
         ).filter(Boolean),
         devices: Array.from(
@@ -202,24 +214,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const isValid = await verifyPassword(pass, user.password);
     if (!isValid) throw new Error("Invalid password.");
 
+    const legacyProfile = profile as LegacyVaultProfile;
     const newProfile: UserProfile = {
       ...profile,
       id: user.email,
       name: user.name,
       email: user.email,
       isLoggedIn: true,
-      isVaultEnabled: user.isVaultEnabled ?? profile.isVaultEnabled,
-      isVaultCreated: user.isVaultCreated ?? profile.isVaultCreated,
-      isVaultLocked: user.isVaultLocked ?? profile.isVaultLocked,
-      vaultSalt: user.vaultSalt ?? profile.vaultSalt,
+      ...({
+        isVaultEnabled: user.isVaultEnabled ?? legacyProfile.isVaultEnabled,
+        isVaultCreated: user.isVaultCreated ?? legacyProfile.isVaultCreated,
+        isVaultLocked: user.isVaultLocked ?? legacyProfile.isVaultLocked,
+        vaultSalt: user.vaultSalt ?? legacyProfile.vaultSalt,
+      } as any),
       privacyMode: user.privacyMode ?? profile.privacyMode,
-      biometricCredId: user.biometricCredId ?? profile.biometricCredId,
       biometricCredIds: Array.from(
         new Set([
           ...(user.biometricCredIds || []),
           ...(profile.biometricCredIds || []),
-          ...(user.biometricCredId ? [user.biometricCredId] : []),
-          ...(profile.biometricCredId ? [profile.biometricCredId] : []),
         ]),
       ).filter(Boolean),
       devices: Array.from(

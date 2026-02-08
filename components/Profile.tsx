@@ -1,5 +1,13 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
+
+// Legacy vault type for backward compatibility
+type LegacyVaultProfile = UserProfile & {
+  biometricCredId?: string;
+  biometricCredIds?: string[];
+  devices?: any[];
+};
+
 import {
   UserCircleIcon,
   PencilIcon,
@@ -17,9 +25,12 @@ import {
   FingerPrintIcon,
   EyeSlashIcon,
   CalculatorIcon,
+  ShieldCheckIcon,
+  ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
 import * as SecurityService from "../services/security.services";
+import * as TwoFAService from "../services/twofa.services";
 import { getDeviceId } from "../services/storage.services";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
@@ -42,7 +53,7 @@ interface Props {
 }
 
 const Profile: React.FC<Props> = ({
-  profile,
+  profile: rawProfile,
   onLogin,
   onLogout,
   onUpdate,
@@ -56,12 +67,16 @@ const Profile: React.FC<Props> = ({
   onSelectSheet,
   isSyncing = false,
 }) => {
+  // Cast to legacy type for backward compatibility
+  const profile = rawProfile as LegacyVaultProfile;
+
   const {
     maskText,
     isVaultEnabled,
     isVaultCreated,
     isVaultUnlocked,
-    unlockVault,
+    unlockVaultWithTOTP,
+    unlockVaultWithBiometrics,
     lockVault,
     enableVault,
     disableVault,
@@ -70,8 +85,14 @@ const Profile: React.FC<Props> = ({
   } = useData();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(profile.name);
-  const [vaultPass, setVaultPass] = useState("");
+  const [vaultTOTPCode, setVaultTOTPCode] = useState("");
   const [showVaultPrompt, setShowVaultPrompt] = useState(false);
+  const [showTOTPSetup, setShowTOTPSetup] = useState(false);
+  const [totpSecret, setTotpSecret] = useState("");
+  const [totpQRCode, setTotpQRCode] = useState("");
+  const [totpVerifyCode, setTotpVerifyCode] = useState("");
+  const [totpError, setTotpError] = useState("");
+  const [totpStep, setTotpStep] = useState<"scan" | "verify">("scan");
   const [showBiometricManagement, setShowBiometricManagement] = useState(false);
   const [vaultError, setVaultError] = useState("");
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
@@ -94,9 +115,9 @@ const Profile: React.FC<Props> = ({
   });
 
   const handleBiometricUnlock = async () => {
-    const verified = await SecurityService.verifyWithBiometrics(
-      profile.biometricCredIds || profile.biometricCredId,
-    );
+    const credId = profile.biometricCredIds?.[0] || profile.biometricCredId;
+    if (!credId) return;
+    const verified = await SecurityService.verifyWithBiometrics(credId);
     if (verified) {
       setIsSyncingLocal(true);
       setVaultError("");
@@ -111,33 +132,26 @@ const Profile: React.FC<Props> = ({
 
       const storedPass = localStorage.getItem("vault_password_remembered");
       if (storedPass) {
-        // Migration: if storedPass is encrypted (legacy bug), it's invalid
-        if (storedPass.startsWith("ENC:")) {
-          localStorage.removeItem("vault_password_remembered");
-          setVaultError("Vault link expired. Please use password once.");
-          setIsSyncingLocal(false);
-          return;
-        }
-
-        try {
-          const success = await unlockVault(storedPass);
-          if (success) {
-            showToast("Vault unlocked with Biometrics!", "success");
-            setShowVaultPrompt(false);
-          } else {
-            setVaultError("Biometric link expired. Please use password.");
-          }
-        } catch (e) {
-          setVaultError("Unlock failed. Please try again.");
-        }
-      } else {
-        const isTrusted = profile.devices?.includes(getDeviceId());
-        setVaultError(
-          isTrusted
-            ? "Vault key missing from this browser. Please enter your Vault Password once to re-enable biometrics."
-            : "Security verification successful! However, since this is a new device, please enter your Vault Password once to link your security.",
-        );
+        // Legacy password storage - clear it
+        localStorage.removeItem("vault_password_remembered");
+        setVaultError("Please use TOTP or biometric unlock");
+        setIsSyncingLocal(false);
+        return;
       }
+      
+      // Try biometric unlock
+      try {
+        const success = await unlockVaultWithBiometrics();
+        if (success) {
+          showToast("Vault unlocked with Biometrics!", "success");
+          setShowVaultPrompt(false);
+        } else {
+          setVaultError("Biometric unlock failed. Please use TOTP code.");
+        }
+      } catch (e) {
+        setVaultError("Unlock failed. Please try again.");
+      }
+      
       setIsSyncingLocal(false);
     }
   };
@@ -145,6 +159,53 @@ const Profile: React.FC<Props> = ({
   const handleSave = () => {
     onUpdate({ name });
     setIsEditing(false);
+  };
+
+  const handleSetupTOTP = async () => {
+    const secret = TwoFAService.generateTOTPSecret(profile.email);
+    const qrCode = await TwoFAService.generateQRCode(secret, profile.email);
+    setTotpSecret(secret);
+    setTotpQRCode(qrCode);
+    setTotpStep("scan");
+    setTotpVerifyCode("");
+    setTotpError("");
+    setShowTOTPSetup(true);
+  };
+
+  const handleVerifyTOTP = () => {
+    if (totpVerifyCode.length !== 6) {
+      setTotpError("Please enter a 6-digit code");
+      return;
+    }
+    const isValid = TwoFAService.verifyTOTP(totpSecret, totpVerifyCode);
+    if (isValid) {
+      onUpdate({ totpSecret });
+      showToast("2FA enabled successfully!", "success");
+      setShowTOTPSetup(false);
+      setTotpSecret("");
+      setTotpQRCode("");
+      setTotpVerifyCode("");
+      setTotpError("");
+    } else {
+      setTotpError("Invalid code. Please try again.");
+    }
+  };
+
+  const handleDisableTOTP = () => {
+    setConfirmationModal({
+      isOpen: true,
+      title: "Disable 2FA?",
+      description: "This will also disable your vault encryption. Your account will be less secure.",
+      confirmLabel: "Disable 2FA",
+      isDestructive: true,
+      onConfirm: async () => {
+        if (isVaultEnabled) {
+          await disableVault();
+        }
+        onUpdate({ totpSecret: "" });
+        showToast("2FA disabled", "info");
+      },
+    });
   };
 
   const SettingItem = ({
@@ -280,8 +341,8 @@ const Profile: React.FC<Props> = ({
                 {isVaultCreated
                   ? isVaultUnlocked
                     ? "Your Secure Vault is active and protecting your sensitive data."
-                    : "Enter the custom encryption password you created. This is NOT your Google password."
-                  : "Create a custom encryption password to protect your bank details. ZenFinance and Google do not have access to this password, so make sure to remember it!"}
+                    : "Enter your 6-digit 2FA code from your authenticator app to unlock the vault."
+                  : "Setup requires a TOTP 2FA app (like Google Authenticator). Your vault encryption is tied to your 2FA secret."}
               </p>
             </div>
 
@@ -298,18 +359,33 @@ const Profile: React.FC<Props> = ({
                   {(!isVaultEnabled || !isVaultUnlocked) && (
                     <div className="space-y-1.5">
                       <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
-                        Vault Password
+                        2FA Code (6 Digits)
                       </label>
                       <input
-                        type="password"
-                        value={vaultPass}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        value={vaultTOTPCode}
                         disabled={isSyncingLocal}
                         onChange={(e) => {
-                          setVaultPass(e.target.value);
+                          const value = e.target.value.replace(/[^0-9]/g, '');
+                          setVaultTOTPCode(value);
                           setVaultError("");
                         }}
-                        placeholder="Enter password..."
-                        className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && vaultTOTPCode.length === 6) {
+                            if (!isVaultCreated) {
+                              // Setup vault
+                              document.querySelector<HTMLButtonElement>('[data-action="setup-vault"]')?.click();
+                            } else if (!isVaultUnlocked) {
+                              // Unlock vault
+                              document.querySelector<HTMLButtonElement>('[data-action="unlock-vault"]')?.click();
+                            }
+                          }
+                        }}
+                        placeholder="000000"
+                        className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         autoFocus
                       />
                       {vaultError && (
@@ -323,8 +399,7 @@ const Profile: React.FC<Props> = ({
                   <div className="flex flex-col gap-2 pt-2">
                     {isVaultEnabled &&
                       !isVaultUnlocked &&
-                      (SecurityService.isBiometricRegistered() ||
-                        profile.biometricCredIds?.length ||
+                      (profile.biometricCredIds?.length ||
                         profile.biometricCredId) && (
                         <button
                           disabled={isSyncingLocal}
@@ -346,23 +421,27 @@ const Profile: React.FC<Props> = ({
                       )}
                     {!isVaultCreated ? (
                       <button
-                        disabled={isSyncingLocal}
+                        data-action="setup-vault"
+                        disabled={isSyncingLocal || !profile.totpSecret}
                         onClick={async () => {
-                          if (vaultPass.length < 4) {
-                            setVaultError("Password too short");
+                          if (!profile.totpSecret) {
+                            setVaultError("TOTP 2FA must be enabled first in Profile settings.");
+                            return;
+                          }
+                          if (vaultTOTPCode.length !== 6) {
+                            setVaultError("Please enter your current 6-digit 2FA code");
                             return;
                           }
                           setIsSyncingLocal(true);
-                          const currentPass = vaultPass; // Capture for biometric setup
                           try {
-                            await enableVault(currentPass);
-                            setVaultPass("");
+                            await enableVault();
+                            setVaultTOTPCode("");
                             setShowVaultPrompt(false);
 
                             // Check biometrics availability
                             if (
                               (await SecurityService.isBiometricAvailable()) &&
-                              !SecurityService.isBiometricRegistered()
+                              !(profile.biometricCredIds?.length || profile.biometricCredId)
                             ) {
                               setConfirmationModal({
                                 isOpen: true,
@@ -374,6 +453,7 @@ const Profile: React.FC<Props> = ({
                                   const credId =
                                     await SecurityService.registerBiometrics(
                                       profile.name || "User",
+                                      profile.biometricCredIds,
                                     );
                                   if (credId) {
                                     // Use the already hashed password from system storage or session
@@ -394,7 +474,6 @@ const Profile: React.FC<Props> = ({
                                           credId,
                                         ]),
                                       ),
-                                      biometricCredId: credId,
                                     });
                                     showToast(
                                       "Vault enabled with Biometrics!",
@@ -421,66 +500,28 @@ const Profile: React.FC<Props> = ({
                       >
                         {isSyncingLocal
                           ? "Setting up..."
-                          : "Setup Vault Password"}
+                          : !profile.totpSecret
+                          ? "Enable 2FA First"
+                          : "Enable Vault Encryption"}
                       </button>
                     ) : !isVaultUnlocked ? (
                       <button
-                        disabled={isSyncingLocal}
+                        data-action="unlock-vault"
+                        disabled={isSyncingLocal || vaultTOTPCode.length !== 6}
                         onClick={async () => {
                           setIsSyncingLocal(true);
                           setVaultError("");
                           try {
-                            const success = await unlockVault(vaultPass);
+                            const success = await unlockVaultWithTOTP(vaultTOTPCode);
                             if (success) {
-                              // Track this device in the trusted registry
-                              const deviceId = getDeviceId();
-                              const currentDevices = profile.devices || [];
-                              if (!currentDevices.includes(deviceId)) {
-                                onUpdate({
-                                  devices: [...currentDevices, deviceId],
-                                });
-                              }
-
-                              // Link biometrics to this password for future usage on this device
-                              if (
-                                SecurityService.isBiometricRegistered() ||
-                                profile.biometricCredIds?.length ||
-                                profile.biometricCredId
-                              ) {
-                                const currentHashed = sessionStorage.getItem(
-                                  "vault_password_session",
-                                );
-                                if (currentHashed) {
-                                  localStorage.setItem(
-                                    "vault_password_remembered",
-                                    currentHashed,
-                                  );
-                                }
-                                // Sync local biometrics if profile has them but local storage doesn't (migration)
-                                if (
-                                  (profile.biometricCredIds?.length ||
-                                    profile.biometricCredId) &&
-                                  !SecurityService.isBiometricRegistered()
-                                ) {
-                                  const ids = profile.biometricCredIds?.length
-                                    ? profile.biometricCredIds
-                                    : [profile.biometricCredId!];
-                                  onUpdate({ biometricCredIds: ids });
-                                }
-                              }
-
-                              // If it was created but currently disabled, enable it
-                              if (!isVaultEnabled) {
-                                await enableVault(vaultPass);
-                              }
-                              setVaultPass("");
+                              setVaultTOTPCode("");
                               showToast("Vault unlocked!", "success");
                               setShowVaultPrompt(false);
                             } else {
-                              setVaultError("Invalid password");
+                              setVaultError("Invalid 2FA code. Please try again.");
                             }
                           } catch (e) {
-                            setVaultError("Unlock error.");
+                            setVaultError("Unlock error. Please verify your code.");
                           } finally {
                             setIsSyncingLocal(false);
                           }
@@ -489,9 +530,7 @@ const Profile: React.FC<Props> = ({
                       >
                         {isSyncingLocal
                           ? "Verifying..."
-                          : isVaultEnabled
-                            ? "Unlock Vault"
-                            : "Unlock & Enable Vault"}
+                          : "Unlock with 2FA Code"}
                       </button>
                     ) : (
                       <div className="space-y-2 w-full">
@@ -536,7 +575,7 @@ const Profile: React.FC<Props> = ({
                     <button
                       onClick={() => {
                         setShowVaultPrompt(false);
-                        setVaultPass("");
+                        setVaultTOTPCode("");
                         setVaultError("");
                       }}
                       className="w-full bg-gray-900 text-gray-500 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
@@ -547,6 +586,169 @@ const Profile: React.FC<Props> = ({
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOTP Setup Modal */}
+      {showTOTPSetup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-surface w-full max-w-md rounded-3xl border border-gray-800 shadow-2xl p-6 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto mb-4">
+                <ShieldCheckIcon className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-white">
+                {totpStep === "scan" ? "Setup 2FA" : "Verify Setup"}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {totpStep === "scan"
+                  ? "Scan the QR code with your authenticator app"
+                  : "Enter the 6-digit code from your app to confirm"}
+              </p>
+            </div>
+
+            {totpStep === "scan" ? (
+              <div className="space-y-4">
+                {/* QR Code */}
+                <div className="bg-white p-6 rounded-2xl mx-auto w-fit">
+                  {totpQRCode && (
+                    <img
+                      src={totpQRCode}
+                      alt="TOTP QR Code"
+                      className="w-64 h-64"
+                    />
+                  )}
+                </div>
+
+                {/* Manual Entry */}
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest text-center">
+                    Or enter manually
+                  </p>
+                  <div className="bg-card border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 font-bold mb-2">Secret Key:</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <code className="text-white font-mono text-sm break-all flex-1">
+                        {totpSecret}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(totpSecret);
+                          showToast("Secret copied!", "success");
+                        }}
+                        className="text-gray-500 hover:text-white transition-colors shrink-0"
+                      >
+                        <ClipboardDocumentIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instructions */}
+                <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
+                  <p className="text-xs text-primary font-bold mb-2">Supported Apps:</p>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    <li>• Google Authenticator</li>
+                    <li>• Authy</li>
+                    <li>• Microsoft Authenticator</li>
+                    <li>• 1Password</li>
+                  </ul>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    onClick={() => setTotpStep("verify")}
+                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all"
+                  >
+                    I've Scanned the Code
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowTOTPSetup(false);
+                      setTotpSecret("");
+                      setTotpQRCode("");
+                      setTotpError("");
+                    }}
+                    className="w-full bg-gray-900 text-gray-500 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Verification Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
+                    Verification Code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={totpVerifyCode}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9]/g, '');
+                      setTotpVerifyCode(value);
+                      setTotpError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && totpVerifyCode.length === 6) {
+                        handleVerifyTOTP();
+                      }
+                    }}
+                    placeholder="000000"
+                    className="w-full bg-card border border-gray-800 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                    autoFocus
+                  />
+                  {totpError && (
+                    <p className="text-[10px] text-rose-500 font-bold pl-1">
+                      {totpError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
+                  <p className="text-xs text-gray-400">
+                    Open your authenticator app and enter the current 6-digit code for ZenFinance.
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    onClick={handleVerifyTOTP}
+                    disabled={totpVerifyCode.length !== 6}
+                    className="w-full bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Verify & Enable 2FA
+                  </button>
+                  <button
+                    onClick={() => setTotpStep("scan")}
+                    className="w-full bg-surface border border-gray-800 text-gray-400 font-bold py-3 rounded-xl active:scale-[0.98] transition-all text-sm"
+                  >
+                    Back to QR Code
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowTOTPSetup(false);
+                      setTotpSecret("");
+                      setTotpQRCode("");
+                      setTotpVerifyCode("");
+                      setTotpError("");
+                      setTotpStep("scan");
+                    }}
+                    className="w-full text-gray-500 font-bold py-2 rounded-xl active:scale-[0.98] transition-all text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -572,8 +774,7 @@ const Profile: React.FC<Props> = ({
             </div>
 
             <div className="space-y-3">
-              {(SecurityService.isBiometricRegistered() ||
-                profile.biometricCredIds?.length ||
+              {(profile.biometricCredIds?.length ||
                 profile.biometricCredId) && (
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 mb-2">
                   <p className="text-emerald-400 text-xs font-bold flex items-center gap-2">
@@ -591,6 +792,7 @@ const Profile: React.FC<Props> = ({
                 onClick={async () => {
                   const credId = await SecurityService.registerBiometrics(
                     profile.name,
+                    profile.biometricCredIds,
                   );
                   if (credId) {
                     const currentHashed =
@@ -606,7 +808,6 @@ const Profile: React.FC<Props> = ({
                       biometricCredIds: Array.from(
                         new Set([...(profile.biometricCredIds || []), credId]),
                       ),
-                      biometricCredId: credId, // Keep legacy field updated too
                     });
                     showToast("New Passkey registered!", "success");
                     setShowBiometricManagement(false);
@@ -623,16 +824,18 @@ const Profile: React.FC<Props> = ({
                 Add New Passkey
               </button>
 
-              {(SecurityService.isBiometricRegistered() ||
-                profile.biometricCredIds?.length ||
+              {(profile.biometricCredIds?.length ||
                 profile.biometricCredId) && (
                 <>
                   <button
                     onClick={async () => {
+                      const credId = profile.biometricCredIds?.[0] || profile.biometricCredId;
+                      if (!credId) {
+                        showToast("No passkey found", "alert");
+                        return;
+                      }
                       const success =
-                        await SecurityService.verifyWithBiometrics(
-                          profile.biometricCredIds || profile.biometricCredId,
-                        );
+                        await SecurityService.verifyWithBiometrics(credId);
                       if (success) {
                         showToast("Passkey verified successfully!", "success");
                       } else {
@@ -657,7 +860,6 @@ const Profile: React.FC<Props> = ({
                           localStorage.removeItem("biometric_cred_ids");
                           localStorage.removeItem("vault_password_remembered");
                           onUpdate({
-                            biometricCredId: "",
                             biometricCredIds: [],
                           });
                           showToast("Security links removed", "info");
@@ -780,6 +982,34 @@ const Profile: React.FC<Props> = ({
 
             <SectionHeader title="Security & Biometrics" />
             <SettingItem
+              icon={ShieldCheckIcon}
+              label="Two-Factor Authentication"
+              description={
+                profile.totpSecret
+                  ? "2FA is enabled for vault encryption"
+                  : "Setup required for vault encryption"
+              }
+              color={profile.totpSecret ? "text-emerald-400" : "text-yellow-400"}
+              onClick={() => {
+                if (profile.totpSecret) {
+                  handleDisableTOTP();
+                } else {
+                  handleSetupTOTP();
+                }
+              }}
+              action={
+                profile.totpSecret ? (
+                  <div className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-400">
+                    Enabled
+                  </div>
+                ) : (
+                  <div className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-yellow-500/20 text-yellow-400">
+                    Setup
+                  </div>
+                )
+              }
+            />
+            <SettingItem
               icon={LockClosedIcon}
               label="Secure Vault"
               description={
@@ -816,25 +1046,19 @@ const Profile: React.FC<Props> = ({
             <SettingItem
               icon={FingerPrintIcon}
               label={
-                SecurityService.isBiometricRegistered()
-                  ? "Passkey Active"
-                  : profile.biometricCredIds?.length || profile.biometricCredId
-                    ? "Passkey Available"
-                    : "Register Passkey"
+                profile.biometricCredIds?.length || profile.biometricCredId
+                  ? "Passkey Available"
+                  : "Register Passkey"
               }
               description={
-                SecurityService.isBiometricRegistered()
-                  ? "Device identity linked"
-                  : profile.biometricCredIds?.length || profile.biometricCredId
-                    ? "Stored in cloud (sync available)"
-                    : "Use TouchID/FaceID for secure reveal"
+                profile.biometricCredIds?.length || profile.biometricCredId
+                  ? "Stored in cloud (sync available)"
+                  : "Use TouchID/FaceID for secure reveal"
               }
               color={
-                SecurityService.isBiometricRegistered()
-                  ? "text-indigo-400"
-                  : profile.biometricCredIds?.length || profile.biometricCredId
-                    ? "text-blue-400"
-                    : "text-emerald-400"
+                profile.biometricCredIds?.length || profile.biometricCredId
+                  ? "text-blue-400"
+                  : "text-emerald-400"
               }
               onClick={() => setShowBiometricManagement(true)}
             />

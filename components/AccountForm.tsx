@@ -27,7 +27,12 @@ const AccountForm: React.FC<Props> = ({
   onClose,
 }) => {
   const { profile } = useAuth();
-  const { isVaultEnabled, isVaultUnlocked, unlockVault } = useData();
+  const {
+    isVaultEnabled,
+    isVaultUnlocked,
+    unlockVaultWithTOTP,
+    unlockVaultWithBiometrics,
+  } = useData();
   const [activeTab, setActiveTab] = useState<"PRESETS" | "CUSTOM">("PRESETS");
 
   // Form State
@@ -52,7 +57,7 @@ const AccountForm: React.FC<Props> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
-  const [vaultPassword, setVaultPassword] = useState("");
+  const [vaultTOTPCode, setVaultTOTPCode] = useState("");
   const [unlockError, setUnlockError] = useState("");
   const [confirmationModal, setConfirmationModal] = useState<{
     isOpen: boolean;
@@ -70,39 +75,24 @@ const AccountForm: React.FC<Props> = ({
   });
 
   const handleVaultUnlock = async () => {
-    if (!vaultPassword) return;
-    const success = await unlockVault(vaultPassword);
+    if (!vaultTOTPCode) return;
+    const success = await unlockVaultWithTOTP(vaultTOTPCode);
     if (success) {
       setShowUnlockModal(false);
-      setVaultPassword("");
+      setVaultTOTPCode("");
       setUnlockError("");
     } else {
-      setUnlockError("Incorrect vault password.");
+      setUnlockError("Invalid 2FA code.");
     }
   };
 
   const handleBiometricUnlock = async () => {
-    const verified = await SecurityService.verifyWithBiometrics(
-      profile.biometricCredIds || profile.biometricCredId,
-    );
-    if (verified) {
-      const storedPass = localStorage.getItem("vault_password_remembered");
-      if (storedPass) {
-        if (storedPass.startsWith("ENC:")) {
-          localStorage.removeItem("vault_password_remembered");
-          setUnlockError("Vault key expired. Please use password once.");
-          return;
-        }
-        const success = await unlockVault(storedPass);
-        if (success) {
-          setShowUnlockModal(false);
-          setUnlockError("");
-        } else {
-          setUnlockError("Biometric link expired. Please use password.");
-        }
-      } else {
-        setUnlockError("Vault key missing. Please use password once.");
-      }
+    const success = await unlockVaultWithBiometrics();
+    if (success) {
+      setShowUnlockModal(false);
+      setUnlockError("");
+    } else {
+      setUnlockError("Biometric unlock failed. Please use TOTP.");
     }
   };
 
@@ -348,7 +338,7 @@ const AccountForm: React.FC<Props> = ({
                   <optgroup label="Existing Assets">
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} ({a.currency} {a.balance})
+                        {a.name} ({a.currency} {a.balance.toFixed(2)})
                       </option>
                     ))}
                   </optgroup>
@@ -518,7 +508,7 @@ const AccountForm: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setVaultPassword("");
+                      setVaultTOTPCode("");
                       setUnlockError("");
                       setShowUnlockModal(true);
                     }}
@@ -547,7 +537,7 @@ const AccountForm: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setVaultPassword("");
+                      setVaultTOTPCode("");
                       setUnlockError("");
                       setShowUnlockModal(true);
                     }}
@@ -667,15 +657,13 @@ const AccountForm: React.FC<Props> = ({
         isOpen={showUnlockModal}
         onClose={() => setShowUnlockModal(false)}
         title="Unlock Vault"
-        description="Enter your vault password to view sensitive details."
+        description="Enter your 6-digit 2FA code from your authenticator app to view sensitive details."
         icon={LockClosedIcon}
         iconColor="text-indigo-400"
         iconBgColor="bg-indigo-500/10"
       >
         <div className="space-y-4">
-          {(SecurityService.isBiometricRegistered() ||
-            profile.biometricCredIds?.length ||
-            profile.biometricCredId) && (
+          {profile.biometricCredIds?.length && (
             <button
               onClick={() => {
                 setConfirmationModal({
@@ -694,19 +682,28 @@ const AccountForm: React.FC<Props> = ({
             </button>
           )}
           <div className="space-y-1.5">
+            <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
+              2FA Code (6 Digits)
+            </label>
             <input
-              type="password"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               autoFocus
-              value={vaultPassword}
+              value={vaultTOTPCode}
               onChange={(e) => {
-                setVaultPassword(e.target.value);
+                const value = e.target.value.replace(/[^0-9]/g, "");
+                setVaultTOTPCode(value);
                 setUnlockError("");
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleVaultUnlock();
+                if (e.key === "Enter" && vaultTOTPCode.length === 6) {
+                  handleVaultUnlock();
+                }
               }}
-              placeholder="Vault Password"
-              className="w-full bg-surface border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-gray-500"
+              placeholder="000000"
+              maxLength={6}
+              className="w-full bg-surface border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-gray-500 placeholder:tracking-[0.5em]"
             />
             {unlockError && (
               <p className="text-[10px] text-rose-500 font-bold pl-1">
@@ -723,7 +720,8 @@ const AccountForm: React.FC<Props> = ({
             </button>
             <button
               onClick={handleVaultUnlock}
-              className="py-3 px-4 rounded-xl font-bold text-sm bg-primary hover:bg-primaryDark text-white transition-colors shadow-lg shadow-primary/20"
+              disabled={vaultTOTPCode.length !== 6}
+              className="py-3 px-4 rounded-xl font-bold text-sm bg-primary hover:bg-primaryDark text-white transition-colors shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Unlock
             </button>

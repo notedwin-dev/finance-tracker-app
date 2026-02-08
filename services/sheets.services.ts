@@ -289,12 +289,12 @@ export const findUser = async (email: string) => {
 
     // Migration: ensure all required headers exist (removed legacy biometricCredId)
     const requiredHeaders = [
-      "isVaultCreated",
+      "isSecurityEnabled",
       "isVaultLocked",
       "biometricCredIds",
       "devices",
       "privacyMode",
-      "vaultSalt",
+      "totpSecret",
       "showAIAssistant",
       "syncChatToSheets",
       "lastUpdatedAt",
@@ -400,10 +400,9 @@ export const createUser = async (userData: any) => {
               "password",
               "name",
               "createdAt",
-              "isVaultEnabled",
-              "isVaultCreated",
+              "isSecurityEnabled",
               "isVaultLocked",
-              "vaultSalt",
+              "totpSecret",
               "privacyMode",
               "biometricCredIds",
               "devices",
@@ -427,16 +426,19 @@ export const createUser = async (userData: any) => {
       if (h === "password") return userData.password;
       if (h === "name") return userData.name;
       if (h === "createdAt") return new Date().toISOString();
-      if (h === "isVaultEnabled") return userData.isVaultEnabled || false;
-      if (h === "isVaultCreated") return userData.isVaultCreated || false;
+      if (h === "isSecurityEnabled") return userData.isSecurityEnabled || false;
       if (h === "isVaultLocked") return userData.isVaultLocked || true;
-      if (h === "vaultSalt") return userData.vaultSalt || "";
+      if (h === "totpSecret") return userData.totpSecret || "";
       if (h === "privacyMode") return userData.privacyMode || false;
       if (h === "showAIAssistant") return userData.showAIAssistant !== false;
       if (h === "syncChatToSheets") return userData.syncChatToSheets !== false;
       if (h === "biometricCredIds")
         return JSON.stringify(userData.biometricCredIds || []);
       if (h === "devices") return JSON.stringify(userData.devices || []);
+      // Legacy fields - map to new fields for backward compatibility
+      if (h === "isVaultEnabled") return userData.isSecurityEnabled || false;
+      if (h === "isVaultCreated") return userData.isSecurityEnabled || false;
+      if (h === "vaultSalt") return ""; // No longer used
       return "";
     });
 
@@ -458,6 +460,8 @@ export const createUser = async (userData: any) => {
 export const updateUser = async (email: string, updates: any) => {
   if (!gapiInited || !hasAccessToken) return false;
   try {
+    console.log("📝 updateUser called with:", { email, updates });
+
     const fileId = await getSpreadsheetId();
     if (!fileId) return false;
 
@@ -476,6 +480,10 @@ export const updateUser = async (email: string, updates: any) => {
     const updateKeys = Object.keys(updates);
     const missingHeaders = updateKeys.filter((k) => !headers.includes(k));
     if (missingHeaders.length > 0) {
+      console.log(
+        "➕ Adding missing headers to Profile sheet:",
+        missingHeaders,
+      );
       const newHeaders = [...headers, ...missingHeaders];
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
@@ -483,6 +491,7 @@ export const updateUser = async (email: string, updates: any) => {
         valueInputOption: "RAW",
         resource: { values: [newHeaders] },
       });
+      console.log("✅ Headers added, re-running updateUser");
       // Re-fetch to get new headers
       return updateUser(email, updates);
     }
@@ -558,12 +567,19 @@ export const updateUser = async (email: string, updates: any) => {
     });
 
     // 3. Update the row
+    console.log("💾 Updating Profile sheet row:", {
+      rowIndex: rowIndex + 1,
+      updatedFields: Object.keys(updates),
+    });
+
     await window.gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: fileId,
       range: `'${sheetName}'!A${rowIndex + 1}`,
       valueInputOption: "USER_ENTERED",
       resource: { values: [updatedRow] },
     });
+
+    console.log("✅ Profile sheet updated successfully");
     return true;
   } catch (e) {
     console.error("Failed to update user", e);
@@ -631,16 +647,13 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
             }
           }
 
-          // Convert numeric fields
+          // Convert numeric fields (exclude date fields - they use ISO strings)
           const numericFields = [
             "amount",
             "balance",
-            "updatedAt",
-            "createdAt",
             "limit",
             "targetAmount",
             "currentAmount",
-            "lastSyncAt",
             "usedAmount",
             "limitAmount",
             "amountLeft",
@@ -684,8 +697,19 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 
     const combinedData = Array.from(mergedMap.values());
 
+    // Safety: If combined data is empty but we have existing data, something went wrong
+    // Don't clear the sheet unless we're sure we want to delete everything
     if (combinedData.length === 0) {
-      if (totalExistingRows > 0) {
+      if (existingData.length > 0 && data.length > 0) {
+        // This is suspicious - we had data to save AND existing data, but merge resulted in nothing
+        console.error(
+          `Sync safety check failed for ${sheetName}: Merge resulted in 0 items when existingData=${existingData.length} and newData=${data.length}. Aborting to prevent data loss.`,
+        );
+        throw new Error(`Prevented clearing ${sheetName} sheet - merge logic produced empty result`);
+      }
+      
+      // Only clear if we intentionally passed empty data array
+      if (data.length === 0 && totalExistingRows > 0) {
         await window.gapi.client.sheets.spreadsheets.values.clear({
           spreadsheetId: fileId,
           range: `'${sheetName}'!A:Z`,

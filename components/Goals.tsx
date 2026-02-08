@@ -251,7 +251,7 @@ const Goals: React.FC<Props> = ({
         icon: "💰",
         color: "bg-primary",
         resetDate: potResetDate || undefined,
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       });
       setPotName("");
       setPotAccountId("");
@@ -282,7 +282,7 @@ const Goals: React.FC<Props> = ({
         linkedAccountId: goalLinkedAccountId || undefined,
         icon: "🎯",
         color: "bg-primary",
-        updatedAt: Date.now(),
+        updatedAt: new Date().toISOString(),
       });
       setGoalName("");
       setGoalTarget("");

@@ -120,7 +120,7 @@ async function run() {
   const updatedAccounts = data.accounts.map((acc) => ({
     ...acc,
     balance: balances[acc.id] ?? acc.balance,
-    updatedAt: Date.now(),
+    updatedAt: new Date().toISOString(),
   }));
 
   console.log("--- Saving Updated Accounts ---");

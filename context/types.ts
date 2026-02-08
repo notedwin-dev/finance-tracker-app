@@ -30,6 +30,8 @@ export interface DataContextType {
   isVaultCreated: boolean;
   isVaultUnlocked: boolean;
   unlockVault: (password: string) => Promise<boolean>;
+  unlockVaultWithBiometrics: () => Promise<boolean>;
+  enableBiometricUnlock: (password: string) => Promise<boolean>;
   lockVault: () => void;
   enableVault: (password: string) => Promise<void>;
   disableVault: () => Promise<void>;
@@ -48,7 +50,7 @@ export interface DataContextType {
   toast: { message: string; type: "success" | "alert" | "info" } | null;
   showToast: (message: string, type: "success" | "alert" | "info") => void;
   syncData: () => Promise<void>;
-  handleSelectExistingSheet: (sheetId: string) => Promise<void>;
+  handleSelectExistingSheet: (sheetId?: string) => Promise<void>;
   loadData: () => Promise<void>;
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;

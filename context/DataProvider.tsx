@@ -44,6 +44,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasSynced, setHasSynced] = useState(false);
   const syncInProgress = React.useRef(false);
+  const lastSyncTime = React.useRef<number>(0);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "alert" | "info";
@@ -81,6 +82,71 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   const isVaultLockedSetting = checkBool(profile.isVaultLocked);
 
   const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
+
+  /**
+   * Storage Architecture:
+   * - When Google Sheets is linked: Sheets = source of truth, localStorage = Redis-like cache
+   * - When offline/not linked: localStorage = source of truth
+   */
+  const shouldUseCloudAsSource = (): boolean => {
+    return profile.isLoggedIn && !profile.offlineMode && isCloudEnabled;
+  };
+
+  /**
+   * Execute write operations with proper cloud-first strategy:
+   * - Cloud linked: Write to Sheets first, then cache to localStorage on success
+   * - Offline: Write to localStorage only
+   * - Network error: Abort operation, show error, don't modify state
+   */
+  const executeWrite = async <T,>(
+    operation: {
+      cloudWrite: () => Promise<T>;
+      localCache: () => void;
+      onSuccess?: () => void;
+      errorMessage?: string;
+    }
+  ): Promise<boolean> => {
+    const { cloudWrite, localCache, onSuccess, errorMessage = "Operation failed" } = operation;
+
+    if (shouldUseCloudAsSource()) {
+      try {
+        await cloudWrite(); // Cloud first - throws on network error
+        localCache(); // Cache successful write to localStorage
+        onSuccess?.();
+        return true;
+      } catch (error) {
+        console.error("Cloud write failed:", error);
+        showToast(
+          `${errorMessage}. Please check your connection and try again.`,
+          "alert",
+        );
+        return false; // Abort - state not modified
+      }
+    } else {
+      // Offline mode: localStorage is source of truth
+      localCache();
+      onSuccess?.();
+      return true;
+    }
+  };
+
+  /**
+   * Update lastUpdatedAt timestamp in cloud profile
+   * This tracks when data was last modified in Sheets
+   */
+  const updateCloudTimestamp = async (): Promise<void> => {
+    if (shouldUseCloudAsSource() && profile.id) {
+      try {
+        await SheetService.updateOne("Profile", profile.id, {
+          ...profile,
+          lastUpdatedAt: Date.now(),
+        });
+      } catch (error) {
+        console.warn("Failed to update cloud timestamp:", error);
+        // Non-critical - don't throw
+      }
+    }
+  };
 
   const getVaultSalt = () => {
     if (profile.vaultSalt) return profile.vaultSalt;
@@ -189,15 +255,85 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     return acc;
   };
 
+  /**
+   * Unlock vault with biometrics (if enabled on this device)
+   * Biometrics = convenience feature that stores password locally per device
+   */
+  const unlockVaultWithBiometrics = async (): Promise<boolean> => {
+    try {
+      // Check if biometrics are registered on this device
+      if (!SecurityService.isBiometricRegistered()) {
+        showToast("Biometrics not set up on this device", "alert");
+        return false;
+      }
+
+      // Verify biometric authentication
+      const verified = await SecurityService.verifyWithBiometrics();
+      if (!verified) {
+        showToast("Biometric verification failed", "alert");
+        return false;
+      }
+
+      // Get stored password (only works if user previously enabled "Remember Password" with biometrics)
+      const rememberedPass = localStorage.getItem("vault_password_remembered");
+      if (!rememberedPass) {
+        showToast("Please unlock with password first to enable biometric unlock", "alert");
+        return false;
+      }
+
+      // Unlock with remembered password
+      return await unlockVault(rememberedPass);
+    } catch (error) {
+      console.error("Biometric unlock failed:", error);
+      showToast("Failed to unlock with biometrics", "alert");
+      return false;
+    }
+  };
+
+  /**
+   * Enable biometric unlock on this device (stores password locally)
+   * User must have vault password to enable this
+   */
+  const enableBiometricUnlock = async (password: string): Promise<boolean> => {
+    try {
+      // Verify password first
+      const isCorrect = await unlockVault(password);
+      if (!isCorrect) {
+        showToast("Incorrect password", "alert");
+        return false;
+      }
+
+      // Register biometric credential
+      const credId = await SecurityService.registerBiometrics(profile.email || "user");
+      if (!credId) {
+        showToast("Failed to register biometrics", "alert");
+        return false;
+      }
+
+      // Store password for biometric unlock
+      const salt = profile.vaultSalt || getVaultSalt();
+      const hashedPass = await SecurityService.hashPassword(password, salt);
+      localStorage.setItem("vault_password_remembered", hashedPass);
+
+      showToast("Biometric unlock enabled on this device", "success");
+      return true;
+    } catch (error) {
+      console.error("Failed to enable biometric unlock:", error);
+      showToast("Failed to enable biometric unlock", "alert");
+      return false;
+    }
+  };
+
   const unlockVault = async (password: string): Promise<boolean> => {
     try {
       const trimmedPass = password?.trim();
       if (!trimmedPass) return false;
 
-      const salt = getVaultSalt();
-      const iterationTries = [
-        100000, 1000000, 10000, 5000, 2048, 1024, 1000, 256, 128, 1,
-      ];
+      // CRITICAL FIX: Always use cloud salt as source of truth
+      const salt = profile.vaultSalt || getVaultSalt();
+      
+      // Use consistent iteration count (100,000 is standard)
+      const STANDARD_ITERATIONS = 100000;
 
       // Try to find encrypted accounts to test against
       const testAccounts = accounts
@@ -210,10 +346,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         .slice(0, 3); // Test against up to 3 accounts for robustness
 
       if (testAccounts.length === 0) {
-        // No encrypted data, just accept the password (use default 100k iterations for session)
+        // No encrypted data - vault not properly set up
+        // This should only happen on first setup
+        if (!profile.isVaultCreated) {
+          showToast("Please set up your vault first", "alert");
+          return false;
+        }
+        
+        // Vault is marked as created but no encrypted data found
+        // Accept the password and mark as unlocked
         const hashedPass = password.startsWith("HASHED:")
           ? password
-          : await SecurityService.hashPassword(password, salt, 100000);
+          : await SecurityService.hashPassword(password, salt, STANDARD_ITERATIONS);
         setVaultPassword(hashedPass);
         sessionStorage.setItem("vault_password_session", hashedPass);
         if (localStorage.getItem("vault_password_remembered")) {
@@ -223,150 +367,122 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         return true;
       }
 
-      // Test trials
-      const saltsToTry = [salt, ""];
-      const storedProfile = StorageService.getStoredProfile();
-      if (
-        storedProfile.vaultSalt &&
-        !saltsToTry.includes(storedProfile.vaultSalt)
-      ) {
-        saltsToTry.push(storedProfile.vaultSalt);
-      }
-      for (const s of saltsToTry) {
-        // Try different iteration counts for the hashing phase if a raw password was provided
-        const passwordsToTry = password.startsWith("HASHED:")
-          ? [password]
-          : await Promise.all(
-              iterationTries.map((iters) =>
-                SecurityService.hashPassword(trimmedPass, s, iters),
-              ),
-            );
+      // MIGRATION LOGIC: Try new standard first, then fallback to legacy combinations
+      const attemptUnlock = async (testSalt: string, iterations: number): Promise<boolean> => {
+        const hashedPass = password.startsWith("HASHED:")
+          ? password
+          : await SecurityService.hashPassword(trimmedPass, testSalt, iterations);
 
-        // Also try the raw password itself
-        if (!password.startsWith("HASHED:")) {
-          passwordsToTry.push(trimmedPass);
-        }
+        for (const testAcc of testAccounts) {
+          const decryptedStr = await SecurityService.decryptData(
+            testAcc.details as string,
+            hashedPass,
+            testSalt,
+          );
 
-        for (let i = 0; i < passwordsToTry.length; i++) {
-          const trialPass = passwordsToTry[i];
-          const itersLabel =
-            i < iterationTries.length ? iterationTries[i] : "raw";
+          if (decryptedStr) {
+            try {
+              JSON.parse(decryptedStr);
+              console.log(`✅ Vault unlocked with salt=${testSalt.substring(0, 8)}... iterations=${iterations}`);
 
-          // Test trialPass against our set of encrypted accounts
-          for (const testAcc of testAccounts) {
-            const decryptedStr = await SecurityService.decryptData(
-              testAcc.details as string,
-              trialPass,
-              s,
-            );
-
-            if (decryptedStr) {
-              try {
-                JSON.parse(decryptedStr);
-                console.log(
-                  `Vault unlocked using salt: "${s}" and iters: ${itersLabel}`,
-                );
-
-                // Successfully unlocked!
-                const workingPass = trialPass;
-                const workingSalt = s;
-                const targetHashedPass = password.startsWith("HASHED:")
-                  ? password
-                  : passwordsToTry[0]; // 100k version with whatever salt worked
-
-                setVaultPassword(targetHashedPass);
-                sessionStorage.setItem(
-                  "vault_password_session",
-                  targetHashedPass,
-                );
-                if (localStorage.getItem("vault_password_remembered")) {
-                  localStorage.setItem(
-                    "vault_password_remembered",
-                    targetHashedPass,
-                  );
-                }
-
-                // Update profile if we found a better salt or need to persist this one
-                if (s !== profile.vaultSalt) {
-                  updateProfile({ vaultSalt: s });
-                }
-
-                await loadData(workingPass);
-
-                // MIGRATION logic below...
-                if (workingPass !== targetHashedPass) {
-                  console.log(
-                    "Migrating vault data to standard 100k iterations...",
-                  );
-                  const loadedAccounts = StorageService.getStoredAccounts();
-                  const migratedAccounts = await Promise.all(
-                    loadedAccounts.map(async (acc) => {
-                      const decrypted = await decryptAccount(
-                        acc,
-                        workingPass,
-                        workingSalt,
-                      );
-                      if (
-                        decrypted.details &&
-                        typeof decrypted.details === "object"
-                      ) {
-                        const reEncrypted = await SecurityService.encryptData(
-                          JSON.stringify(decrypted.details),
-                          targetHashedPass,
-                          salt, // The target salt (standard one stored in profile)
-                        );
-                        return { ...acc, details: reEncrypted as any };
-                      }
-                      return acc;
-                    }),
-                  );
-                  setAccounts(migratedAccounts);
-                  StorageService.saveAccounts(migratedAccounts);
-                  if (isCloudEnabled) {
-                    await SheetService.syncWithGoogleSheets(
-                      migratedAccounts,
-                      transactions,
-                      categories,
-                      goals,
-                      subscriptions,
-                      pots,
-                      pockets,
-                      profile.syncChatToSheets ? chatSessions : undefined,
-                    );
-                  }
-                }
-
-                updateProfile({ isVaultLocked: false });
-                return true;
-              } catch (e) {
-                continue;
+              // Successfully unlocked!
+              setVaultPassword(hashedPass);
+              sessionStorage.setItem("vault_password_session", hashedPass);
+              if (localStorage.getItem("vault_password_remembered")) {
+                localStorage.setItem("vault_password_remembered", hashedPass);
               }
+
+              await loadData(hashedPass);
+              
+              // MIGRATION: Update to standard if using legacy
+              if (testSalt !== salt || iterations !== STANDARD_ITERATIONS) {
+                console.log("🔄 Migrating vault to standard salt and iterations...");
+                updateProfile({ vaultSalt: salt });
+                // Re-encrypt all accounts with new standard
+                const reEncryptedAccounts = await Promise.all(
+                  accounts.map(async (acc) => {
+                    if (acc.details && typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
+                      try {
+                        const decrypted = await SecurityService.decryptData(acc.details, hashedPass, testSalt);
+                        const newHash = await SecurityService.hashPassword(trimmedPass, salt, STANDARD_ITERATIONS);
+                        const reEncrypted = await SecurityService.encryptData(decrypted, newHash, salt);
+                        return { ...acc, details: reEncrypted as any };
+                      } catch {
+                        return acc;
+                      }
+                    }
+                    return acc;
+                  })
+                );
+                setAccounts(reEncryptedAccounts);
+                StorageService.saveAccounts(reEncryptedAccounts);
+                
+                // Update password hash to new standard
+                const newHashedPass = await SecurityService.hashPassword(trimmedPass, salt, STANDARD_ITERATIONS);
+                setVaultPassword(newHashedPass);
+                sessionStorage.setItem("vault_password_session", newHashedPass);
+                if (localStorage.getItem("vault_password_remembered")) {
+                  localStorage.setItem("vault_password_remembered", newHashedPass);
+                }
+                
+                showToast("Vault migrated to new standard", "success");
+              } else {
+                updateProfile({ isVaultLocked: false });
+                showToast("Vault unlocked", "success");
+              }
+              
+              return true;
+            } catch (e) {
+              // Decryption worked but not valid JSON - continue testing
             }
           }
         }
+        return false;
+      };
+
+      // Try new standard first
+      if (await attemptUnlock(salt, STANDARD_ITERATIONS)) {
+        return true;
       }
+
+      // BACKWARD COMPATIBILITY: Try legacy combinations (Gemini's old code)
+      console.log("⚠️ Standard unlock failed, trying legacy combinations...");
+      const legacySalts = [salt, getVaultSalt(), localStorage.getItem("vault_salt") || ""].filter(s => s);
+      const legacyIterations = [100000, 1000000, 10000, 5000, 2048, 1024, 1000, 256, 128, 1];
+      
+      for (const legacySalt of [...new Set(legacySalts)]) {
+        for (const iterations of legacyIterations) {
+          if (legacySalt === salt && iterations === STANDARD_ITERATIONS) continue; // Already tried
+          if (await attemptUnlock(legacySalt, iterations)) {
+            return true;
+          }
+        }
+      }
+
+      // If we reach here, password was incorrect
+      showToast("Incorrect password", "alert");
+      return false;
     } catch (error) {
       console.error("Failed to unlock vault:", error);
+      showToast("Failed to unlock vault", "alert");
+      return false;
     }
-    return false;
   };
 
   const enableVault = async (password: string) => {
-    const salt = getVaultSalt();
+    // Use cloud salt as source of truth
+    const salt = profile.vaultSalt || getVaultSalt();
     const hashedPass = await SecurityService.hashPassword(password, salt);
 
     setVaultPassword(hashedPass);
     sessionStorage.setItem("vault_password_session", hashedPass);
-    const deviceId = StorageService.getDeviceId();
-    const currentDevices = profile.devices || [];
-    const newDevices = currentDevices.includes(deviceId)
-      ? currentDevices
-      : [...currentDevices, deviceId];
 
+    // Update profile with vault settings AND salt
     updateProfile({
       isVaultEnabled: true,
       isVaultCreated: true,
-      devices: newDevices,
+      isVaultLocked: false,
+      vaultSalt: salt,
     });
 
     // Encrypt all current accounts and save
@@ -385,32 +501,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     );
     StorageService.saveAccounts(encryptedAccounts);
 
-    // RESTORE LOGIC: If we have credentials in cloud and we are trusted, restore local state
-    if (
-      (profile.biometricCredIds?.length || profile.biometricCredId) &&
-      profile.devices?.includes(StorageService.getDeviceId())
-    ) {
-      if (!localStorage.getItem("biometric_cred_ids")) {
-        const ids = profile.biometricCredIds?.length
-          ? profile.biometricCredIds
-          : profile.biometricCredId
-            ? [profile.biometricCredId]
-            : [];
-        if (ids.length > 0) {
-          localStorage.setItem("biometric_cred_ids", JSON.stringify(ids));
-        }
-      }
-      // Since we just enabled (created a password), update the remembered password
-      // This solves the issue of "First time login" message appearing on re-enable
-      localStorage.setItem("vault_password_remembered", hashedPass);
-    }
-
-    // Register biometrics logic moved to UI components to allow meaningful Modals
-    // instead of window.confirm blocking calls.
-    if (await SecurityService.isBiometricRegistered()) {
-      // If already registered (e.g. restored above), ensure password is updated
-      localStorage.setItem("vault_password_remembered", hashedPass);
-    }
+    // Password is now set - user can optionally enable biometrics on each device
+    // Biometrics will store the password locally for convenience
+    showToast("Vault enabled! Optionally enable biometrics in Settings.", "success");
 
     if (isCloudEnabled) {
       await SheetService.syncWithGoogleSheets(
@@ -761,7 +854,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const syncData = async () => {
     if (syncInProgress.current || profile.offlineMode) return;
+    
+    // Debounce: Prevent syncs within 5 seconds of last sync
+    const now = Date.now();
+    const MIN_SYNC_INTERVAL = 5000; // 5 seconds
+    if (now - lastSyncTime.current < MIN_SYNC_INTERVAL) {
+      console.log(`⏱️ Sync throttled (last sync ${Math.round((now - lastSyncTime.current) / 1000)}s ago)`);
+      return;
+    }
+    
     syncInProgress.current = true;
+    lastSyncTime.current = now;
     setIsSyncing(true);
     const currentProfile = StorageService.getStoredProfile();
     const userId = currentProfile.id || profile.id;
@@ -804,6 +907,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       showToast("Syncing with Google Sheets...", "info");
       const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
       if (cloudData) {
+        // Re-linking detection: Check if Sheets has existing data
+        const hasCloudData = 
+          (cloudData.accounts && cloudData.accounts.length > 0) ||
+          (cloudData.transactions && cloudData.transactions.length > 0) ||
+          (cloudData.categories && cloudData.categories.length > 0);
+
+        const hasLocalData = 
+          StorageService.getStoredAccounts().length > 0 ||
+          StorageService.getStoredTransactions().length > 0 ||
+          StorageService.getStoredCategories().length > 0;
+
+        let useCloudAsAuthority = true; // Default: trust cloud
+
+        // Re-linking scenario: Both cloud and local have data
+        if (hasCloudData && hasLocalData && cloudData.profile) {
+          const cloudLastUpdated = Number(cloudData.profile.lastUpdatedAt || 0);
+          const localLastSynced = Number(profile.lastSyncAt || 0);
+          
+          if (localLastSynced > cloudLastUpdated) {
+            // Local data is newer - this means user made changes locally after last cloud update
+            console.log("Re-linking: Local data is newer than cloud. Local will update cloud.");
+            useCloudAsAuthority = false;
+          } else {
+            console.log("Re-linking: Cloud data is newer or equal. Cloud is authoritative.");
+            useCloudAsAuthority = true;
+          }
+        }
+
         // Sync Profile if available
         let activeProfile = { ...profile };
         if (cloudData.profile) {
@@ -940,46 +1071,80 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const merge = <T extends { id: string; updatedAt?: any }>(
           local: T[],
           cloud: T[],
+          trustCloud: boolean = true,
         ): T[] => {
           const map = new Map<string, T>();
           const now = Date.now();
 
-          // 1. Load all Cloud data into the map.
-          // We ALWAYS trust cloud data as the baseline for safety.
-          cloud.forEach((i) => {
-            if (i.id) {
+          if (trustCloud) {
+            // Cloud is authoritative - start with cloud data
+            cloud.forEach((i) => {
+              if (i.id) {
+                const id = String(i.id);
+                const cloudUpdated = Number(i.updatedAt || 0);
+                map.set(id, {
+                  ...i,
+                  updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+                });
+              }
+            });
+
+            // Only merge local items that exist in cloud (prevents resurrection of deletions)
+            local.forEach((i) => {
               const id = String(i.id);
-              const cloudUpdated = Number(i.updatedAt || 0);
-              map.set(id, {
-                ...i,
-                updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
-              });
-            }
-          });
+              const localUpdated = Number(i.updatedAt || 0);
 
-          // 2. Merge local data
-          local.forEach((i) => {
-            const id = String(i.id);
-            const localUpdated = Number(i.updatedAt || 0);
-
-            if (map.has(id)) {
-              const cloudItem = map.get(id)!;
-              const cloudUpdated = Number(cloudItem.updatedAt || 0);
-              // Last Write Wins. On tie, prefer Cloud.
-              if (localUpdated > cloudUpdated) {
+              if (map.has(id)) {
+                const cloudItem = map.get(id)!;
+                const cloudUpdated = Number(cloudItem.updatedAt || 0);
+                // Last Write Wins. On tie, prefer Cloud.
+                if (localUpdated > cloudUpdated) {
+                  map.set(id, {
+                    ...i,
+                    updatedAt: localUpdated === 0 ? now : localUpdated || now,
+                  });
+                }
+              }
+              // Deleted items (exist locally but not in cloud) are ignored
+            });
+          } else {
+            // Local is newer (re-linking scenario) - start with local data
+            local.forEach((i) => {
+              if (i.id) {
+                const id = String(i.id);
+                const localUpdated = Number(i.updatedAt || 0);
                 map.set(id, {
                   ...i,
                   updatedAt: localUpdated === 0 ? now : localUpdated || now,
                 });
               }
-            } else if (i.id) {
-              // Item is local-only. Add it to the map to be uploaded to cloud.
-              map.set(id, {
-                ...i,
-                updatedAt: localUpdated === 0 ? now : localUpdated || now,
-              });
-            }
-          });
+            });
+
+            // Merge cloud items, but prefer local on conflicts
+            cloud.forEach((i) => {
+              const id = String(i.id);
+              const cloudUpdated = Number(i.updatedAt || 0);
+
+              if (map.has(id)) {
+                const localItem = map.get(id)!;
+                const localUpdated = Number(localItem.updatedAt || 0);
+                // Last Write Wins. On tie, prefer Local.
+                if (cloudUpdated > localUpdated) {
+                  map.set(id, {
+                    ...i,
+                    updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+                  });
+                }
+              } else if (i.id) {
+                // Cloud-only item - add it
+                map.set(id, {
+                  ...i,
+                  updatedAt: cloudUpdated === 0 ? now : cloudUpdated || now,
+                });
+              }
+            });
+          }
+
           return Array.from(map.values());
         };
 
@@ -1017,10 +1182,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           }),
         );
 
-        const mergedAccounts = merge(localAccounts, cloudAccounts);
+        const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority);
         setAccounts(mergedAccounts);
 
-        // Encrypt for storage
+        // Encrypt for storage (cache to localStorage)
         const encryptedAccounts = await Promise.all(
           mergedAccounts.map((a) =>
             encryptAccount(a, currentPass || undefined, currentSalt),
@@ -1031,6 +1196,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedCategories = merge(
           StorageService.getStoredCategories(),
           cloudData.categories,
+          useCloudAsAuthority,
         );
         setCategories(mergedCategories);
         StorageService.saveCategories(mergedCategories);
@@ -1038,6 +1204,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedTransactions = merge(
           StorageService.getStoredTransactions(),
           cloudData.transactions,
+          useCloudAsAuthority,
         );
         setTransactions(mergedTransactions);
         StorageService.saveTransactions(mergedTransactions);
@@ -1045,6 +1212,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedGoals = merge(
           StorageService.getStoredGoals(),
           cloudData.goals,
+          useCloudAsAuthority,
         );
         setGoals(mergedGoals);
         StorageService.saveGoals(mergedGoals);
@@ -1052,6 +1220,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedSubs = merge(
           StorageService.getStoredSubscriptions(),
           cloudData.subscriptions || [],
+          useCloudAsAuthority,
         );
         setSubscriptions(mergedSubs);
         StorageService.saveSubscriptions(mergedSubs);
@@ -1059,6 +1228,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedPots = merge(
           StorageService.getStoredPots(),
           cloudData.pots || [],
+          useCloudAsAuthority,
         );
         setPots(mergedPots);
         StorageService.savePots(mergedPots);
@@ -1066,6 +1236,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedPockets = merge(
           StorageService.getStoredPockets(),
           cloudData.pockets || [],
+          useCloudAsAuthority,
         );
         setPockets(mergedPockets);
         StorageService.savePockets(mergedPockets);
@@ -1073,6 +1244,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         const mergedChatSessions = merge(
           StorageService.getStoredChatSessions(),
           cloudData.chatSessions || [],
+          useCloudAsAuthority,
         );
         setChatSessions(mergedChatSessions);
         StorageService.saveChatSessions(mergedChatSessions);
@@ -1087,12 +1259,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           mergedPots,
           mergedPockets,
           profile.syncChatToSheets ? mergedChatSessions : undefined,
-          { ...activeProfile, lastSyncAt: syncTimestamp },
+          { ...activeProfile, lastSyncAt: syncTimestamp, lastUpdatedAt: syncTimestamp },
         );
         processSubscriptions(mergedSubs, mergedTransactions);
 
-        // Update sync status and timestamp
-        updateProfile({ lastSyncAt: syncTimestamp }, false);
+        // Update sync status and timestamp (locally use updatedAt)
+        updateProfile({ lastSyncAt: syncTimestamp, updatedAt: syncTimestamp }, false);
         setHasSynced(true);
 
         showToast("Cloud sync complete", "success");
@@ -1149,15 +1321,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleAccountDelete = async (id: string) => {
     const updated = accounts.filter((a) => a.id !== id);
-    setAccounts(updated);
-
     const encryptedAccounts = await Promise.all(
       updated.map((a) => encryptAccount(a)),
     );
-    StorageService.saveAccounts(encryptedAccounts);
 
-    if (isCloudEnabled) await SheetService.deleteOne("Accounts", id);
-    showToast("Account deleted", "success");
+    const success = await executeWrite({
+      cloudWrite: async () => {
+        await SheetService.deleteOne("Accounts", id);
+        await updateCloudTimestamp();
+      },
+      localCache: () => {
+        setAccounts(updated);
+        StorageService.saveAccounts(encryptedAccounts);
+      },
+      errorMessage: "Failed to delete account",
+    });
+
+    if (success) {
+      showToast("Account deleted", "success");
+    }
   };
 
   const handleBulkTransactionImport = async (
@@ -2681,10 +2863,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const handleSelectExistingSheet = async () => {
+  const handleSelectExistingSheet = async (fileId?: string) => {
     try {
-      const fileId = await SheetService.selectSpreadsheetWithPicker();
-      if (fileId) {
+      let selectedFileId = fileId;
+      
+      // If no fileId provided, fall back to old picker (deprecated)
+      if (!selectedFileId) {
+        selectedFileId = await SheetService.selectSpreadsheetWithPicker();
+      }
+      
+      if (selectedFileId) {
+        // Store selected file ID to skip search next time
+        localStorage.setItem("zenfinance_selected_sheet_id", selectedFileId);
+        // Clear cached sheet name when switching spreadsheets
+        SheetService.clearSheetNameCache();
+        
         showToast("Spreadsheet linked! Synchronizing...", "success");
         // Trigger a fresh sync with the newly linked file
         syncData();
@@ -2746,6 +2939,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
       accounts.forEach((a) => accountUpdates.set(a.id, 0));
       pots.forEach((p) => potUpdates.set(p.id, 0));
       pockets.forEach((p) => pocketUpdates.set(p.id, 0));
+
+      console.log("=== RECALCULATE START ===");
+      console.log("Total transactions:", transactions.length);
+      console.log("Total pots:", pots.length);
+      console.log(
+        "Pot IDs:",
+        pots.map((p) => p.id),
+      );
 
       const getConvertedAmount = (
         amount: number,
@@ -2830,7 +3031,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
         // 2. Pots (Spending Limits) - respect pot's reset date cutoff
         if (t.potId) {
-          const pot = pots.find((p) => p.id === t.potId);
+          const potId = String(t.potId); // Ensure consistent string type
+          const pot = pots.find((p) => p.id === potId);
           // Only count this transaction if it's on or after the pot's reset date
           const isAfterPotReset =
             !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
@@ -2840,19 +3042,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             // Use the transaction amount directly (pots track in transaction currency)
             if (
               t.type === TransactionType.INCOME ||
-              t.type === TransactionType.ACCOUNT_OPENING
+              t.type === TransactionType.ACCOUNT_OPENING ||
+              (t.type === TransactionType.ADJUSTMENT && t.amount >= 0)
             ) {
               potDelta = -t.amount; // Incoming money restores pot limit
             } else {
               potDelta = t.amount; // Spending uses pot limit
             }
-            potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
+            potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
           }
         }
 
         // 3. Pockets (Goals/Savings) - respect pocket's reset date cutoff
         if (t.savingPocketId) {
-          const pocket = pockets.find((p) => p.id === t.savingPocketId);
+          const pocketId = String(t.savingPocketId); // Ensure consistent string type
+          const pocket = pockets.find((p) => p.id === pocketId);
           // Only count this transaction if it's on or after the pocket's reset date
           const isAfterPocketReset =
             !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
@@ -2861,15 +3065,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             let pocketDelta = 0;
             if (
               t.type === TransactionType.INCOME ||
-              t.type === TransactionType.ACCOUNT_OPENING
+              t.type === TransactionType.ACCOUNT_OPENING ||
+              (t.type === TransactionType.ADJUSTMENT && t.amount >= 0)
             ) {
               pocketDelta = t.amount;
             } else {
               pocketDelta = -t.amount;
             }
             pocketUpdates.set(
-              t.savingPocketId,
-              (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
+              pocketId,
+              (pocketUpdates.get(pocketId) || 0) + pocketDelta,
             );
           }
         }
@@ -2881,7 +3086,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
           !t.transferDirection &&
           !t.linkedTransactionId
         ) {
-          const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
+          const pocketId = String(t.toSavingPocketId); // Ensure consistent string type
+          const pocket = pockets.find((p) => p.id === pocketId);
           const isAfterPocketReset =
             !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
 
@@ -2891,8 +3097,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
             const targetAmount =
               feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
             pocketUpdates.set(
-              t.toSavingPocketId,
-              (pocketUpdates.get(t.toSavingPocketId) || 0) + targetAmount,
+              pocketId,
+              (pocketUpdates.get(pocketId) || 0) + targetAmount,
             );
           }
         }
@@ -3041,6 +3247,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
         isVaultCreated,
         isVaultUnlocked,
         unlockVault,
+        unlockVaultWithBiometrics,
+        enableBiometricUnlock,
         lockVault,
         enableVault,
         disableVault,

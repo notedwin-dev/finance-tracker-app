@@ -23,6 +23,7 @@ import * as SecurityService from "../services/security.services";
 import { getDeviceId } from "../services/storage.services";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
+import { GoogleDrivePicker } from "./GoogleDrivePicker";
 
 interface Props {
   profile: UserProfile;
@@ -917,13 +918,17 @@ const Profile: React.FC<Props> = ({
               />
             )}
             {!profile.offlineMode && onSelectSheet && (
-              <SettingItem
-                icon={DocumentArrowDownIcon}
-                label="Re-link Google Sheet"
-                description="Manually select your data file if it's missing"
-                onClick={onSelectSheet}
-                color="text-amber-400"
-              />
+              <GoogleDrivePicker
+                onPicked={(fileId) => onSelectSheet(fileId)}
+                onCancel={() => console.log("Picker canceled")}
+              >
+                <SettingItem
+                  icon={DocumentArrowDownIcon}
+                  label="Re-link Google Sheet"
+                  description="Manually select your data file if it's missing"
+                  color="text-amber-400"
+                />
+              </GoogleDrivePicker>
             )}
             {onResetSync && (
               <SettingItem

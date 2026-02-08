@@ -30,6 +30,44 @@ let gapiInitializing = false;
 let hasAccessToken = false;
 let tokenExpiryTime = 0;
 
+// Helper to get profile sheet name (supports legacy "Users" sheet for existing users)
+let cachedSheetName: string | null = null;
+const getProfileSheetName = async (fileId: string): Promise<string> => {
+  if (cachedSheetName) return cachedSheetName;
+
+  try {
+    const sheetsResponse = await window.gapi.client.sheets.spreadsheets.get({
+      spreadsheetId: fileId,
+    });
+    const existingSheets =
+      sheetsResponse.result.sheets?.map((s: any) => s.properties?.title) || [];
+
+    if (existingSheets.includes("Profile")) {
+      cachedSheetName = "Profile";
+    } else if (existingSheets.includes("Users")) {
+      console.log(
+        "📋 Using legacy 'Users' sheet. Consider migrating to 'Profile'.",
+      );
+      cachedSheetName = "Users";
+    } else {
+      // Neither exists - will create "Profile" in ensureSheetExists
+      cachedSheetName = "Profile";
+    }
+
+    return cachedSheetName;
+  } catch (error) {
+    console.error("Error detecting profile sheet:", error);
+    return "Profile"; // Default fallback
+  }
+};
+
+/**
+ * Clear the cached sheet name (call when switching spreadsheets)
+ */
+export const clearSheetNameCache = () => {
+  cachedSheetName = null;
+};
+
 export const initGapiClient = async (): Promise<void> => {
   if (gapiInited) return;
   if (gapiInitializing) {
@@ -133,6 +171,7 @@ export const clearGapiAccessToken = () => {
   }
   hasAccessToken = false;
   tokenExpiryTime = 0;
+  cachedSheetName = null; // Clear cached sheet name on logout
   localStorage.removeItem("google_access_token");
   localStorage.removeItem("google_token_expiry");
 };
@@ -237,9 +276,10 @@ export const findUser = async (email: string) => {
     const fileId = await getSpreadsheetId();
     if (!fileId) return null;
 
+    const sheetName = await getProfileSheetName(fileId);
     const res = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
-      range: "'Users'!A:Z",
+      range: `'${sheetName}'!A:Z`,
     });
 
     const rows = res.result.values || [];
@@ -247,24 +287,25 @@ export const findUser = async (email: string) => {
 
     const headers = rows[0];
 
-    // Migration: ensure all required headers exist
+    // Migration: ensure all required headers exist (removed legacy biometricCredId)
     const requiredHeaders = [
       "isVaultCreated",
       "isVaultLocked",
-      "biometricCredId",
       "biometricCredIds",
       "devices",
       "privacyMode",
       "vaultSalt",
       "showAIAssistant",
       "syncChatToSheets",
+      "lastUpdatedAt",
     ];
     const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
     if (missingHeaders.length > 0) {
+      const sheetName = await getProfileSheetName(fileId);
       const newHeaders = [...headers, ...missingHeaders];
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: `'Users'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
+        range: `'${sheetName}'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
         valueInputOption: "RAW",
         resource: { values: [newHeaders] },
       });
@@ -338,17 +379,19 @@ export const createUser = async (userData: any) => {
 
     // Ensure sheet exists
     const sheets = await getSheetNames(fileId);
-    if (!sheets?.includes("Users")) {
+    const sheetName = await getProfileSheetName(fileId);
+
+    if (!sheets?.includes(sheetName)) {
       await window.gapi.client.sheets.spreadsheets.batchUpdate({
         spreadsheetId: fileId,
         resource: {
-          requests: [{ addSheet: { properties: { title: "Users" } } }],
+          requests: [{ addSheet: { properties: { title: sheetName } } }],
         },
       });
       // Add headers - Updated to include security and settings
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: "'Users'!A1:L1",
+        range: `'${sheetName}'!A1:L1`,
         valueInputOption: "RAW",
         resource: {
           values: [
@@ -362,11 +405,11 @@ export const createUser = async (userData: any) => {
               "isVaultLocked",
               "vaultSalt",
               "privacyMode",
-              "biometricCredId",
               "biometricCredIds",
               "devices",
               "showAIAssistant",
               "syncChatToSheets",
+              "lastUpdatedAt",
             ],
           ],
         },
@@ -375,7 +418,7 @@ export const createUser = async (userData: any) => {
 
     const headersRes = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
-      range: "'Users'!1:1",
+      range: `'${sheetName}'!1:1`,
     });
     const headers = headersRes.result.values?.[0] || [];
 
@@ -391,7 +434,6 @@ export const createUser = async (userData: any) => {
       if (h === "privacyMode") return userData.privacyMode || false;
       if (h === "showAIAssistant") return userData.showAIAssistant !== false;
       if (h === "syncChatToSheets") return userData.syncChatToSheets !== false;
-      if (h === "biometricCredId") return userData.biometricCredId || "";
       if (h === "biometricCredIds")
         return JSON.stringify(userData.biometricCredIds || []);
       if (h === "devices") return JSON.stringify(userData.devices || []);
@@ -400,7 +442,7 @@ export const createUser = async (userData: any) => {
 
     await window.gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: fileId,
-      range: "'Users'!A1",
+      range: `'${sheetName}'!A1`,
       valueInputOption: "RAW",
       resource: {
         values: [row],
@@ -419,10 +461,11 @@ export const updateUser = async (email: string, updates: any) => {
     const fileId = await getSpreadsheetId();
     if (!fileId) return false;
 
+    const sheetName = await getProfileSheetName(fileId);
     // 1. Get current user data
     const res = await window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: fileId,
-      range: "'Users'!A:Z",
+      range: `'${sheetName}'!A:Z`,
     });
     const rows = res.result.values || [];
     if (rows.length === 0) return false;
@@ -436,7 +479,7 @@ export const updateUser = async (email: string, updates: any) => {
       const newHeaders = [...headers, ...missingHeaders];
       await window.gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: `'Users'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
+        range: `'${sheetName}'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
         valueInputOption: "RAW",
         resource: { values: [newHeaders] },
       });
@@ -453,9 +496,7 @@ export const updateUser = async (email: string, updates: any) => {
     const updatedRow = headers.map((header, i) => {
       // Smart Merging for Array fields to prevent overwrites from stale clients
       if (
-        (header === "biometricCredIds" ||
-          header === "devices" ||
-          header === "biometricCredId") && // include legacy field if needed, or handle separately
+        (header === "biometricCredIds" || header === "devices") &&
         updates[header] !== undefined
       ) {
         let currentVal = currentRow[i];
@@ -466,8 +507,6 @@ export const updateUser = async (email: string, updates: any) => {
           if (currentVal && typeof currentVal === "string") {
             if (currentVal.startsWith("[") && currentVal.endsWith("]")) {
               currentArr = JSON.parse(currentVal);
-            } else if (header === "biometricCredId" && currentVal) {
-              currentArr = [currentVal];
             }
           }
         } catch (e) {
@@ -521,7 +560,7 @@ export const updateUser = async (email: string, updates: any) => {
     // 3. Update the row
     await window.gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: fileId,
-      range: `'Users'!A${rowIndex + 1}`,
+      range: `'${sheetName}'!A${rowIndex + 1}`,
       valueInputOption: "USER_ENTERED",
       resource: { values: [updatedRow] },
     });
@@ -1112,6 +1151,8 @@ export const loadFromGoogleSheets = async (
 
   const result: any = {};
 
+  // Support both "Profile" (new) and "Users" (legacy) sheet names
+  const sheetName = await getProfileSheetName(fileId);
   const sheetNamesToLoad = [
     "Accounts",
     "Transactions",
@@ -1121,7 +1162,7 @@ export const loadFromGoogleSheets = async (
     "Pots",
     "Pockets",
     "ChatSessions",
-    "Users",
+    sheetName, // Use detected sheet name (Profile or Users)
   ];
 
   const names = await getSheetNames(fileId);
@@ -1152,8 +1193,8 @@ export const loadFromGoogleSheets = async (
       const headers = rows[0] as string[];
       const dataRows = rows.slice(1);
 
-      // Handle Users sheet differently (lookup single user)
-      if (sheetName === "Users") {
+      // Handle Profile/Users sheet differently (lookup single user)
+      if (sheetName === "Profile" || sheetName === "Users") {
         const emailIdx = headers.indexOf("email");
         if (emailIdx !== -1) {
           const emailToFind = userEmail || currentUserId;
@@ -1271,7 +1312,16 @@ export const loadFromGoogleSheets = async (
  * This is crucial for the drive.file scope to gain access to a file
  * that was not created by this app (e.g., from a previous manual sync).
  */
+/**
+ * Legacy function - kept for backward compatibility
+ * Use GoogleDrivePicker React component instead
+ * @deprecated Use GoogleDrivePicker component from @googleworkspace/drive-picker-react
+ */
 export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
+  console.warn(
+    "selectSpreadsheetWithPicker is deprecated. Use GoogleDrivePicker component instead.",
+  );
+
   if (!gapiInited || !hasAccessToken) return null;
 
   const accessToken = localStorage.getItem("google_access_token");
@@ -1300,6 +1350,7 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
           console.log("User selected spreadsheet via picker:", fileId);
           // Store selected file ID to skip search next time
           localStorage.setItem("zenfinance_selected_sheet_id", fileId);
+          cachedSheetName = null; // Clear cache when switching spreadsheets
           resolve(fileId);
         } else if (
           data[window.google.picker.Response.ACTION] ===

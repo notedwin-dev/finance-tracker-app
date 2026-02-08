@@ -101,6 +101,7 @@ export interface UserCloudSettings {
   devices?: string[];
   privacyMode?: boolean;
   lastSyncAt?: number;
+  lastUpdatedAt?: number; // Timestamp when data was last modified in Sheets (for re-linking comparison)
 }
 
 export interface UserProfile extends UserCloudSettings {

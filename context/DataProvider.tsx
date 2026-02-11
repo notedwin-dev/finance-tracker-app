@@ -181,7 +181,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!isVaultEnabled || !acc.details || acc.isEncrypted) return acc;
 
     // If already encrypted, don't double encrypt
-    if (typeof acc.details === "string" && (acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))) {
+    if (
+      typeof acc.details === "string" &&
+      (acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
+    ) {
       return { ...acc, isEncrypted: true };
     }
 

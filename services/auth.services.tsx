@@ -157,16 +157,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				isLoggedIn: true,
 				offlineMode: false,
 				// Sync cloud settings if they exist
+				isSecurityEnabled:
+					cloudUser?.isSecurityEnabled ?? profile.isSecurityEnabled,
+				totpSecret: cloudUser?.totpSecret ?? profile.totpSecret,
+				totpEnabled: cloudUser?.totpEnabled ?? profile.totpEnabled,
+				privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
 				...({
 					isVaultEnabled:
-						cloudUser?.isVaultEnabled ?? legacyProfile.isVaultEnabled,
+						cloudUser?.isSecurityEnabled ?? legacyProfile.isVaultEnabled,
 					isVaultCreated:
-						cloudUser?.isVaultCreated ?? legacyProfile.isVaultCreated,
+						cloudUser?.isSecurityEnabled ?? legacyProfile.isVaultCreated,
 					isVaultLocked:
 						cloudUser?.isVaultLocked ?? legacyProfile.isVaultLocked,
-					vaultSalt: cloudUser?.vaultSalt ?? legacyProfile.vaultSalt,
 				} as any),
-				privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
 				biometricCredIds: Array.from(
 					new Set([
 						...(cloudUser?.biometricCredIds || []),
@@ -223,13 +226,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			name: user.name,
 			email: user.email,
 			isLoggedIn: true,
-			...({
-				isVaultEnabled: user.isVaultEnabled ?? legacyProfile.isVaultEnabled,
-				isVaultCreated: user.isVaultCreated ?? legacyProfile.isVaultCreated,
-				isVaultLocked: user.isVaultLocked ?? legacyProfile.isVaultLocked,
-				vaultSalt: user.vaultSalt ?? legacyProfile.vaultSalt,
-			} as any),
+			isSecurityEnabled: user.isSecurityEnabled ?? profile.isSecurityEnabled,
+			totpSecret: user.totpSecret ?? profile.totpSecret,
+			totpEnabled: user.totpEnabled ?? profile.totpEnabled,
 			privacyMode: user.privacyMode ?? profile.privacyMode,
+			...({
+				isVaultEnabled: user.isSecurityEnabled ?? legacyProfile.isVaultEnabled,
+				isVaultCreated: user.isSecurityEnabled ?? legacyProfile.isVaultCreated,
+				isVaultLocked: user.isVaultLocked ?? legacyProfile.isVaultLocked,
+			} as any),
 			biometricCredIds: Array.from(
 				new Set([
 					...(user.biometricCredIds || []),

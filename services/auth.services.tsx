@@ -317,14 +317,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				authStatus,
 				isAuthLoading,
 				updateProfile: async (u, skipCloud = false) => {
-					const p = { ...profile, ...u };
-					setProfile(p);
-					StorageService.saveProfile(p);
+					let updatedP: UserProfile;
+					setProfile((prev) => {
+						updatedP = { ...prev, ...u };
+						StorageService.saveProfile(updatedP);
+						return updatedP;
+					});
 
 					// Sync with Google Sheets if logged in and ready
-					if (!skipCloud && SheetService.isClientReady() && p.email) {
+					if (!skipCloud && SheetService.isClientReady() && profile.email) {
 						try {
-							await SheetService.updateUser(p.email, u);
+							await SheetService.updateUser(profile.email, u);
 						} catch (err) {
 							console.warn("Failed to sync profile update to sheets", err);
 						}

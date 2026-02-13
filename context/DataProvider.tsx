@@ -1070,8 +1070,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 					if (Object.keys(updates).length > 0) {
 						console.log("Updating local profile from cloud merge", updates);
-						activeProfile = { ...profile, ...updates };
-						updateProfile(updates, true);
+						activeProfile = { ...activeProfile, ...updates };
+						// Skip calling updateProfile here, we'll do it once at the end
 					}
 				}
 
@@ -1267,8 +1267,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 				// Update sync status and timestamp (locally use updatedAt)
 				// Skip cloud sync since we already synced the profile in syncWithGoogleSheets above
+				// We use the full activeProfile to ensure all merged fields are preserved
 				updateProfile(
-					{ lastSyncAt: syncTimestamp, updatedAt: syncTimestamp },
+					{
+						...activeProfile,
+						lastSyncAt: syncTimestamp,
+						updatedAt: syncTimestamp,
+					},
 					true, // skipCloud = true to prevent duplicate sync
 				);
 				setHasSynced(true);

@@ -177,6 +177,15 @@ const History: React.FC<Props> = ({
 				t.type === TransactionType.TRANSFER &&
 				t.transferDirection === "IN"
 			) {
+				// We need to find the REAL source leg to know if it was historical
+				const partner = transactions.find(
+					(pt) =>
+						pt.linkedTransactionId === t.id ||
+						(t.linkedTransactionId === pt.id &&
+							pt.accountId === t.toAccountId &&
+							pt.toAccountId === t.accountId),
+				);
+
 				txToEdit = {
 					...t,
 					accountId: t.toAccountId || "",
@@ -184,11 +193,27 @@ const History: React.FC<Props> = ({
 					transferDirection: "OUT",
 					savingPocketId: t.toSavingPocketId,
 					toSavingPocketId: t.savingPocketId,
-					isHistorical: false, // Default source leg to non-historical when virtualizing
+					isHistorical: partner ? partner.isHistorical : false,
 				} as Transaction;
 
 				// Pass historical status of the IN leg as the "To" account status
 				(txToEdit as any).isToAccountHistorical = t.isHistorical;
+			} else if (
+				t.type === TransactionType.TRANSFER &&
+				!t.linkedTransaction &&
+				t.transferDirection === "OUT"
+			) {
+				// Even if we are viewing the source side, we should find the destination leg's historical status
+				const partner = transactions.find(
+					(pt) =>
+						pt.linkedTransactionId === t.id ||
+						(t.linkedTransactionId === pt.id &&
+							pt.accountId === t.toAccountId &&
+							pt.toAccountId === t.accountId),
+				);
+				if (partner) {
+					(txToEdit as any).isToAccountHistorical = partner.isHistorical;
+				}
 			}
 
 			onEditTransaction(txToEdit);

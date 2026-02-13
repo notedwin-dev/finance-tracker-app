@@ -161,59 +161,51 @@ const History: React.FC<Props> = ({
 			toggleSelection(t.id);
 		} else {
 			// Default: Tap to edit
-			let txToEdit = (
-				t.linkedTransaction &&
-				t.transferDirection === "IN" &&
-				t.linkedTransaction
-					? t.linkedTransaction
-					: t
-			) as Transaction;
+			let baseTx: Transaction = t;
+			let partnerTx: Transaction | undefined = t.linkedTransaction;
 
-			// If we're on an asset page and we're seeing an "IN" leg of a transfer that isn't grouped,
-			// swap it so it opens as an "OUT" (Source -> Destination) in the editor for consistency.
-			if (
-				isAssetPage &&
-				!t.linkedTransaction &&
-				t.type === TransactionType.TRANSFER &&
-				t.transferDirection === "IN"
-			) {
-				// We need to find the REAL source leg to know if it was historical
-				const partner = transactions.find(
+			// 1. If it's a transfer, try to find its "other half" if it's not already grouped/linked
+			if (t.type === TransactionType.TRANSFER && !partnerTx) {
+				partnerTx = transactions.find(
 					(pt) =>
 						pt.linkedTransactionId === t.id ||
 						(t.linkedTransactionId === pt.id &&
 							pt.accountId === t.toAccountId &&
 							pt.toAccountId === t.accountId),
 				);
+			}
 
-				txToEdit = {
-					...t,
-					accountId: t.toAccountId || "",
-					toAccountId: t.accountId,
-					transferDirection: "OUT",
-					savingPocketId: t.toSavingPocketId,
-					toSavingPocketId: t.savingPocketId,
-					isHistorical: partner ? partner.isHistorical : false,
-				} as Transaction;
-
-				// Pass historical status of the IN leg as the "To" account status
-				(txToEdit as any).isToAccountHistorical = t.isHistorical;
-			} else if (
-				t.type === TransactionType.TRANSFER &&
-				!t.linkedTransaction &&
-				t.transferDirection === "OUT"
-			) {
-				// Even if we are viewing the source side, we should find the destination leg's historical status
-				const partner = transactions.find(
-					(pt) =>
-						pt.linkedTransactionId === t.id ||
-						(t.linkedTransactionId === pt.id &&
-							pt.accountId === t.toAccountId &&
-							pt.toAccountId === t.accountId),
-				);
-				if (partner) {
-					(txToEdit as any).isToAccountHistorical = partner.isHistorical;
+			// 2. For Transfers, normalize to the Source (OUT) leg for the editor consistency
+			if (t.type === TransactionType.TRANSFER) {
+				if (t.transferDirection === "IN") {
+					// We are viewing from the receiver side
+					if (partnerTx) {
+						// We have the REAL source leg, use it as the base for editing
+						baseTx = partnerTx;
+						partnerTx = t; // Current leg is the destination
+					} else {
+						// Virtualize source leg from current destination leg
+						baseTx = {
+							...t,
+							accountId: t.toAccountId || "",
+							toAccountId: t.accountId,
+							transferDirection: "OUT",
+							savingPocketId: t.toSavingPocketId,
+							toSavingPocketId: t.savingPocketId,
+							isHistorical: false,
+						};
+						partnerTx = t;
+					}
 				}
+			}
+
+			// 3. Prepare special fields for TransactionForm
+			const txToEdit = { ...baseTx } as any;
+			if (partnerTx) {
+				// Explicitly pass destination side's historical status
+				txToEdit.isToAccountHistorical = partnerTx.isHistorical;
+				// Also attach the linked transaction for the form's helper logic if needed
+				txToEdit.linkedTransaction = partnerTx;
 			}
 
 			onEditTransaction(txToEdit);

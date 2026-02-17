@@ -969,14 +969,37 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 		});
 
 		// 4. Update specific row (A1 notation requires 1-based indexing for rows)
-		await window.gapi.client.sheets.spreadsheets.values.update({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A${rowIndex + 1}`,
-			valueInputOption: "USER_ENTERED",
-			resource: { values: [row] },
+		// Safe update: only update columns present in the item object to prevent clearing legacy data
+		const data: any[] = [];
+		headers.forEach((header: string, colIndex: number) => {
+			const val = item[header];
+			if (val !== undefined) {
+				const colLetter = getColumnLetter(colIndex);
+				data.push({
+					range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+					values: [
+						[
+							typeof val === "object" && val !== null
+								? JSON.stringify(val)
+								: val,
+						],
+					],
+				});
+			}
 		});
 
-		console.log(`Updated row in ${sheetName} at row ${rowIndex + 1}`);
+		if (data.length > 0) {
+			await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+				spreadsheetId: fileId,
+				resource: {
+					data,
+					valueInputOption: "USER_ENTERED",
+				},
+			});
+			console.log(
+				`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
+			);
+		}
 	} catch (e) {
 		console.warn(`Error updating row in ${sheetName}`, e);
 		// Fallback: If finding specific row fails, we might need a full sync
@@ -986,8 +1009,13 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 /**
  * Batch update multiple rows in a sheet (much more efficient than individual updateOne calls).
  * Only fetches headers once and finds all rows, then updates in bulk.
+ * @param columnsToUpdate Optional list of headers to update. If omitted, the entire row is updated.
  */
-export const updateMany = async (sheetName: string, items: any[]) => {
+export const updateMany = async (
+	sheetName: string,
+	items: any[],
+	columnsToUpdate?: string[],
+) => {
 	if (!gapiInited || !hasAccessToken || items.length === 0) return;
 
 	try {
@@ -1026,18 +1054,27 @@ export const updateMany = async (sheetName: string, items: any[]) => {
 		items.forEach((item) => {
 			const rowIndex = idToRowIndex.get(item.id);
 			if (rowIndex !== undefined && rowIndex > 0) {
-				// Convert to values row
-				const row = headers.map((header: string) => {
-					const val = item[header];
-					if (typeof val === "object" && val !== null) {
-						return JSON.stringify(val);
-					}
-					return val ?? "";
-				});
+				const colsToProcess = columnsToUpdate || headers;
 
-				data.push({
-					range: `'${sheetName}'!A${rowIndex + 1}`,
-					values: [row],
+				colsToProcess.forEach((header: string) => {
+					const colIndex = headers.indexOf(header);
+					if (colIndex !== -1) {
+						const val = item[header];
+						// Only update if value is present in the object
+						if (val !== undefined) {
+							const colLetter = getColumnLetter(colIndex);
+							data.push({
+								range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+								values: [
+									[
+										typeof val === "object" && val !== null
+											? JSON.stringify(val)
+											: (val ?? ""),
+									],
+								],
+							});
+						}
+					}
 				});
 			}
 		});
@@ -1051,7 +1088,9 @@ export const updateMany = async (sheetName: string, items: any[]) => {
 					valueInputOption: "USER_ENTERED",
 				},
 			});
-			console.log(`Batch updated ${data.length} rows in ${sheetName}`);
+			console.log(
+				`Batch updated ${data.length} ${columnsToUpdate ? "cells" : "rows"} in ${sheetName}`,
+			);
 		}
 	} catch (e) {
 		console.warn(`Error batch updating ${sheetName}`, e);

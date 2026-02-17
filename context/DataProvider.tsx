@@ -1315,8 +1315,55 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			updated = [...accounts, accountWithUser];
 			if (isCloudEnabled && isActuallyEncrypted)
 				await SheetService.insertOne("Accounts", encryptedAccount);
+
+			// Automatically create an 'Opening Balance' transaction if balance > 0
+			if (accountWithUser.balance !== 0) {
+				const openingTx: Transaction = {
+					id: crypto.randomUUID(),
+					userId: accountWithUser.userId,
+					accountId: accountWithUser.id,
+					amount: Math.abs(accountWithUser.balance),
+					currency: accountWithUser.currency,
+					type: TransactionType.ACCOUNT_OPENING,
+					shopName: "Opening Balance",
+					date: new Date().toLocaleDateString("en-CA"),
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				};
+				const updatedTxs = [openingTx, ...transactions];
+				setTransactions(updatedTxs);
+				StorageService.saveTransactions(updatedTxs);
+				if (isCloudEnabled)
+					await SheetService.insertOne("Transactions", openingTx);
+			}
 		} else {
+			const oldAcc = accounts.find((a) => a.id === acc.id);
 			updated = accounts.map((a) => (a.id === acc.id ? accountWithUser : a));
+
+			// If balance was manually changed, create an adjustment transaction
+			// This ensures 'Recalculate Balances' will respect the manual change later.
+			if (oldAcc && oldAcc.balance !== accountWithUser.balance) {
+				const diff = accountWithUser.balance - oldAcc.balance;
+				const adjustmentTx: Transaction = {
+					id: crypto.randomUUID(),
+					userId: accountWithUser.userId,
+					accountId: accountWithUser.id,
+					amount: diff, // Use raw diff (can be negative)
+					currency: accountWithUser.currency,
+					type: TransactionType.ADJUSTMENT,
+					shopName: "Manual Balance Adjustment",
+					date: new Date().toLocaleDateString("en-CA"),
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+					note: `Manually changed balance from ${oldAcc.balance} to ${accountWithUser.balance}`,
+				};
+				const updatedTxs = [adjustmentTx, ...transactions];
+				setTransactions(updatedTxs);
+				StorageService.saveTransactions(updatedTxs);
+				if (isCloudEnabled)
+					await SheetService.insertOne("Transactions", adjustmentTx);
+			}
+
 			if (isCloudEnabled && isActuallyEncrypted)
 				await SheetService.updateOne("Accounts", acc.id, encryptedAccount);
 		}
@@ -2941,6 +2988,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			typeof startDateArg === "string" ? startDateArg : undefined;
 		const endDate = typeof endDateArg === "string" ? endDateArg : undefined;
 
+		// PROTECTION: Do not recalculate if we haven't synced with cloud yet and expect to
+		if (profile.isLoggedIn && !profile.offlineMode && !hasSynced) {
+			showToast("Wait for initial sync before recalculating", "alert");
+			return;
+		}
+
+		// PROTECTION: Prevent recalculating if we have no transactions but have accounts
+		// This handles cases where transactions might have failed to load or were cleared accidentally.
+		if (
+			transactions.length === 0 &&
+			accounts.length > 0 &&
+			!confirm(
+				"You have 0 transactions. Recalculating will reset all balances to 0. Continue?",
+			)
+		) {
+			return;
+		}
+
 		setIsSyncing(true);
 		showToast("Recalculating balances...", "info");
 
@@ -2993,23 +3058,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					const feeType = t.feeType || "INCLUSIVE";
 
 					let delta = 0;
-					const isInflow =
-						t.type === TransactionType.INCOME ||
-						t.type === TransactionType.ACCOUNT_OPENING ||
-						(t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
-						(t.type === TransactionType.TRANSFER &&
-							t.transferDirection === "IN");
-
-					if (isInflow) {
-						const addedAmount =
-							t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
-								? amt - fee
-								: amt;
-						delta = addedAmount;
+					if (t.type === TransactionType.ADJUSTMENT) {
+						delta = amt; // Support both positive and negative adjustments directly
 					} else {
-						// Expenses or OUT transfers
-						const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-						delta = -removedAmount;
+						const isInflow =
+							t.type === TransactionType.INCOME ||
+							t.type === TransactionType.ACCOUNT_OPENING ||
+							(t.type === TransactionType.TRANSFER &&
+								t.transferDirection === "IN");
+
+						if (isInflow) {
+							const addedAmount =
+								t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
+									? amt - fee
+									: amt;
+							delta = addedAmount;
+						} else {
+							// Expenses or OUT transfers
+							const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
+							delta = -removedAmount;
+						}
 					}
 					accountUpdates.set(
 						t.accountId,
@@ -3054,10 +3122,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					if (isAfterPotReset) {
 						let potDelta = 0;
 						// Use the transaction amount directly (pots track in transaction currency)
-						if (
+						if (t.type === TransactionType.ADJUSTMENT) {
+							potDelta = t.amount; // Positive adjustment increases usage, negative decreases
+						} else if (
 							t.type === TransactionType.INCOME ||
-							t.type === TransactionType.ACCOUNT_OPENING ||
-							(t.type === TransactionType.ADJUSTMENT && t.amount >= 0)
+							t.type === TransactionType.ACCOUNT_OPENING
 						) {
 							potDelta = -t.amount; // Incoming money restores pot limit
 						} else {
@@ -3077,10 +3146,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 					if (isAfterPocketReset) {
 						let pocketDelta = 0;
-						if (
+						if (t.type === TransactionType.ADJUSTMENT) {
+							pocketDelta = t.amount;
+						} else if (
 							t.type === TransactionType.INCOME ||
-							t.type === TransactionType.ACCOUNT_OPENING ||
-							(t.type === TransactionType.ADJUSTMENT && t.amount >= 0)
+							t.type === TransactionType.ACCOUNT_OPENING
 						) {
 							pocketDelta = t.amount;
 						} else {
@@ -3151,18 +3221,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			StorageService.savePots(updatedPots);
 			StorageService.savePockets(updatedPockets);
 
-			if (isCloudEnabled) {
-				// Batch update all accounts
+			if (isCloudEnabled && !startDate && !endDate) {
+				// Batch update only the affected columns to prevent overwriting other sheet data
+				// We only sync to cloud if this was a full recalculation (no date filters)
 				if (updatedAccounts.length > 0) {
-					await SheetService.updateMany("Accounts", updatedAccounts);
+					await SheetService.updateMany("Accounts", updatedAccounts, [
+						"balance",
+						"updatedAt",
+					]);
 				}
 				// Batch update all pots
 				if (updatedPots.length > 0) {
-					await SheetService.updateMany("Pots", updatedPots);
+					await SheetService.updateMany("Pots", updatedPots, [
+						"usedAmount",
+						"amountLeft",
+						"updatedAt",
+					]);
 				}
 				// Batch update all pockets
 				if (updatedPockets.length > 0) {
-					await SheetService.updateMany("Pockets", updatedPockets);
+					await SheetService.updateMany("Pockets", updatedPockets, [
+						"currentAmount",
+						"updatedAt",
+					]);
 				}
 			}
 

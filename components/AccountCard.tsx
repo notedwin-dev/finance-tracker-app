@@ -104,7 +104,11 @@ const AccountCard: React.FC<Props> = ({
 
 		// Work backwards from current balance
 		const reversedTxs = [...accountTxs].reverse();
-		balancePoints.push(runningBalance);
+		const balanceHistory: { time: number; balance: number }[] = [];
+		balanceHistory.push({
+			time: new Date().getTime(),
+			balance: runningBalance,
+		});
 
 		for (const tx of reversedTxs) {
 			if (tx.isHistorical) continue;
@@ -140,11 +144,35 @@ const AccountCard: React.FC<Props> = ({
 					runningBalance += actualOutflow;
 				}
 			}
-			balancePoints.push(runningBalance);
-			if (balancePoints.length >= 15) break; // Limit to last 15 points
+			balanceHistory.push({
+				time: new Date(tx.date).getTime(),
+				balance: runningBalance,
+			});
+			if (balanceHistory.length >= 20) break;
 		}
 
-		return balancePoints.reverse();
+		// Interpolate balance points for a smoother Sparkline (12 points)
+		const numPoints = 12;
+		const now = new Date().getTime();
+		const startTime = balanceHistory[balanceHistory.length - 1].time;
+		const duration = now - startTime;
+		const interval = duration / (numPoints - 1);
+
+		const resultData: number[] = [];
+		for (let i = 0; i < numPoints; i++) {
+			const pointTime = startTime + i * interval;
+
+			// Find the balance at this specific point in time
+			// We look for the first entry in balanceHistory that is <= pointTime
+			// balanceHistory is ordered from newest to oldest
+			const balanceAtPoint =
+				balanceHistory.find((h) => h.time <= pointTime)?.balance ??
+				balanceHistory[balanceHistory.length - 1].balance;
+
+			resultData.push(balanceAtPoint);
+		}
+
+		return resultData;
 	}, [account.id, account.balance, transactions]);
 
 	const lastPoint = trendData[trendData.length - 1];

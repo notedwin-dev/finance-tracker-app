@@ -209,7 +209,9 @@ const DashboardPage: React.FC = () => {
 			const timeA = new Date(a.date).getTime();
 			const timeB = new Date(b.date).getTime();
 			if (timeA !== timeB) return timeB - timeA;
-			return (b.createdAt || 0).toString().localeCompare((a.createdAt || 0).toString());
+			return (b.createdAt || 0)
+				.toString()
+				.localeCompare((a.createdAt || 0).toString());
 		});
 
 		for (let i = 0; i < numPoints; i++) {

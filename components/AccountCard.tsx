@@ -125,15 +125,17 @@ const AccountCard: React.FC<Props> = ({
 				const feeType = tx.feeType || "INCLUSIVE";
 
 				// Apply legs atomically using the grouped transaction logic
+				// We use a local closure to correctly use 'fee' and 'feeType' from the main transaction
 				const applyLeg = (t: Transaction) => {
+					// IMPORTANT: Use t.amount from the leg being processed, 
+					// but fee/feeType from the PARENT transaction record (tx)
 					if (t.toAccountId === account.id) {
-						const actualInflow =
-							feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+						// This account RECEIVED money: Subtract it to go back in time
+						const actualInflow = feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
 						runningBalance -= actualInflow;
-					}
-					if (t.accountId === account.id) {
-						const actualOutflow =
-							feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
+					} else if (t.accountId === account.id) {
+						// This account SENT money: Add it back to go back in time
+						const actualOutflow = feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
 						runningBalance += actualOutflow;
 					}
 				};

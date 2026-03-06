@@ -88,7 +88,12 @@ const AccountCard: React.FC<Props> = ({
 	const trendData = React.useMemo(() => {
 		const accountTxs = transactions
 			.filter((t) => t.accountId === account.id || t.toAccountId === account.id)
-			.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+			.sort((a, b) => {
+				const timeA = new Date(a.date).getTime();
+				const timeB = new Date(b.date).getTime();
+				if (timeA !== timeB) return timeA - timeB;
+				return (a.createdAt || 0).toString().localeCompare((b.createdAt || 0).toString());
+			});
 
 		if (accountTxs.length === 0) return [account.balance, account.balance];
 

@@ -205,9 +205,12 @@ const DashboardPage: React.FC = () => {
 		const resultData: number[] = [];
 
 		// All transactions sorted by date descending to help with balance backtracking
-		const sortedTxs = [...transactions].sort(
-			(a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-		);
+		const sortedTxs = [...transactions].sort((a, b) => {
+			const timeA = new Date(a.date).getTime();
+			const timeB = new Date(b.date).getTime();
+			if (timeA !== timeB) return timeB - timeA;
+			return (b.createdAt || 0).toString().localeCompare((a.createdAt || 0).toString());
+		});
 
 		for (let i = 0; i < numPoints; i++) {
 			const pointTime = startLimit.getTime() + i * interval;

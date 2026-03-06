@@ -91,8 +91,10 @@ const AccountCard: React.FC<Props> = ({
 			.sort((a, b) => {
 				const timeA = new Date(a.date).getTime();
 				const timeB = new Date(b.date).getTime();
-				if (timeA !== timeB) return timeA - timeB;
-				return (a.createdAt || 0).toString().localeCompare((b.createdAt || 0).toString());
+				if (Math.abs(timeA - timeB) > 1000) return timeA - timeB;
+				return (a.createdAt || 0)
+					.toString()
+					.localeCompare((b.createdAt || 0).toString());
 			});
 
 		if (accountTxs.length === 0) return [account.balance, account.balance];
@@ -107,9 +109,15 @@ const AccountCard: React.FC<Props> = ({
 		for (const tx of reversedTxs) {
 			if (tx.isHistorical) continue;
 
-			if (tx.type === TransactionType.INCOME || tx.type === TransactionType.ACCOUNT_OPENING) {
+			if (
+				tx.type === TransactionType.INCOME ||
+				tx.type === TransactionType.ACCOUNT_OPENING
+			) {
 				if (tx.accountId === account.id) runningBalance -= tx.amount;
-			} else if (tx.type === TransactionType.EXPENSE || tx.type === TransactionType.ACCOUNT_DELETE) {
+			} else if (
+				tx.type === TransactionType.EXPENSE ||
+				tx.type === TransactionType.ACCOUNT_DELETE
+			) {
 				if (tx.accountId === account.id) runningBalance += tx.amount;
 			} else if (tx.type === TransactionType.ADJUSTMENT) {
 				if (tx.accountId === account.id) runningBalance -= tx.amount;
@@ -120,12 +128,15 @@ const AccountCard: React.FC<Props> = ({
 				// - If money came IN (toAccountId), we SUBTRACT it
 				// - If money went OUT (accountId), we ADD it
 				if (tx.toAccountId === account.id) {
-					// Inflow amount could be reduced by fee if feeType is EXCLUSIVE (receiver pays fee)
-					const actualInflow = feeType === "EXCLUSIVE" ? tx.amount - fee : tx.amount;
+					// INFLOW: Subtract the amount to see previous balance
+					const actualInflow =
+						feeType === "EXCLUSIVE" ? tx.amount - fee : tx.amount;
 					runningBalance -= actualInflow;
-				} else if (tx.accountId === account.id) {
-					// Outflow amount is amount + fee if feeType is INCLUSIVE (sender pays fee)
-					const actualOutflow = feeType === "INCLUSIVE" ? tx.amount + fee : tx.amount;
+				}
+				if (tx.accountId === account.id) {
+					// OUTFLOW: Add the amount back to see previous balance
+					const actualOutflow =
+						feeType === "INCLUSIVE" ? tx.amount + fee : tx.amount;
 					runningBalance += actualOutflow;
 				}
 			}

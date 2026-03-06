@@ -124,26 +124,23 @@ const AccountCard: React.FC<Props> = ({
 				const fee = tx.fee || 0;
 				const feeType = tx.feeType || "INCLUSIVE";
 
-				// Apply legs atomically using the grouped transaction logic
-				// We use a local closure to correctly use 'fee' and 'feeType' from the main transaction
-				const applyLeg = (t: Transaction) => {
-					// IMPORTANT: Use t.amount from the leg being processed, 
-					// but fee/feeType from the PARENT transaction record (tx)
-					if (t.toAccountId === account.id) {
-						// This account RECEIVED money: Subtract it to go back in time
-						const actualInflow = feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-						runningBalance -= actualInflow;
-					} else if (t.accountId === account.id) {
-						// This account SENT money: Add it back to go back in time
-						const actualOutflow = feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
+				// Handle backtracking for each leg of the transfer.
+				// For Transfer "OUT" from Account A to Account B:
+				// Record 1 (Account A): Submits -1000. Backtracking must +1000.
+				// Record 2 (Account B): Submits +1000. Backtracking must -1000.
+				const processLeg = (t: Transaction) => {
+					if (t.accountId === account.id) {
+						const actualOutflow =
+							feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
 						runningBalance += actualOutflow;
+					} else if (t.toAccountId === account.id) {
+						const actualInflow =
+							feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+						runningBalance -= actualInflow;
 					}
 				};
 
-				applyLeg(tx);
-				if (tx.linkedTransaction) {
-					applyLeg(tx.linkedTransaction);
-				}
+				processLeg(tx);
 			}
 
 			balancePoints.push(runningBalance);

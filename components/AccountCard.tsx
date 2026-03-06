@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { SparklineChart } from "./Charts";
 import { useData } from "../context/DataContext";
+import { groupTransactions } from "../helpers/transactions.helper";
 
 interface Props {
 	account: Account;
@@ -86,33 +87,27 @@ const AccountCard: React.FC<Props> = ({
 
 	// Real trend data for the account
 	const trendData = React.useMemo(() => {
-		const accountTxs = transactions
+		const grouped = groupTransactions(transactions);
+		const accountTxs = grouped
 			.filter((t) => t.accountId === account.id || t.toAccountId === account.id)
 			.sort((a, b) => {
-				const timeA = new Date(a.date).getTime();
-				const timeB = new Date(b.date).getTime();
-				if (Math.abs(timeA - timeB) > 1000) return timeA - timeB;
-				return (a.createdAt || 0)
+				const dateA = new Date(a.date).getTime();
+				const dateB = new Date(b.date).getTime();
+				if (dateA !== dateB) return dateB - dateA;
+				return (b.createdAt || 0)
 					.toString()
-					.localeCompare((b.createdAt || 0).toString());
+					.localeCompare((a.createdAt || 0).toString());
 			});
-
-		if (accountTxs.length === 0) return [account.balance, account.balance];
 
 		const balancePoints: number[] = [];
 		let runningBalance = account.balance;
+		balancePoints.push(runningBalance);
 
-		// Work backwards from current balance
-		const reversedTxs = [...accountTxs].reverse();
-		const balanceHistory: { time: number; balance: number }[] = [];
-		balanceHistory.push({
-			time: new Date().getTime(),
-			balance: runningBalance,
-		});
-
-		for (const tx of reversedTxs) {
+		// grouped are sorted newest first, so iterating directly goes backwards in time
+		for (const tx of accountTxs) {
 			if (tx.isHistorical) continue;
 
+			// Reconstruct previous balance
 			if (
 				tx.type === TransactionType.INCOME ||
 				tx.type === TransactionType.ACCOUNT_OPENING
@@ -128,51 +123,32 @@ const AccountCard: React.FC<Props> = ({
 			} else if (tx.type === TransactionType.TRANSFER) {
 				const fee = tx.fee || 0;
 				const feeType = tx.feeType || "INCLUSIVE";
-				// To go backward:
-				// - If money came IN (toAccountId), we SUBTRACT it
-				// - If money went OUT (accountId), we ADD it
-				if (tx.toAccountId === account.id) {
-					// INFLOW: Subtract the amount to see previous balance
-					const actualInflow =
-						feeType === "EXCLUSIVE" ? tx.amount - fee : tx.amount;
-					runningBalance -= actualInflow;
-				}
-				if (tx.accountId === account.id) {
-					// OUTFLOW: Add the amount back to see previous balance
-					const actualOutflow =
-						feeType === "INCLUSIVE" ? tx.amount + fee : tx.amount;
-					runningBalance += actualOutflow;
+
+				// Apply legs atomically using the grouped transaction logic
+				const applyLeg = (t: Transaction) => {
+					if (t.toAccountId === account.id) {
+						const actualInflow =
+							feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+						runningBalance -= actualInflow;
+					}
+					if (t.accountId === account.id) {
+						const actualOutflow =
+							feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
+						runningBalance += actualOutflow;
+					}
+				};
+
+				applyLeg(tx);
+				if (tx.linkedTransaction) {
+					applyLeg(tx.linkedTransaction);
 				}
 			}
-			balanceHistory.push({
-				time: new Date(tx.date).getTime(),
-				balance: runningBalance,
-			});
-			if (balanceHistory.length >= 20) break;
+
+			balancePoints.push(runningBalance);
+			if (balancePoints.length >= 12) break;
 		}
 
-		// Interpolate balance points for a smoother Sparkline (12 points)
-		const numPoints = 12;
-		const now = new Date().getTime();
-		const startTime = balanceHistory[balanceHistory.length - 1].time;
-		const duration = now - startTime;
-		const interval = duration / (numPoints - 1);
-
-		const resultData: number[] = [];
-		for (let i = 0; i < numPoints; i++) {
-			const pointTime = startTime + i * interval;
-
-			// Find the balance at this specific point in time
-			// We look for the first entry in balanceHistory that is <= pointTime
-			// balanceHistory is ordered from newest to oldest
-			const balanceAtPoint =
-				balanceHistory.find((h) => h.time <= pointTime)?.balance ??
-				balanceHistory[balanceHistory.length - 1].balance;
-
-			resultData.push(balanceAtPoint);
-		}
-
-		return resultData;
+		return balancePoints.reverse();
 	}, [account.id, account.balance, transactions]);
 
 	const lastPoint = trendData[trendData.length - 1];

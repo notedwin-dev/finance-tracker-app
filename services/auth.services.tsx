@@ -179,6 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				devices: Array.from(
 					new Set([...(cloudUser?.devices || []), ...(profile.devices || [])]),
 				),
+				geminiApiKey: cloudUser?.geminiApiKey ?? profile.geminiApiKey ?? "",
 			};
 
 			StorageService.saveProfile(newProfile);
@@ -244,6 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			devices: Array.from(
 				new Set([...(user.devices || []), ...(profile.devices || [])]),
 			),
+			geminiApiKey: user.geminiApiKey ?? profile.geminiApiKey ?? "",
 		};
 		StorageService.saveProfile(newProfile);
 		setProfile(newProfile);

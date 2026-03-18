@@ -123,7 +123,7 @@ const getClient = (apiKey?: string) => {
 	return new GoogleGenAI({ apiKey: finalKey });
 };
 
-const historicalTransactionsTool = {
+const assistantTools = {
 	functionDeclarations: [
 		{
 			name: "get_historical_transactions",
@@ -147,6 +147,50 @@ const historicalTransactionsTool = {
 					categoryName: {
 						type: Type.STRING,
 						description: "The name of the category to filter by",
+					},
+				},
+			},
+		},
+		{
+			name: "get_current_location",
+			description:
+				"Get the user's current GPS location from the device (requires user approval).",
+			parameters: {
+				type: Type.OBJECT,
+				properties: {},
+			},
+		},
+		{
+			name: "get_nearby_food",
+			description:
+				"Find nearby food places (restaurants, cafes, fast food) near provided coordinates or current device location.",
+			parameters: {
+				type: Type.OBJECT,
+				properties: {
+					latitude: {
+						type: Type.NUMBER,
+						description:
+							"Latitude in decimal degrees. Optional if current location tool can be used.",
+					},
+					longitude: {
+						type: Type.NUMBER,
+						description:
+							"Longitude in decimal degrees. Optional if current location tool can be used.",
+					},
+					radiusMeters: {
+						type: Type.NUMBER,
+						description:
+							"Search radius in meters. Use 500-2000 for walkable results.",
+					},
+					limit: {
+						type: Type.NUMBER,
+						description:
+							"Maximum number of places to return (recommended 5-15).",
+					},
+					cuisineKeyword: {
+						type: Type.STRING,
+						description:
+							"Optional keyword filter (e.g. ramen, coffee, halal, burger).",
 					},
 				},
 			},
@@ -286,6 +330,8 @@ export const streamFinancialAdvice = async (
       - You have access to tools to query historical transactions.
       - When you use a tool, the user will be asked to APPROVE or REJECT the data access.
       - If historical context for goals or pots is needed, look at related transactions using the tool.
+			- You also have location/map tools for nearby food discovery; use them only when user asks for nearby places or location-based suggestions.
+			- Prefer free/open data sources and keep map recommendations concise (name, distance, area hint).
     `;
 
 		// Map history to Google GenAI SDK format
@@ -322,12 +368,23 @@ export const streamFinancialAdvice = async (
 			history: contents.slice(0, -1),
 			config: {
 				systemInstruction: systemInstruction,
-				tools: [historicalTransactionsTool],
+				tools: [assistantTools],
 			},
 		});
 
 		const lastTurn = contents[contents.length - 1];
-		const message = lastTurn.parts[0]?.text || "";
+		const messagePart = lastTurn?.parts?.find((part: any) =>
+			typeof part?.text === "string",
+		);
+		const hasFunctionResponse = Boolean(
+			lastTurn?.parts?.some((part: any) => Boolean(part?.functionResponse)),
+		);
+		const message =
+			typeof messagePart?.text === "string"
+				? messagePart.text
+				: hasFunctionResponse
+					? "Continue based on the approved tool result and answer the user directly."
+					: "";
 		const response = await chat.sendMessageStream({ message });
 
 		let fullText = "";

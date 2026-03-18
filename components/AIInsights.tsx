@@ -89,17 +89,154 @@ const AIInsights: React.FC<Props> = ({
 		return { cleanText, suggestions };
 	};
 
+	const getCurrentLocation = (): Promise<{
+		latitude: number;
+		longitude: number;
+		accuracyMeters: number;
+	}> => {
+		return new Promise((resolve, reject) => {
+			if (!navigator.geolocation) {
+				reject(
+					new Error("Geolocation is not supported on this device/browser."),
+				);
+				return;
+			}
+
+			navigator.geolocation.getCurrentPosition(
+				(position) => {
+					resolve({
+						latitude: position.coords.latitude,
+						longitude: position.coords.longitude,
+						accuracyMeters: position.coords.accuracy,
+					});
+				},
+				(error) => {
+					reject(
+						new Error(
+							error.code === error.PERMISSION_DENIED
+								? "Location permission was denied."
+								: "Unable to get current location.",
+						),
+					);
+				},
+				{
+					enableHighAccuracy: true,
+					timeout: 10000,
+					maximumAge: 60000,
+				},
+			);
+		});
+	};
+
+	const distanceInMeters = (
+		lat1: number,
+		lon1: number,
+		lat2: number,
+		lon2: number,
+	): number => {
+		const toRad = (v: number) => (v * Math.PI) / 180;
+		const R = 6371000;
+		const dLat = toRad(lat2 - lat1);
+		const dLon = toRad(lon2 - lon1);
+		const a =
+			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+			Math.cos(toRad(lat1)) *
+				Math.cos(toRad(lat2)) *
+				Math.sin(dLon / 2) *
+				Math.sin(dLon / 2);
+		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+		return R * c;
+	};
+
+	const fetchNearbyFood = async (
+		latitude: number,
+		longitude: number,
+		radiusMeters: number,
+		limit: number,
+		cuisineKeyword?: string,
+	) => {
+		const safeRadius = Math.min(Math.max(radiusMeters || 1200, 100), 5000);
+		const safeLimit = Math.min(Math.max(limit || 10, 1), 20);
+
+		const overpassQuery = `
+[out:json][timeout:25];
+nwr(around:${safeRadius},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"];
+out center ${safeLimit * 3};`;
+
+		const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(
+			overpassQuery,
+		)}`;
+		const response = await fetch(url, {
+			headers: {
+				Accept: "application/json",
+			},
+		});
+
+		if (!response.ok) {
+			throw new Error("Failed to query nearby places from OpenStreetMap.");
+		}
+
+		const data = await response.json();
+		const keyword = cuisineKeyword?.trim().toLowerCase();
+
+		const places = (data?.elements || [])
+			.map((el: any) => {
+				const lat = el.lat ?? el.center?.lat;
+				const lon = el.lon ?? el.center?.lon;
+				if (typeof lat !== "number" || typeof lon !== "number") return null;
+
+				const name = el.tags?.name || "Unnamed place";
+				const cuisine = el.tags?.cuisine || "";
+				const amenity = el.tags?.amenity || "food";
+				const address = [el.tags?.["addr:street"], el.tags?.["addr:city"]]
+					.filter(Boolean)
+					.join(", ");
+
+				const dist = distanceInMeters(latitude, longitude, lat, lon);
+
+				return {
+					name,
+					amenity,
+					cuisine,
+					address: address || null,
+					distanceMeters: Math.round(dist),
+					latitude: lat,
+					longitude: lon,
+					osmId: el.id,
+				};
+			})
+			.filter(Boolean)
+			.filter((p: any) => {
+				if (!keyword) return true;
+				const haystack = `${p.name} ${p.cuisine} ${p.amenity}`.toLowerCase();
+				return haystack.includes(keyword);
+			})
+			.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters)
+			.slice(0, safeLimit);
+
+		return {
+			locationUsed: { latitude, longitude },
+			radiusMeters: safeRadius,
+			cuisineKeyword: cuisineKeyword || null,
+			totalFound: places.length,
+			places,
+		};
+	};
+
 	const handleAsk = async (
 		e?: React.FormEvent,
 		overrideQuery?: string,
 		sessionOverride?: ChatSession,
+		includeUserMessage: boolean = true,
 	) => {
 		e?.preventDefault();
 		const activeQuery = overrideQuery || query;
-		if (!activeQuery.trim() || loading) return;
+		if ((includeUserMessage && !activeQuery.trim()) || loading) return;
 
 		const userQuery = activeQuery.trim();
-		setQuery("");
+		if (includeUserMessage) {
+			setQuery("");
+		}
 
 		if (!navigator.onLine) {
 			const offlineMsg: ChatMessage = {
@@ -112,29 +249,33 @@ const AIInsights: React.FC<Props> = ({
 			const sessionForError = activeSession
 				? {
 						...activeSession,
-						messages: [
-							...activeSession.messages,
-							{
-								role: "user",
-								content: userQuery,
-								timestamp: new Date().toISOString(),
-							} as ChatMessage,
-							offlineMsg,
-						],
+						messages: includeUserMessage
+							? [
+									...activeSession.messages,
+									{
+										role: "user",
+										content: userQuery,
+										timestamp: new Date().toISOString(),
+									} as ChatMessage,
+									offlineMsg,
+								]
+							: [...activeSession.messages, offlineMsg],
 						updatedAt: new Date().toISOString(),
 					}
 				: {
 						id: crypto.randomUUID(),
 						userId: accounts[0]?.userId || "local",
 						title: "Offline Request",
-						messages: [
-							{
-								role: "user",
-								content: userQuery,
-								timestamp: new Date().toISOString(),
-							} as ChatMessage,
-							offlineMsg,
-						],
+						messages: includeUserMessage
+							? [
+									{
+										role: "user",
+										content: userQuery,
+										timestamp: new Date().toISOString(),
+									} as ChatMessage,
+									offlineMsg,
+								]
+							: [offlineMsg],
 						updatedAt: new Date().toISOString(),
 					};
 
@@ -147,11 +288,13 @@ const AIInsights: React.FC<Props> = ({
 		setStreamingText("");
 
 		// 1. Create message objects
-		const userMessage: ChatMessage = {
-			role: "user",
-			content: userQuery,
-			timestamp: new Date().toISOString(),
-		};
+		const userMessage: ChatMessage | null = includeUserMessage
+			? {
+					role: "user",
+					content: userQuery,
+					timestamp: new Date().toISOString(),
+				}
+			: null;
 
 		const sessionForTurn = sessionOverride || activeSession;
 
@@ -161,7 +304,7 @@ const AIInsights: React.FC<Props> = ({
 				id: crypto.randomUUID(),
 				userId: accounts[0]?.userId || "guest",
 				title: "New Chat",
-				messages: [userMessage],
+				messages: userMessage ? [userMessage] : [],
 				updatedAt: new Date().toISOString(),
 			};
 			onSaveSession(currentSession);
@@ -169,7 +312,9 @@ const AIInsights: React.FC<Props> = ({
 		} else {
 			currentSession = {
 				...sessionForTurn,
-				messages: [...sessionForTurn.messages, userMessage],
+				messages: userMessage
+					? [...sessionForTurn.messages, userMessage]
+					: [...sessionForTurn.messages],
 				updatedAt: new Date().toISOString(),
 			};
 			onSaveSession(currentSession);
@@ -211,6 +356,7 @@ const AIInsights: React.FC<Props> = ({
 
 			// Auto-titling if it's the first exchange
 			if (
+				includeUserMessage &&
 				currentSession.title === "New Chat" &&
 				currentSession.messages.length === 1 &&
 				result.text
@@ -254,8 +400,8 @@ const AIInsights: React.FC<Props> = ({
 		if (!approved) {
 			msg.status = "rejected";
 			const systemResponse: ChatMessage = {
-				role: "user",
-				content: "I denied access to historical data.",
+				role: "system",
+				content: "",
 				timestamp: new Date().toISOString(),
 				functionResponse: {
 					name: msg.functionCall.name,
@@ -272,24 +418,20 @@ const AIInsights: React.FC<Props> = ({
 
 			// Trigger AI to respond to rejection
 			setTimeout(() => {
-				handleAsk(
-					undefined,
-					"I denied access to historical data.",
-					updatedSession,
-				);
+				handleAsk(undefined, "", updatedSession, false);
 			}, 100);
 			return;
 		}
 
 		// Process tool
 		msg.status = "approved";
-		let toolResult: any = null;
+		let responsePayload: any = null;
+		const functionArgs = msg.functionCall.args || {};
 
 		if (msg.functionCall.name === "get_historical_transactions") {
-			const { searchKeyword, startDate, endDate, categoryName } =
-				msg.functionCall.args;
+			const { searchKeyword, startDate, endDate, categoryName } = functionArgs;
 
-			toolResult = transactions
+			const toolResult = transactions
 				.filter((t) => {
 					if (
 						searchKeyword &&
@@ -305,19 +447,60 @@ const AIInsights: React.FC<Props> = ({
 					return true;
 				})
 				.slice(0, 50); // Limit results
+
+			responsePayload = {
+				totalMatches: toolResult?.length || 0,
+				appliedFilters: functionArgs,
+				transactions: toolResult || [],
+			};
+		} else if (msg.functionCall.name === "get_current_location") {
+			try {
+				const location = await getCurrentLocation();
+				responsePayload = {
+					...location,
+					retrievedAt: new Date().toISOString(),
+				};
+			} catch (err: any) {
+				responsePayload = {
+					error: err?.message || "Unable to retrieve current location.",
+				};
+			}
+		} else if (msg.functionCall.name === "get_nearby_food") {
+			try {
+				let latitude = Number(functionArgs.latitude);
+				let longitude = Number(functionArgs.longitude);
+
+				if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+					const location = await getCurrentLocation();
+					latitude = location.latitude;
+					longitude = location.longitude;
+				}
+
+				responsePayload = await fetchNearbyFood(
+					latitude,
+					longitude,
+					Number(functionArgs.radiusMeters) || 1200,
+					Number(functionArgs.limit) || 10,
+					functionArgs.cuisineKeyword,
+				);
+			} catch (err: any) {
+				responsePayload = {
+					error: err?.message || "Unable to find nearby food places right now.",
+				};
+			}
+		} else {
+			responsePayload = {
+				error: `Unsupported tool: ${msg.functionCall.name}`,
+			};
 		}
 
 		const functionResponseMessage: ChatMessage = {
-			role: "user",
-			content: `I've approved the data access. Found ${toolResult?.length || 0} matching transactions.`,
+			role: "system",
+			content: "",
 			timestamp: new Date().toISOString(),
 			functionResponse: {
 				name: msg.functionCall.name,
-				response: {
-					totalMatches: toolResult?.length || 0,
-					appliedFilters: msg.functionCall.args || {},
-					transactions: toolResult || [],
-				},
+				response: responsePayload,
 			},
 		};
 
@@ -330,11 +513,7 @@ const AIInsights: React.FC<Props> = ({
 
 		// Automatically trigger next AI turn with the tool result
 		setTimeout(() => {
-			handleAsk(
-				undefined,
-				`I've approved the data access. Analyze the returned historical transactions now and summarize key insights for me.`,
-				nextSession,
-			);
+			handleAsk(undefined, "", nextSession, false);
 		}, 100);
 	};
 
@@ -505,6 +684,8 @@ const AIInsights: React.FC<Props> = ({
 					)}
 
 					{activeSession?.messages.map((m, i) => {
+						if (m.functionResponse && !m.content.trim()) return null;
+
 						const { cleanText, suggestions: aiSuggestions } = parseMessage(
 							m.content,
 						);
@@ -555,8 +736,11 @@ const AIInsights: React.FC<Props> = ({
 											</div>
 											<div className="bg-black/20 rounded-xl p-3 mb-4">
 												<p className="text-xs text-gray-400 leading-relaxed mb-2">
-													AI would like to access your historical data with the
-													following filters:
+													AI would like to use the tool
+													<span className="text-primary font-bold mx-1">
+														{m.functionCall.name}
+													</span>
+													with these parameters:
 												</p>
 												<div className="space-y-1">
 													{Object.entries(m.functionCall.args || {}).map(

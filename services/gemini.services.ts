@@ -13,8 +13,102 @@ import {
 const BACKEND_URL =
 	import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
 
+const normalizeApiKey = (rawKey?: string): string => {
+	if (!rawKey) return "";
+	return rawKey.trim().replace(/^['\"]|['\"]$/g, "");
+};
+
+const isPlaceholderApiKey = (key: string): boolean => {
+	const normalized = key.trim().toLowerCase();
+	return [
+		"your_gemini_api_key",
+		"your_api_key",
+		"api_key",
+		"api-key",
+		"changeme",
+		"placeholder",
+	].includes(normalized);
+};
+
+const resolveApiKey = (apiKey?: string): string => {
+	const userKey = normalizeApiKey(apiKey);
+	if (userKey && !isPlaceholderApiKey(userKey)) {
+		return userKey;
+	}
+
+	const envKey = normalizeApiKey(import.meta.env.VITE_GEMINI_API_KEY);
+	if (envKey && !isPlaceholderApiKey(envKey)) {
+		return envKey;
+	}
+
+	return "";
+};
+
+const isInvalidApiKeyError = (error: unknown): boolean => {
+	if (!error) return false;
+
+	const errorObj = error as {
+		message?: string;
+		details?: Array<{ reason?: string; message?: string }>;
+	};
+	const message = String(errorObj.message || "");
+	const details = Array.isArray(errorObj.details)
+		? JSON.stringify(errorObj.details)
+		: "";
+
+	return (
+		message.includes("API_KEY_INVALID") ||
+		message.includes("API key not valid") ||
+		details.includes("API_KEY_INVALID") ||
+		details.includes("API key not valid")
+	);
+};
+
+const requestChatViaProxy = async (
+	history: ChatMessage[],
+	contextData: ReturnType<typeof prepareContext>,
+	onChunk: (chunk: string) => void,
+): Promise<{ text: string; functionCall?: any }> => {
+	const response = await fetch(`${BACKEND_URL}/ai/chat`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ history, context: contextData }),
+	});
+
+	if (!response.ok) {
+		const err = await response.json().catch(() => ({}));
+		if (response.status === 429) {
+			throw new Error(
+				"Gemini API Quota Exceeded (Free Tier is limited to a few requests per minute/day). Please try again in a moment.",
+			);
+		}
+		throw new Error(err.error || "Failed to get AI advice");
+	}
+
+	const contentType = response.headers.get("Content-Type");
+	if (contentType?.includes("application/json")) {
+		return await response.json();
+	}
+
+	const reader = response.body?.getReader();
+	const decoder = new TextDecoder();
+	let fullText = "";
+
+	if (!reader) throw new Error("Failed to read response stream");
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		const chunk = decoder.decode(value, { stream: true });
+		fullText += chunk;
+		onChunk(chunk);
+	}
+
+	return { text: fullText };
+};
+
 const getClient = (apiKey?: string) => {
-	const finalKey = apiKey || import.meta.env.VITE_GEMINI_API_KEY;
+	const finalKey = resolveApiKey(apiKey);
 	if (!finalKey) {
 		throw new Error("No Gemini API key provided.");
 	}
@@ -132,47 +226,12 @@ export const streamFinancialAdvice = async (
 		goals,
 		subscriptions,
 	);
+	const resolvedApiKey = resolveApiKey(apiKey);
 
 	// IF NO API KEY PROVIDED, USE BACKEND PROXY
-	if (!apiKey) {
+	if (!resolvedApiKey) {
 		try {
-			const response = await fetch(`${BACKEND_URL}/ai/chat`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ history, context: contextData }),
-			});
-
-			if (!response.ok) {
-				const err = await response.json().catch(() => ({}));
-				if (response.status === 429) {
-					throw new Error(
-						"Gemini API Quota Exceeded (Free Tier is limited to a few requests per minute/day). Please try again in a moment.",
-					);
-				}
-				throw new Error(err.error || "Failed to get AI advice");
-			}
-
-			// Check if it's a function call (non-streaming JSON)
-			const contentType = response.headers.get("Content-Type");
-			if (contentType?.includes("application/json")) {
-				return await response.json();
-			}
-
-			const reader = response.body?.getReader();
-			const decoder = new TextDecoder();
-			let fullText = "";
-
-			if (!reader) throw new Error("Failed to read response stream");
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				const chunk = decoder.decode(value, { stream: true });
-				fullText += chunk;
-				onChunk(chunk);
-			}
-
-			return { text: fullText };
+			return await requestChatViaProxy(history, contextData, onChunk);
 		} catch (error) {
 			console.error("Proxy AI Error:", error);
 			throw error;
@@ -180,7 +239,7 @@ export const streamFinancialAdvice = async (
 	}
 
 	try {
-		const ai = getClient(apiKey);
+		const ai = getClient(resolvedApiKey);
 
 		const systemInstruction = `
       You are ZenFinance AI, a helpful and minimalist financial assistant. 
@@ -279,6 +338,19 @@ export const streamFinancialAdvice = async (
 		return { text: fullText, functionCall };
 	} catch (error: any) {
 		console.error("Gemini Streaming Error:", error);
+		if (isInvalidApiKeyError(error)) {
+			try {
+				console.warn(
+					"Invalid Gemini API key detected. Falling back to backend proxy.",
+				);
+				return await requestChatViaProxy(history, contextData, onChunk);
+			} catch (proxyError) {
+				console.error("Proxy AI Fallback Error:", proxyError);
+				throw new Error(
+					"Gemini API key is invalid. Please update your Gemini key in Profile settings.",
+				);
+			}
+		}
 		if (error?.status === 429) {
 			throw new Error(
 				"Gemini API Quota Exceeded. You have reached the limit for the Free Tier (usually 20-50 requests per day). Please check your Google AI Studio dashboard or try again later.",
@@ -293,7 +365,8 @@ export const generateChatTitle = async (
 	firstQuestion: string,
 	firstAnswer: string,
 ): Promise<string> => {
-	if (!apiKey) {
+	const resolvedApiKey = resolveApiKey(apiKey);
+	if (!resolvedApiKey) {
 		try {
 			const response = await fetch(`${BACKEND_URL}/ai/title`, {
 				method: "POST",
@@ -317,7 +390,7 @@ export const generateChatTitle = async (
 	}
 
 	try {
-		const ai = getClient(apiKey);
+		const ai = getClient(resolvedApiKey);
 		const prompt = `
       Based on this first exchange in a financial chat, generate a very short (max 4 words) title.
       Question: "${firstQuestion}"
@@ -333,6 +406,27 @@ export const generateChatTitle = async (
 		const text = result.text;
 		return text.replace(/"/g, "").trim() || "New Chat";
 	} catch (e) {
+		if (isInvalidApiKeyError(e)) {
+			try {
+				const response = await fetch(`${BACKEND_URL}/ai/title`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						question: firstQuestion,
+						answer: firstAnswer,
+					}),
+				});
+
+				if (!response.ok) {
+					return "New Financial Chat";
+				}
+
+				const data = await response.json();
+				return data.title || "New Financial Chat";
+			} catch (proxyError) {
+				console.error("Title Proxy Fallback Error:", proxyError);
+			}
+		}
 		console.error("Title Generation Error:", e);
 		return "New Financial Chat";
 	}
@@ -401,6 +495,11 @@ export const parseBankStatement = async (
 		return Array.isArray(parsed) ? parsed : parsed.transactions || [];
 	} catch (error) {
 		console.error("Bank Statement Parsing Error:", error);
+		if (isInvalidApiKeyError(error)) {
+			throw new Error(
+				"Gemini API key is invalid. Please update your key in Profile settings and try again.",
+			);
+		}
 		throw new Error(
 			"Failed to parse bank statement. Please ensure the file is clear and supported.",
 		);

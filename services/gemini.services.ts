@@ -259,7 +259,7 @@ export const streamFinancialAdvice = async (
 
 		const lastTurn = contents[contents.length - 1];
 		const message = lastTurn.parts[0]?.text || "";
-		const response = await chat.sendMessageStream(message);
+		const response = await chat.sendMessageStream({ message });
 
 		let fullText = "";
 		let functionCall: any = null;

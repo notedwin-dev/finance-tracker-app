@@ -364,7 +364,7 @@ export const streamFinancialAdvice = async (
 		});
 
 		const chat = ai.chats.create({
-			model: "gemini-3.1-flash-lite",
+			model: "gemini-3.1-flash-lite-preview",
 			history: contents.slice(0, -1),
 			config: {
 				systemInstruction: systemInstruction,

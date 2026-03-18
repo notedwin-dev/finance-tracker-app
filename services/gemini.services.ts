@@ -364,7 +364,7 @@ export const streamFinancialAdvice = async (
 		});
 
 		const chat = ai.chats.create({
-			model: "gemini-2.5-flash",
+			model: "gemini-3.1-flash-lite",
 			history: contents.slice(0, -1),
 			config: {
 				systemInstruction: systemInstruction,
@@ -373,8 +373,8 @@ export const streamFinancialAdvice = async (
 		});
 
 		const lastTurn = contents[contents.length - 1];
-		const messagePart = lastTurn?.parts?.find((part: any) =>
-			typeof part?.text === "string",
+		const messagePart = lastTurn?.parts?.find(
+			(part: any) => typeof part?.text === "string",
 		);
 		const hasFunctionResponse = Boolean(
 			lastTurn?.parts?.some((part: any) => Boolean(part?.functionResponse)),
@@ -467,7 +467,7 @@ export const generateChatTitle = async (
     `;
 
 		const result = await ai.models.generateContent({
-			model: "gemini-2.5-flash",
+			model: "gemini-3.1-flash-lite",
 			contents: prompt,
 		});
 		const text = result.text;
@@ -541,7 +541,7 @@ export const parseBankStatement = async (
 		}
 
 		const response = await ai.models.generateContent({
-			model: "gemini-2.5-flash",
+			model: "gemini-3.1-flash-lite",
 			contents: [
 				{
 					role: "user",

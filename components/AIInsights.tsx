@@ -626,7 +626,7 @@ out center ${safeLimit * 3};`;
 								<div className="flex items-center gap-1.5">
 									<div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
 									<span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">
-										Gemini Flash
+										Gemini 3.1 Flash Lite
 									</span>
 								</div>
 							)}

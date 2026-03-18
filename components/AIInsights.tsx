@@ -303,7 +303,11 @@ const AIInsights: React.FC<Props> = ({
       timestamp: new Date().toISOString(),
       functionResponse: {
         name: msg.functionCall.name,
-        response: toolResult || { result: "No data found" },
+        response: {
+          totalMatches: toolResult?.length || 0,
+          appliedFilters: msg.functionCall.args || {},
+          transactions: toolResult || [],
+        },
       },
     };
 
@@ -318,7 +322,7 @@ const AIInsights: React.FC<Props> = ({
     setTimeout(() => {
       handleAsk(
         undefined,
-        `I've approved the data access. Found ${toolResult?.length || 0} matching transactions.`,
+        `I've approved the data access. Analyze the returned historical transactions now and summarize key insights for me.`,
       );
     }, 100);
   };

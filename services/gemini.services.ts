@@ -64,6 +64,14 @@ const isInvalidApiKeyError = (error: unknown): boolean => {
 	);
 };
 
+const normalizeFunctionResponsePayload = (payload: any) => {
+	if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+		return payload;
+	}
+
+	return { result: payload };
+};
+
 const requestChatViaProxy = async (
 	history: ChatMessage[],
 	contextData: ReturnType<typeof prepareContext>,
@@ -286,12 +294,14 @@ export const streamFinancialAdvice = async (
 
 			if (m.functionResponse) {
 				return {
-					role: "function",
+					role: "user",
 					parts: [
 						{
 							functionResponse: {
 								name: m.functionResponse.name,
-								response: m.functionResponse.response,
+								response: normalizeFunctionResponsePayload(
+									m.functionResponse.response,
+								),
 							},
 						},
 					],

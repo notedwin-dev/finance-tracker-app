@@ -1766,7 +1766,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 			// 2. Pots
 			if (t.potId) {
-				const pot = pots.find((p) => p.id === t.potId);
+				const potId = String(t.potId);
+				const pot = pots.find((p) => p.id === potId);
 				const txDateStr = normalizeDate(t.date);
 				const isAfterPotReset =
 					!pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
@@ -1781,7 +1782,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					} else {
 						potDelta = t.amount * factor;
 					}
-					potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
+					potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
 				}
 			}
 
@@ -2027,6 +2028,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 			// 2. Pots
 			if (t.potId) {
+				const potId = String(t.potId);
 				let potDelta = 0;
 				if (
 					t.type === TransactionType.INCOME ||
@@ -2036,7 +2038,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				} else {
 					potDelta = t.amount * factor;
 				}
-				potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
+				potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
 			}
 
 			// 3. Pockets
@@ -2269,7 +2271,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 			// 2. Pots
 			if (t.potId) {
-				const pot = pots.find((p) => p.id === t.potId);
+				const potId = String(t.potId);
+				const pot = pots.find((p) => p.id === potId);
 				const txDateStr = normalizeDate(t.date);
 				const isAfterPotReset =
 					!pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
@@ -2284,7 +2287,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					} else {
 						potDelta = t.amount * factor;
 					}
-					potUpdates.set(t.potId, (potUpdates.get(t.potId) || 0) + potDelta);
+					potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
 				}
 			}
 
@@ -2543,7 +2546,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 			// Handle Pots
 			if (t.potId) {
-				const pot = pots.find((p) => p.id === t.potId);
+				const potId = String(t.potId);
+				const pot = pots.find((p) => p.id === potId);
 				const txDateStr = normalizeDate(t.date);
 				const isAfterPotReset =
 					!pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
@@ -2559,8 +2563,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 						potDelta = t.amount;
 					}
 					potUpdates.set(
-						t.potId,
-						(potUpdates.get(t.potId) || 0) + potDelta * factor,
+						potId,
+						(potUpdates.get(potId) || 0) + potDelta * factor,
 					);
 				}
 			}

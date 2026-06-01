@@ -16,7 +16,9 @@ const HistoryPage: React.FC = () => {
 
   const expandedTransactions = React.useMemo(() => {
     const results: any[] = [];
+    const seen = new Set<string>();
     transactions.forEach((t) => {
+      if (seen.has(t.id)) return;
       if (
         t.type === "TRANSFER" &&
         t.toAccountId &&
@@ -24,18 +26,25 @@ const HistoryPage: React.FC = () => {
         !t.transferDirection &&
         !t.linkedTransactionId
       ) {
-        // Create OUT leg
-        results.push({ ...t, transferDirection: "OUT" });
-        // Create IN leg
-        results.push({
-          ...t,
-          id: t.id + "_in",
-          accountId: t.toAccountId,
-          toAccountId: t.accountId,
-          transferDirection: "IN",
-        });
+        const outId = t.id;
+        const inId = t.id + "_in";
+        if (!seen.has(outId)) {
+          results.push({ ...t, transferDirection: "OUT" });
+          seen.add(outId);
+        }
+        if (!seen.has(inId)) {
+          results.push({
+            ...t,
+            id: inId,
+            accountId: t.toAccountId,
+            toAccountId: t.accountId,
+            transferDirection: "IN",
+          });
+          seen.add(inId);
+        }
       } else {
         results.push(t);
+        seen.add(t.id);
       }
     });
     return results;

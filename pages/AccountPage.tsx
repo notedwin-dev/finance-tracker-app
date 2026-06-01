@@ -136,6 +136,7 @@ const AccountPage: React.FC = () => {
 
 	const filteredTransactions = useMemo(() => {
 		const results: any[] = [];
+		const seen = new Set<string>();
 		transactions.forEach((t) => {
 			const isLegacySingleRecordTransfer =
 				t.type === TransactionType.TRANSFER &&
@@ -145,21 +146,31 @@ const AccountPage: React.FC = () => {
 
 			if (isLegacySingleRecordTransfer) {
 				if (t.accountId === id) {
-					results.push({ ...t, transferDirection: "OUT" });
+					if (!seen.has(t.id)) {
+						results.push({ ...t, transferDirection: "OUT" });
+						seen.add(t.id);
+					}
 				} else if (t.toAccountId === id) {
-					results.push({
-						...t,
-						id: t.id + "_in",
-						accountId: t.toAccountId,
-						toAccountId: t.accountId,
-						transferDirection: "IN",
-					});
+					const inId = t.id + "_in";
+					if (!seen.has(inId)) {
+						results.push({
+							...t,
+							id: inId,
+							accountId: t.toAccountId,
+							toAccountId: t.accountId,
+							transferDirection: "IN",
+						});
+						seen.add(inId);
+					}
 				}
 			} else if (
 				t.accountId === id ||
 				(t.type === TransactionType.TRANSFER && t.toAccountId === id)
 			) {
-				results.push(t);
+				if (!seen.has(t.id)) {
+					results.push(t);
+					seen.add(t.id);
+				}
 			}
 		});
 		return results;

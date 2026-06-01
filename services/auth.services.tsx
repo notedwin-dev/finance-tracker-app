@@ -34,7 +34,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const BACKEND_URL =
-	import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
+	import.meta.env.VITE_BACKEND_API_URL || "";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	children,

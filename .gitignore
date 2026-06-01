@@ -3,3 +3,6 @@ node_modules/
 dist/
 build/
 .next/
+.agents/
+docs/
+.DS_Store

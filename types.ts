@@ -94,6 +94,11 @@ export interface Transaction {
 
 export interface UserCloudSettings {
   isSecurityEnabled?: boolean; // Replaces isVaultEnabled - enables encryption for sensitive data
+  isVaultEnabled?: boolean; // Legacy — replaced by isSecurityEnabled
+  isVaultCreated?: boolean; // Legacy — replaced by isSecurityEnabled
+  isVaultLocked?: boolean; // Legacy — replaced by derived securityUnlocked
+  vaultSalt?: string; // Legacy — vault encryption salt
+  biometricCredId?: string; // Legacy — singular credential ID, replaced by biometricCredIds
   totpSecret?: string; // TOTP secret for 2FA (stored encrypted in cloud)
   totpEnabled?: boolean; // Whether 2FA is enabled
   biometricEnabled?: boolean; // Whether biometrics is enabled on this device

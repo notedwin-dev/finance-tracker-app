@@ -1,0 +1,71 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    }
+  },
+  "permission": {
+    "read": {
+      ".env": "deny",
+      ".env.*": "deny",
+      ".env.sample": "allow",
+      "**/node_modules/**": "deny",
+      "**/dist/**": "deny"
+    },
+    "edit": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "bash": {
+      "rm": "ask"
+    },
+    "task": "allow"
+  },
+  "agent": {
+    "state-migrator": {
+      "description": "Migrate React state from DataProvider to Zustand stores",
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "prompt": "{file:.opencode/prompts/state-migrator.txt}",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "allow"
+      }
+    },
+    "commands-splitter": {
+      "description": "Split commands.ts into domain-specific files in commands/ directory",
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "prompt": "{file:.opencode/prompts/commands-splitter.txt}",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "allow"
+      }
+    },
+    "page-migrator": {
+      "description": "Update page files to read from Zustand stores instead of useData()",
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "prompt": "{file:.opencode/prompts/page-migrator.txt}",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": "allow"
+      }
+    }
+  }
+}

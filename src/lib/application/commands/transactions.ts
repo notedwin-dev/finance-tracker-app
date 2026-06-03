@@ -626,7 +626,6 @@ export async function batchEditTransactions(
     }
   };
 
-  // Only recalculate impacts for affected transactions (including pot removal)
   affectedTransactionIds.forEach((txId) => {
     const newTx = updatedTransactionsList.find((t) => t.id === txId);
     const oldTx = transactions.find((t) => t.id === txId);

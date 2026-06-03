@@ -203,10 +203,6 @@ export async function submitTransaction(
     }
   }
 
-  if (partnerIdToDelete) {
-    store.removeTransactions([partnerIdToDelete]);
-  }
-
   showToast("Transaction saved", "success");
 }
 
@@ -439,6 +435,7 @@ export async function bulkImportTransactions(
         transferDirection: "IN" as const,
         linkedTransactionId: mainTx.id,
       };
+      mainTx.linkedTransactionId = partnerLeg.id;
       transactionsToInsert.push(partnerLeg);
     }
   });
@@ -457,42 +454,8 @@ export async function bulkImportTransactions(
     transactionsToInsert.forEach((tx) => {
       const acc = accounts.find((a) => a.id === tx.accountId);
       if (!acc) return;
-
-      const amt =
-        tx.currency === acc.currency
-          ? tx.amount
-          : tx.currency === "USD"
-            ? tx.amount * usdRate
-            : tx.amount / usdRate;
-
-      const fee = tx.fee
-        ? tx.currency === acc.currency
-          ? tx.fee
-          : tx.currency === "USD"
-            ? tx.fee * usdRate
-            : tx.fee / usdRate
-        : 0;
-
-      const feeType = tx.feeType || "INCLUSIVE";
-
-      if (
-        tx.type === "INCOME" ||
-        tx.type === "ACCOUNT_OPENING" ||
-        (tx.type === "ADJUSTMENT" && tx.amount >= 0) ||
-        (tx.type === "TRANSFER" && tx.transferDirection === "IN")
-      ) {
-        const addedAmount =
-          tx.type === "TRANSFER" && feeType === "EXCLUSIVE" ? amt - fee : amt;
-        accountUpdates.set(
-          tx.accountId,
-          (accountUpdates.get(tx.accountId) || 0) + addedAmount,
-        );
-      } else {
-        const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-        accountUpdates.set(
-          tx.accountId,
-          (accountUpdates.get(tx.accountId) || 0) - removedAmount,
-        );
+      for (const [id, delta] of computeAccountTransactionAmount(tx, 1, accounts, usdRate)) {
+        accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
       }
     });
 

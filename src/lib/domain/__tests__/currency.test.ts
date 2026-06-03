@@ -17,8 +17,13 @@ describe("convertAmount", () => {
     expect(convertAmount(445, "MYR", "USD", rate)).toBe(100);
   });
 
-  it("returns amount for unknown currencies", () => {
-    expect(convertAmount(100, "BTC", "ETH", rate)).toBe(100);
+  it("throws for unknown currencies", () => {
+    expect(() => convertAmount(100, "BTC", "ETH", rate)).toThrow("Unsupported conversion");
+  });
+
+  it("throws for non-positive usdRate", () => {
+    expect(() => convertAmount(100, "USD", "MYR", 0)).toThrow("Invalid USD rate");
+    expect(() => convertAmount(100, "MYR", "USD", -1)).toThrow("Invalid USD rate");
   });
 
   it("handles zero amount", () => {

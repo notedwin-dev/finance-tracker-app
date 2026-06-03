@@ -22,7 +22,7 @@ export async function saveGoal(
     : [...existingGoals, goalWithUser];
   store.setGoals(updated);
   await StorageService.saveGoals(updated);
-  showToast("Goal updated", "success");
+  showToast(isEdit ? "Goal updated" : "Goal created", "success");
 }
 
 export async function deleteGoal(

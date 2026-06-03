@@ -53,7 +53,7 @@ src/
 ```
 User action (click "Save")
   → Command (submitTransaction in commands.ts)
-    → Domain logic (computeBalanceDeltas)
+    → Domain logic (computeAccountTransactionAmount / computeBudgetConsumption / computeSavingsMovement)
     → Store update (useFinanceStore.getState().addTransaction)
     → Persistence (storage.services.save)
     → Toast (useSyncStore.getState().showToast)

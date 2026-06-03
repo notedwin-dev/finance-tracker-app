@@ -9,6 +9,8 @@ How the engineering skills should consume this repo's domain documentation when 
 
 If these files don't exist, proceed silently. Don't flag their absence.
 
+If the project is missing an AGENTS.md or has no docs/adrs/ directory, the agent should escalate to the user: "This project doesn't have domain docs configured yet. Should I create AGENTS.md and docs/adrs/ from scratch?"
+
 ## File structure
 
 Single-context repo:
@@ -18,7 +20,7 @@ Single-context repo:
 ├── AGENTS.md
 ├── docs/
 │   ├── adrs/
-│   │   └── 0001-layered-architecture.md
+│   │   └── 001-layered-architecture-refactor.md
 │   └── agents/
 │       ├── issue-tracker.md
 │       ├── triage-labels.md

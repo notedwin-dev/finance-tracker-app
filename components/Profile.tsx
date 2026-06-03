@@ -87,17 +87,21 @@ const Profile: React.FC<Props> = ({
 	} = useData();
 
 	const handleRecalculateBalances = async () => {
-		const store = useFinanceStore.getState();
-		const isCloud = !(rawProfile as any).offlineMode && SheetService.isClientReady();
-		await recalculateBalances(
-			store.accounts,
-			store.pots,
-			store.pockets,
-			store.transactions,
-			store.usdRate,
-			(rawProfile as any).id || "local",
-			isCloud,
-		);
+		try {
+			const store = useFinanceStore.getState();
+			const isCloud = !(rawProfile as any).offlineMode && SheetService.isClientReady();
+			await recalculateBalances(
+				store.accounts,
+				store.pots,
+				store.pockets,
+				store.transactions,
+				store.usdRate,
+				(rawProfile as any).id || "local",
+				isCloud,
+			);
+		} catch (err) {
+			console.error(err);
+		}
 	};
 	const [isEditing, setIsEditing] = useState(false);
 	const [name, setName] = useState(profile.name);

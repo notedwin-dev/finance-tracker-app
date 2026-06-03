@@ -103,7 +103,7 @@ Read the latest ADR before making architectural changes to understand current de
 - `VITE_GEMINI_API_KEY` — Gemini API key
 - `VITE_GOOGLE_API_KEY` — Google API key
 
-Note: `.env`, `.agents/`, `docs/`, `node_modules/`, `dist/` are gitignored and local-only.
+Note: `.env`, `.agents/`, `node_modules/`, `dist/`, `build/`, `.next/` are gitignored. `docs/` is NOT ignored (rule is commented out in `.gitignore`).
 
 ## Agent skills
 

@@ -693,22 +693,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		setAccounts(decryptedAccounts);
 
 		const loadedTxs = StorageService.getStoredTransactions();
-		setTransactions(loadedTxs);
-		setCategories(StorageService.getStoredCategories());
-		setGoals(StorageService.getStoredGoals());
-		setPots(StorageService.getStoredPots());
-		setChatSessions(StorageService.getStoredChatSessions());
+		const storedCategories = StorageService.getStoredCategories();
+		const storedGoals = StorageService.getStoredGoals();
+		const storedPots = StorageService.getStoredPots();
+		const storedChatSessions = StorageService.getStoredChatSessions();
 		const storedSubs = StorageService.getStoredSubscriptions();
+		setTransactions(loadedTxs);
+		setCategories(storedCategories);
+		setGoals(storedGoals);
+		setPots(storedPots);
+		setChatSessions(storedChatSessions);
 		setSubscriptions(storedSubs);
 
 		// Pipe loaded data into Zustand stores
 		const store = useFinanceStore.getState();
 		store.setAccounts(decryptedAccounts);
 		store.setTransactions(loadedTxs);
-		store.setCategories(StorageService.getStoredCategories());
-		store.setGoals(StorageService.getStoredGoals());
-		store.setPots(StorageService.getStoredPots());
-		store.setChatSessions(StorageService.getStoredChatSessions());
+		store.setCategories(storedCategories);
+		store.setGoals(storedGoals);
+		store.setPots(storedPots);
+		store.setChatSessions(storedChatSessions);
 		store.setSubscriptions(storedSubs);
 	};
 

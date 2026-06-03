@@ -80,7 +80,7 @@ Pure functions with explicit parameters — no global state, no React, no side e
 | Module | Responsibility |
 |--------|---------------|
 | `currency.ts` | `convertAmount(amount, fromCurrency, toCurrency, usdRate)` |
-| `balance.engine.ts` | `computeBalanceDeltas(tx, factor, accounts, pots, pockets, usdRate)` → `BalanceDeltas` |
+| `balance.engine.ts` | `computeAccountTransactionAmount(tx, factor, accounts, usdRate)` → account delta map; `computeBudgetConsumption(tx, factor, pots)` → pot delta map; `computeSavingsMovement(tx, factor, pockets)` → pocket delta map |
 | `transactions.ts` *(future)* | Validation, splitting, category inference |
 | `accounts.ts` *(future)* | Balance aggregation, currency rollup |
 | `pots.ts` *(future)* | Spending limit calculations |

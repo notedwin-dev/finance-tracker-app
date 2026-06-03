@@ -66,7 +66,7 @@ src/
 ```
 User action (click "Save")
   → Command (submitTransaction in commands/transactions.ts)
-    → Domain logic (computeBalanceDeltas)
+    → Domain logic (computeAccountTransactionAmount / computeBudgetConsumption / computeSavingsMovement)
     → Store update (useFinanceStore.getState().addTransaction)
     → Persistence (storage.services.save)
     → Toast (useSyncStore.getState().showToast)
@@ -75,7 +75,7 @@ User action (click "Save")
 
 ## Current State
 
-### What's been extracted from DataProvider (17 of ~23 handlers/state removed)
+### What's been extracted from DataProvider (20 of ~23 handlers/state removed)
 
 | Handlers | Entity | Status |
 |----------|--------|--------|
@@ -87,30 +87,30 @@ User action (click "Save")
 | `handleAccountSave` / `handleAccountDelete` | Accounts | ✓ Removed |
 | `handleTransactionDelete` | Transactions (single) | ✓ Removed |
 | `handleBatchTransactionDelete` | Transactions (batch) | ✓ Removed |
+| `handleTransactionSubmit` | Transactions (submit) | ✓ Removed |
+| `handleBulkTransactionImport` | Transactions (import) | ✓ Removed |
+| `handleBatchTransactionEdit` | Transactions (batch edit) | ✓ Removed |
+| `recalculateBalances` | Balance recalculation | ✓ Removed |
 
-### Remaining handlers in DataProvider (7)
+### Remaining handlers in DataProvider (3)
 
-| Handler | Line | Notes |
+| Handler | Line (approx) | Notes |
 |---------|------|-------|
-| `handleTransactionSubmit` | 1441 | Complex — cloud sync, subscriptions, partner txs |
-| `handleBulkTransactionImport` | 1320 | Complex — creates opening/adjustment txs |
-| `handleBatchTransactionEdit` | 1721 | Complex — partner sync, pot/pocket recalc |
-| `handleSelectExistingSheet` | 2031 | Sheet picker UI concern |
-| `handleMigrateData` | 2056 | Data migration utility |
-| `recalculateBalances` | 2076 | Balance recalculation |
-| `handleResetAndSync` | 2209 | Sync reset utility |
+| `handleSelectExistingSheet` | ~2031 | Sheet picker UI concern (Issue #4) |
+| `handleMigrateData` | ~2056 | Data migration utility (Issue #4) |
+| `handleResetAndSync` | ~2209 | Sync reset utility (Issue #4) |
 
 ### DataProvider total size
 
-~2330 lines (was ~2874 lines originally).
+~2070 lines (was ~2874 lines originally).
 
-### Commands (`src/lib/application/commands.ts`)
+### Commands (`src/lib/application/commands.ts` — barrel re-export)
 
-~624 lines, 18 exported functions. Covers all entities except `bulkTransactionImport`, `batchTransactionEdit`.
+10 domain files in `commands/`, 22 exported functions. All entity commands extracted (categories, goals, subscriptions, chat-sessions, pots, pockets, accounts, transactions, balance).
 
 ### Stores (`src/stores/`)
 
-All 4 Zustand stores exist. Finance store needs `usdRate`, `cryptoPrices`, `exchangeRate` added.
+All 4 Zustand stores exist. Finance store has `usdRate`, `cryptoPrices`, `exchangeRate` wired.
 
 ## Phase 1: State Migration (this session)
 

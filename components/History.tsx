@@ -39,7 +39,7 @@ interface Props {
 	isAssetPage?: boolean;
 	onAddTransaction: () => void;
 	onEditTransaction: (t: Transaction) => void;
-	onDeleteTransaction: (id: string) => void;
+	onDeleteTransaction: (id: string) => Promise<void>;
 }
 
 const History: React.FC<Props> = ({
@@ -160,13 +160,17 @@ const History: React.FC<Props> = ({
 	);
 
 	const handleSwipeDelete = useCallback(
-		(t: GroupedTransaction) => {
+		async (t: GroupedTransaction) => {
 			if (
 				window.confirm(
 					"Delete this transaction? This cannot be undone.",
 				)
 			) {
-				onDeleteTransaction(t.id);
+				try {
+					await onDeleteTransaction(t.id);
+				} catch {
+					// Error handled by caller
+				}
 				swipe.setSwipedId(null);
 			}
 		},
@@ -175,30 +179,36 @@ const History: React.FC<Props> = ({
 
 	const handleBatchDelete = useCallback(async () => {
 		batch.startSubmit();
-		if (
-			window.confirm(
-				`Delete ${batch.selectedIds.length} transactions? This cannot be undone.`,
-			)
-		) {
-			await batchDeleteTransaction(batch.selectedIds, accounts, pots, pockets, usdRate, transactions);
-			batch.clearSelection();
+		try {
+			if (
+				window.confirm(
+					`Delete ${batch.selectedIds.length} transactions? This cannot be undone.`,
+				)
+			) {
+				await batchDeleteTransaction(batch.selectedIds, accounts, pots, pockets, usdRate, transactions);
+				batch.clearSelection();
+			}
+		} finally {
+			batch.endSubmit();
 		}
-		batch.endSubmit();
 	}, [batch, batchDeleteTransaction, accounts, pots, pockets, usdRate, transactions]);
 
 	const handleBatchEditSubmit = useCallback(async () => {
 		batch.startSubmit();
-		await batchEditTransactions(
-			batch.selectedIds,
-			batch.batchUpdates,
-			transactions,
-			accounts,
-			pots,
-			pockets,
-			usdRate,
-			false,
-		);
-		batch.endSubmit();
+		try {
+			await batchEditTransactions(
+				batch.selectedIds,
+				batch.batchUpdates,
+				transactions,
+				accounts,
+				pots,
+				pockets,
+				usdRate,
+				false,
+			);
+		} finally {
+			batch.endSubmit();
+		}
 	}, [batch, batchEditTransactions, transactions, accounts, pots, pockets, usdRate]);
 
 	const handleChevronClick = useCallback(

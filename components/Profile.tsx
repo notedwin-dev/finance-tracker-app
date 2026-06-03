@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
+import { recalculateBalances } from "../src/lib/application/commands";
+import { useFinanceStore } from "../src/stores/finance.store";
+import * as SheetService from "../services/sheets.services";
 
 // Legacy vault type for backward compatibility
 type LegacyVaultProfile = UserProfile & {
@@ -81,8 +84,21 @@ const Profile: React.FC<Props> = ({
 		enableVault,
 		disableVault,
 		showToast,
-		recalculateBalances,
 	} = useData();
+
+	const handleRecalculateBalances = async () => {
+		const store = useFinanceStore.getState();
+		const isCloud = !(rawProfile as any).offlineMode && SheetService.isClientReady();
+		await recalculateBalances(
+			store.accounts,
+			store.pots,
+			store.pockets,
+			store.transactions,
+			store.usdRate,
+			(rawProfile as any).id || "local",
+			isCloud,
+		);
+	};
 	const [isEditing, setIsEditing] = useState(false);
 	const [name, setName] = useState(profile.name);
 	const [vaultTOTPCode, setVaultTOTPCode] = useState("");
@@ -1221,7 +1237,7 @@ const Profile: React.FC<Props> = ({
 							icon={CalculatorIcon}
 							label="Recalculate Balances"
 							description="Fix account balance desyncs from history"
-							onClick={recalculateBalances}
+							onClick={handleRecalculateBalances}
 							color="text-emerald-400"
 						/>
 

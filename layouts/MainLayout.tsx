@@ -21,6 +21,7 @@ import {
   SparklesIcon as SparklesIconSolid,
 } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
+import * as SheetService from "../services/sheets.services";
 import { useData } from "../context/DataContext";
 import { useFinanceStore } from "../src/stores/finance.store";
 import AIInsights from "../components/AIInsights";
@@ -34,6 +35,7 @@ import {
   addSubscription, deleteSubscription,
   saveChatSession, deleteChatSession,
   saveAccount, deleteAccount,
+  submitTransaction,
 } from "../src/lib/application/commands";
 import { Transaction, Account, TransactionType, Subscription } from "../types";
 
@@ -44,7 +46,6 @@ const MainLayout: React.FC = () => {
   const {
     transactions,
     toast,
-    handleTransactionSubmit,
     syncData,
     handleMigrateData,
     handleResetAndSync,
@@ -116,6 +117,36 @@ const MainLayout: React.FC = () => {
       subscriptionId: sub.id,
     } as Transaction);
     setShowAddModal(true);
+  };
+
+  const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
+
+  const handleTransactionSubmit = async (
+    tx: Omit<Transaction, "userId">,
+    newSubscription?: Omit<Subscription, "userId" | "id">,
+    isDestHistorical?: boolean,
+  ) => {
+    const store = useFinanceStore.getState();
+    const existingTx = store.transactions.find((t) => t.id === tx.id);
+    const partnerTx = existingTx?.linkedTransactionId
+      ? store.transactions.find((t) => t.id === existingTx.linkedTransactionId)
+      : null;
+
+    await submitTransaction(
+      tx,
+      store.accounts,
+      store.pots,
+      store.pockets,
+      store.usdRate,
+      profile.id || "local",
+      isCloudEnabled,
+      existingTx,
+      partnerTx,
+      undefined,
+      newSubscription,
+      store.subscriptions,
+      isDestHistorical,
+    );
   };
 
   return (

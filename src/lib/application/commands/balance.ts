@@ -7,13 +7,17 @@ import {
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
 import { normalizeDate } from "../../../../helpers/transactions.helper";
+import * as StorageService from "../../../../services/storage.services";
+import * as SheetService from "../../../../services/sheets.services";
 
-export async function recalculateBalancesCommand(
+export async function recalculateBalances(
   accounts: Account[],
   pots: Pot[],
   pockets: SavingPocket[],
   transactions: Transaction[],
   usdRate: number,
+  profileId: string,
+  isCloudEnabled: boolean,
   startDate?: string,
   endDate?: string,
 ): Promise<void> {
@@ -45,18 +49,55 @@ export async function recalculateBalancesCommand(
   });
 
   const now = new Date().toISOString();
-  store.setAccounts(
-    accounts.map((a) => ({ ...a, balance: accountUpdates.get(a.id) ?? 0, updatedAt: now })),
-  );
-  store.setPots(
-    pots.map((p) => {
-      const used = potUpdates.get(p.id) ?? 0;
-      return { ...p, usedAmount: used, amountLeft: p.limitAmount - used, updatedAt: now };
-    }),
-  );
-  store.setPockets(
-    pockets.map((p) => ({ ...p, currentAmount: pocketUpdates.get(p.id) ?? 0, updatedAt: now })),
-  );
+  const updatedAccounts = accounts.map((a) => ({
+    ...a,
+    balance: accountUpdates.get(a.id) ?? 0,
+    updatedAt: now,
+  }));
+  const updatedPots = pots.map((p) => {
+    const used = potUpdates.get(p.id) ?? 0;
+    return {
+      ...p,
+      usedAmount: used,
+      amountLeft: p.limitAmount - used,
+      updatedAt: now,
+    };
+  });
+  const updatedPockets = pockets.map((p) => ({
+    ...p,
+    currentAmount: pocketUpdates.get(p.id) ?? 0,
+    updatedAt: now,
+  }));
+
+  store.setAccounts(updatedAccounts);
+  store.setPots(updatedPots);
+  store.setPockets(updatedPockets);
+
+  StorageService.saveAccounts(updatedAccounts);
+  StorageService.savePots(updatedPots);
+  StorageService.savePockets(updatedPockets);
+
+  if (isCloudEnabled && !startDate && !endDate) {
+    if (updatedAccounts.length > 0) {
+      await SheetService.updateMany("Accounts", updatedAccounts, [
+        "balance",
+        "updatedAt",
+      ]);
+    }
+    if (updatedPots.length > 0) {
+      await SheetService.updateMany("Pots", updatedPots, [
+        "usedAmount",
+        "amountLeft",
+        "updatedAt",
+      ]);
+    }
+    if (updatedPockets.length > 0) {
+      await SheetService.updateMany("Pockets", updatedPockets, [
+        "currentAmount",
+        "updatedAt",
+      ]);
+    }
+  }
 
   showToast("Recalculation complete", "success");
 }

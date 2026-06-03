@@ -7,9 +7,10 @@ import { useData } from "../context/DataContext";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
 import { usePrivacyStore } from "../src/stores/privacy.store";
-import { deleteTransaction } from "../src/lib/application/commands";
+import { deleteTransaction, bulkImportTransactions } from "../src/lib/application/commands";
 import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
+import * as SheetService from "../services/sheets.services";
 import {
 	ChevronLeftIcon,
 	CreditCardIcon,
@@ -71,7 +72,6 @@ const AccountPage: React.FC = () => {
 		maskText,
 		unlockVaultWithTOTP,
 		unlockVaultWithBiometrics,
-		handleBulkTransactionImport,
 	} = useData();
 	const { transactions, categories, accounts, pots, pockets } =
 		useFinanceStore();
@@ -963,10 +963,19 @@ const AccountPage: React.FC = () => {
 				onClose={() => setShowImportModal(false)}
 				accountId={account.id}
 				onImport={async (txs, isHistorical) => {
-					await handleBulkTransactionImport(txs, account.id, {
+					const isCloud = !profile.offlineMode && SheetService.isClientReady();
+					await bulkImportTransactions(
+						txs,
+						account.id,
+						accounts,
+						pots,
+						pockets,
+						usdRate,
+						profile.id || "local",
+						isCloud,
 						isHistorical,
-						adjustBalance: !isHistorical,
-					});
+						!isHistorical,
+					);
 				}}
 			/>
 		</div>

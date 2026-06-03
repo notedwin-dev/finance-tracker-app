@@ -9,6 +9,12 @@ import {
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
 import { generateId } from "./helpers";
+import * as StorageService from "../../../../services/storage.services";
+import * as SheetService from "../../../../services/sheets.services";
+import {
+  normalizeDate,
+  parseDateSafe,
+} from "../../../../helpers/transactions.helper";
 
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
@@ -16,15 +22,19 @@ export async function submitTransaction(
   pots: Pot[],
   pockets: SavingPocket[],
   usdRate: number,
-  newSubscription?: Omit<Subscription, "userId" | "id">,
-  isDestHistorical?: boolean,
+  profileId: string,
+  isCloudEnabled: boolean,
   existingTx?: Transaction,
   partnerTx?: Transaction | null,
   partnerIdToDelete?: string,
-  userId?: string,
+  newSubscription?: Omit<Subscription, "userId" | "id">,
+  subscriptions?: Subscription[],
+  isDestHistorical?: boolean,
 ): Promise<void> {
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
+  const userId = profileId || "local";
+  const isEdit = !!existingTx;
 
   const accountUpdates = new Map<string, number>();
   const potUpdates = new Map<string, number>();
@@ -47,27 +57,49 @@ export async function submitTransaction(
 
   const txWithUser: Transaction = {
     ...tx,
-    userId: userId || "offline_user",
+    userId,
     id: tx.id || generateId(),
     createdAt: tx.createdAt || new Date().toISOString(),
   };
   applyDeltas(txWithUser, 1);
 
-  if (tx.linkedTransactionId && tx.transferDirection === "OUT") {
-    const partnerLeg: Transaction = {
-      ...txWithUser,
-      id: tx.linkedTransactionId,
-      accountId: tx.toAccountId || tx.accountId,
-      toAccountId: undefined,
-      transferDirection: "IN" as const,
-      linkedTransactionId: txWithUser.id,
-      isHistorical: isDestHistorical || false,
-    };
-    applyDeltas(partnerLeg, 1);
-  }
+  const partnerLeg: Transaction | null =
+    tx.linkedTransactionId && tx.transferDirection === "OUT"
+      ? {
+          ...txWithUser,
+          id: tx.linkedTransactionId,
+          accountId: tx.toAccountId || tx.accountId,
+          toAccountId: undefined,
+          transferDirection: "IN" as const,
+          linkedTransactionId: txWithUser.id,
+          isHistorical: isDestHistorical || false,
+        }
+      : null;
+  if (partnerLeg) applyDeltas(partnerLeg, 1);
 
-  if (partnerIdToDelete) {
-    store.removeTransactions([partnerIdToDelete]);
+  // Build updated transaction list
+  let updatedTransactions: Transaction[];
+  if (isEdit) {
+    updatedTransactions = store.transactions.map((t: Transaction) =>
+      t.id === txWithUser.id ? txWithUser : t,
+    );
+    if (partnerLeg) {
+      if (updatedTransactions.some((t: Transaction) => t.id === partnerLeg.id)) {
+        updatedTransactions = updatedTransactions.map((t: Transaction) =>
+          t.id === partnerLeg.id ? (partnerLeg as Transaction) : t,
+        );
+      } else {
+        updatedTransactions.push(partnerLeg);
+      }
+    }
+    if (partnerIdToDelete) {
+      updatedTransactions = updatedTransactions.filter(
+        (t: Transaction) => t.id !== partnerIdToDelete,
+      );
+    }
+  } else {
+    updatedTransactions = [...store.transactions, txWithUser];
+    if (partnerLeg) updatedTransactions.push(partnerLeg);
   }
 
   const now = new Date().toISOString();
@@ -92,23 +124,87 @@ export async function submitTransaction(
     return p;
   });
 
-  if (existingTx) {
-    store.updateTransaction(existingTx.id, txWithUser);
-  } else {
-    store.addTransaction(txWithUser);
-  }
-
+  // Update store
+  store.setTransactions(updatedTransactions);
   if (accountUpdates.size > 0) store.setAccounts(updatedAccounts);
   if (potUpdates.size > 0) store.setPots(updatedPots);
   if (pocketUpdates.size > 0) store.setPockets(updatedPockets);
 
-  if (newSubscription) {
+  // Persist to local storage
+  StorageService.saveTransactions(updatedTransactions);
+  if (accountUpdates.size > 0) StorageService.saveAccounts(updatedAccounts);
+  if (potUpdates.size > 0) StorageService.savePots(updatedPots);
+  if (pocketUpdates.size > 0) StorageService.savePockets(updatedPockets);
+
+  // Cloud sync
+  if (isCloudEnabled) {
+    const allTxs = updatedTransactions;
+    if (isEdit) {
+      await SheetService.updateOne("Transactions", txWithUser.id, txWithUser);
+      if (partnerLeg) {
+        if (allTxs.some((t: Transaction) => t.id === partnerLeg.id)) {
+          await SheetService.updateOne("Transactions", partnerLeg.id, partnerLeg);
+        } else {
+          await SheetService.insertOne("Transactions", partnerLeg);
+        }
+      }
+      if (partnerIdToDelete) {
+        await SheetService.deleteOne("Transactions", partnerIdToDelete);
+      }
+    } else {
+      await SheetService.insertOne("Transactions", txWithUser);
+      if (partnerLeg) await SheetService.insertOne("Transactions", partnerLeg);
+    }
+  }
+
+  // Handle subscriptions
+  if (newSubscription && !isEdit) {
     const sub: Subscription = {
       ...newSubscription,
-      id: `sub_${generateId()}`,
-      userId: userId || "offline_user",
+      id: crypto.randomUUID(),
+      userId,
+      updatedAt: now,
     };
-    store.addSubscription(sub);
+    const d = parseDateSafe(sub.nextPaymentDate);
+    if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
+    else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
+    else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
+    else d.setDate(d.getDate() + 1);
+    sub.nextPaymentDate = d.toLocaleDateString("en-CA");
+
+    const updatedSubs = [...(subscriptions || []), sub];
+    store.setSubscriptions(updatedSubs);
+    StorageService.saveSubscriptions(updatedSubs);
+    if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
+  }
+
+  // Handle link to existing subscription (advance next payment date)
+  if (txWithUser.subscriptionId && !newSubscription && subscriptions) {
+    const sub = subscriptions.find((s: Subscription) => s.id === txWithUser.subscriptionId);
+    if (sub) {
+      let nextDateStr = normalizeDate(sub.nextPaymentDate);
+      const txDate = normalizeDate(tx.date);
+      if (txDate >= nextDateStr) {
+        const d = parseDateSafe(txDate);
+        if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
+        else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
+        else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
+        else d.setDate(d.getDate() + 1);
+        nextDateStr = d.toLocaleDateString("en-CA");
+
+        const updatedSub = { ...sub, nextPaymentDate: nextDateStr, updatedAt: now };
+        const updatedSubsList = subscriptions.map((s: Subscription) =>
+          s.id === sub.id ? updatedSub : s,
+        );
+        store.setSubscriptions(updatedSubsList);
+        StorageService.saveSubscriptions(updatedSubsList);
+        if (isCloudEnabled) await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
+      }
+    }
+  }
+
+  if (partnerIdToDelete) {
+    store.removeTransactions([partnerIdToDelete]);
   }
 
   showToast("Transaction saved", "success");
@@ -121,6 +217,7 @@ export async function deleteTransaction(
   pockets: SavingPocket[],
   usdRate: number,
   transactions: Transaction[],
+  isCloudEnabled = false,
 ): Promise<void> {
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
@@ -159,33 +256,48 @@ export async function deleteTransaction(
 
   const now = new Date().toISOString();
   if (accountUpdates.size > 0) {
-    store.setAccounts(accounts.map((a) => {
+    const updated = accounts.map((a) => {
       const delta = accountUpdates.get(a.id);
       return delta !== undefined ? { ...a, balance: a.balance + delta, updatedAt: now } : a;
-    }));
+    });
+    store.setAccounts(updated);
+    StorageService.saveAccounts(updated);
   }
   if (potUpdates.size > 0) {
-    store.setPots(pots.map((p) => {
+    const updated = pots.map((p) => {
       const delta = potUpdates.get(p.id);
       if (delta !== undefined) {
         const newUsedAmount = Math.max(0, p.usedAmount + delta);
         return { ...p, usedAmount: newUsedAmount, amountLeft: p.limitAmount - newUsedAmount, updatedAt: now };
       }
       return p;
-    }));
+    });
+    store.setPots(updated);
+    StorageService.savePots(updated);
   }
   if (pocketUpdates.size > 0) {
-    store.setPockets(pockets.map((p) => {
+    const updated = pockets.map((p) => {
       const delta = pocketUpdates.get(p.id);
       if (delta !== undefined) {
         const newCurrentAmount = Math.max(0, p.currentAmount + delta);
         return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
       }
       return p;
-    }));
+    });
+    store.setPockets(updated);
+    StorageService.savePockets(updated);
   }
 
   store.removeTransactions(idsToDelete);
+  const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
+  StorageService.saveTransactions(updatedTxs);
+
+  if (isCloudEnabled) {
+    for (const delId of idsToDelete) {
+      await SheetService.deleteOne("Transactions", delId);
+    }
+  }
+
   showToast("Transaction deleted", "success");
 }
 
@@ -196,6 +308,7 @@ export async function batchDeleteTransaction(
   pockets: SavingPocket[],
   usdRate: number,
   transactions: Transaction[],
+  isCloudEnabled = false,
 ): Promise<void> {
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
@@ -239,33 +352,449 @@ export async function batchDeleteTransaction(
 
   const now = new Date().toISOString();
   if (accountUpdates.size > 0) {
-    store.setAccounts(accounts.map((a) => {
+    const updated = accounts.map((a) => {
       const delta = accountUpdates.get(a.id);
       return delta !== undefined ? { ...a, balance: a.balance + delta, updatedAt: now } : a;
-    }));
+    });
+    store.setAccounts(updated);
+    StorageService.saveAccounts(updated);
   }
   if (potUpdates.size > 0) {
-    store.setPots(pots.map((p) => {
+    const updated = pots.map((p) => {
       const delta = potUpdates.get(p.id);
       if (delta !== undefined) {
         const newUsedAmount = Math.max(0, p.usedAmount + delta);
         return { ...p, usedAmount: newUsedAmount, amountLeft: p.limitAmount - newUsedAmount, updatedAt: now };
       }
       return p;
-    }));
+    });
+    store.setPots(updated);
+    StorageService.savePots(updated);
   }
   if (pocketUpdates.size > 0) {
-    store.setPockets(pockets.map((p) => {
+    const updated = pockets.map((p) => {
       const delta = pocketUpdates.get(p.id);
       if (delta !== undefined) {
         const newCurrentAmount = Math.max(0, p.currentAmount + delta);
         return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
       }
       return p;
-    }));
+    });
+    store.setPockets(updated);
+    StorageService.savePockets(updated);
   }
 
   const idsToDelete = Array.from(idsToDeleteSet);
   store.removeTransactions(idsToDelete);
+  const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
+  StorageService.saveTransactions(updatedTxs);
+
+  if (isCloudEnabled) {
+    for (const delId of idsToDelete) {
+      await SheetService.deleteOne("Transactions", delId);
+    }
+  }
+
   showToast("Transactions deleted", "success");
+}
+
+export async function bulkImportTransactions(
+  newTxs: Partial<Transaction>[],
+  accountId: string,
+  accounts: Account[],
+  pots: Pot[],
+  pockets: SavingPocket[],
+  usdRate: number,
+  profileId: string,
+  isCloudEnabled: boolean,
+  isHistorical?: boolean,
+  adjustBalance?: boolean,
+): Promise<void> {
+  const store = useFinanceStore.getState();
+  const { showToast } = useSyncStore.getState();
+  const userId = profileId || "local";
+
+  const transactionsToInsert: Transaction[] = [];
+
+  newTxs.forEach((tx) => {
+    const mainTx = {
+      ...tx,
+      id: crypto.randomUUID(),
+      userId,
+      accountId,
+      isHistorical,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      transferDirection: tx.type === "TRANSFER" ? "OUT" : undefined,
+    } as Transaction;
+
+    transactionsToInsert.push(mainTx);
+
+    if (mainTx.type === "TRANSFER" && mainTx.toAccountId) {
+      const partnerLeg: Transaction = {
+        ...mainTx,
+        id: crypto.randomUUID(),
+        accountId: mainTx.toAccountId,
+        toAccountId: undefined,
+        transferDirection: "IN" as const,
+        linkedTransactionId: mainTx.id,
+      };
+      transactionsToInsert.push(partnerLeg);
+    }
+  });
+
+  const updatedTransactionsList = [...store.transactions, ...transactionsToInsert];
+  store.setTransactions(updatedTransactionsList);
+  StorageService.saveTransactions(updatedTransactionsList);
+
+  if (isCloudEnabled) {
+    await SheetService.insertMany("Transactions", transactionsToInsert);
+  }
+
+  if (adjustBalance && !isHistorical) {
+    const accountUpdates = new Map<string, number>();
+
+    transactionsToInsert.forEach((tx) => {
+      const acc = accounts.find((a) => a.id === tx.accountId);
+      if (!acc) return;
+
+      const amt =
+        tx.currency === acc.currency
+          ? tx.amount
+          : tx.currency === "USD"
+            ? tx.amount * usdRate
+            : tx.amount / usdRate;
+
+      const fee = tx.fee
+        ? tx.currency === acc.currency
+          ? tx.fee
+          : tx.currency === "USD"
+            ? tx.fee * usdRate
+            : tx.fee / usdRate
+        : 0;
+
+      const feeType = tx.feeType || "INCLUSIVE";
+
+      if (
+        tx.type === "INCOME" ||
+        tx.type === "ACCOUNT_OPENING" ||
+        (tx.type === "ADJUSTMENT" && tx.amount >= 0) ||
+        (tx.type === "TRANSFER" && tx.transferDirection === "IN")
+      ) {
+        const addedAmount =
+          tx.type === "TRANSFER" && feeType === "EXCLUSIVE" ? amt - fee : amt;
+        accountUpdates.set(
+          tx.accountId,
+          (accountUpdates.get(tx.accountId) || 0) + addedAmount,
+        );
+      } else {
+        const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
+        accountUpdates.set(
+          tx.accountId,
+          (accountUpdates.get(tx.accountId) || 0) - removedAmount,
+        );
+      }
+    });
+
+    if (accountUpdates.size > 0) {
+      const now = new Date().toISOString();
+      const updatedAccounts = accounts.map((a) => {
+        if (accountUpdates.has(a.id)) {
+          return {
+            ...a,
+            balance: a.balance + (accountUpdates.get(a.id) || 0),
+            updatedAt: now,
+          };
+        }
+        return a;
+      });
+      store.setAccounts(updatedAccounts);
+      StorageService.saveAccounts(updatedAccounts);
+    }
+  }
+
+  showToast(`Imported ${transactionsToInsert.length} transactions`, "success");
+}
+
+export async function batchEditTransactions(
+  ids: string[],
+  updates: Partial<Transaction>,
+  transactions: Transaction[],
+  accounts: Account[],
+  pots: Pot[],
+  pockets: SavingPocket[],
+  usdRate: number,
+  isCloudEnabled: boolean,
+): Promise<void> {
+  const store = useFinanceStore.getState();
+  const { showToast } = useSyncStore.getState();
+
+  const txMap = new Map<string, Transaction>();
+  transactions.forEach((t) => txMap.set(t.id, t));
+
+  const finalUpdatesMap = new Map<string, Partial<Transaction>>();
+  const affectedTransactionIds = new Set<string>();
+
+  const cleanUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([_, v]) => v !== undefined),
+  ) as Partial<Transaction>;
+
+  const nullifiedFields = Object.keys(updates).filter(
+    (k) => updates[k as keyof Transaction] === undefined,
+  );
+
+  ids.forEach((id) => {
+    const originalTx = txMap.get(id);
+    if (!originalTx) return;
+
+    const thisUpdates: any = { ...cleanUpdates };
+    if (nullifiedFields.includes("potId")) thisUpdates.potId = undefined;
+    if (nullifiedFields.includes("savingPocketId")) thisUpdates.savingPocketId = undefined;
+    if (nullifiedFields.includes("toSavingPocketId")) thisUpdates.toSavingPocketId = undefined;
+    if (nullifiedFields.includes("toAccountId")) thisUpdates.toAccountId = undefined;
+    if (nullifiedFields.includes("subscriptionId")) thisUpdates.subscriptionId = undefined;
+
+    thisUpdates.updatedAt = new Date().toISOString();
+    finalUpdatesMap.set(id, thisUpdates);
+    affectedTransactionIds.add(id);
+
+    // Handle partner leg
+    if (
+      originalTx.linkedTransactionId &&
+      (nullifiedFields.includes("potId") ||
+        nullifiedFields.includes("savingPocketId") ||
+        nullifiedFields.includes("toSavingPocketId") ||
+        cleanUpdates.accountId !== undefined ||
+        cleanUpdates.toAccountId !== undefined ||
+        cleanUpdates.savingPocketId !== undefined ||
+        cleanUpdates.toSavingPocketId !== undefined)
+    ) {
+      const partner = transactions.find((t) => t.id === originalTx.linkedTransactionId);
+      if (partner) {
+        const partnerUpdates: any = { ...cleanUpdates };
+        if (cleanUpdates.accountId !== undefined) {
+          partnerUpdates.toAccountId = cleanUpdates.accountId;
+        }
+        if (cleanUpdates.toAccountId !== undefined) {
+          partnerUpdates.accountId = cleanUpdates.toAccountId;
+        }
+        if (cleanUpdates.savingPocketId !== undefined) {
+          partnerUpdates.toSavingPocketId = cleanUpdates.savingPocketId;
+        }
+        if (cleanUpdates.toSavingPocketId !== undefined) {
+          partnerUpdates.savingPocketId = cleanUpdates.toSavingPocketId;
+        }
+        partnerUpdates.updatedAt = new Date().toISOString();
+        finalUpdatesMap.set(partner.id, partnerUpdates);
+        affectedTransactionIds.add(partner.id);
+      }
+    }
+  });
+
+  const updatedTransactionsList = transactions.map((t) => {
+    const tu = finalUpdatesMap.get(t.id);
+    return tu ? { ...t, ...tu } as Transaction : t;
+  });
+
+  store.setTransactions(updatedTransactionsList);
+  StorageService.saveTransactions(updatedTransactionsList);
+
+  if (isCloudEnabled) {
+    const affectedTxs = Array.from(affectedTransactionIds)
+      .map((id) => updatedTransactionsList.find((t) => t.id === id))
+      .filter((tx) => tx !== undefined) as Transaction[];
+    if (affectedTxs.length > 0) {
+      await SheetService.updateMany("Transactions", affectedTxs);
+    }
+  }
+
+  // Recalculate balance/pot/pocket impacts
+  const potUpdates = new Map<string, number>();
+  const pocketUpdates = new Map<string, number>();
+  const accountUpdates = new Map<string, number>();
+
+  const applyLegToPotsPockets = (t: Transaction, factor: 1 | -1) => {
+    if (t.isHistorical) return;
+
+    if (t.potId) {
+      const potId = String(t.potId);
+      const pot = pots.find((p) => p.id === potId);
+      const txDateStr = normalizeDate(t.date);
+      const isAfterPotReset =
+        !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
+
+      if (isAfterPotReset) {
+        let potDelta = 0;
+        if (
+          t.type === "INCOME" ||
+          t.type === "ACCOUNT_OPENING"
+        ) {
+          potDelta = -t.amount;
+        } else {
+          potDelta = t.amount;
+        }
+        potUpdates.set(
+          potId,
+          (potUpdates.get(potId) || 0) + potDelta * factor,
+        );
+      }
+    }
+
+    if (t.savingPocketId) {
+      const pocket = pockets.find((p) => p.id === t.savingPocketId);
+      const txDateStr = normalizeDate(t.date);
+      const isAfterPocketReset =
+        !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+
+      if (isAfterPocketReset) {
+        let pocketDelta = 0;
+        if (
+          t.type === "INCOME" ||
+          t.type === "ACCOUNT_OPENING"
+        ) {
+          pocketDelta = t.amount;
+        } else {
+          pocketDelta = -t.amount;
+        }
+        pocketUpdates.set(
+          t.savingPocketId,
+          (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta * factor,
+        );
+      }
+    }
+  };
+
+  const applyLegToAccounts = (t: Transaction, factor: 1 | -1) => {
+    if (t.isHistorical) return;
+
+    const acc = accounts.find((a) => a.id === t.accountId);
+    if (!acc) return;
+
+    const amt =
+      t.currency === acc.currency
+        ? t.amount
+        : t.currency === "USD"
+          ? t.amount * usdRate
+          : t.amount / usdRate;
+
+    const fee = t.fee
+      ? t.currency === acc.currency
+        ? t.fee
+        : t.currency === "USD"
+          ? t.fee * usdRate
+          : t.fee / usdRate
+      : 0;
+
+    const feeType = t.feeType || "INCLUSIVE";
+
+    let delta = 0;
+    const isInflow =
+      t.type === "INCOME" ||
+      t.type === "ACCOUNT_OPENING" ||
+      (t.type === "ADJUSTMENT" && t.amount >= 0) ||
+      (t.type === "TRANSFER" && t.transferDirection === "IN");
+
+    if (isInflow) {
+      const addedAmount =
+        t.type === "TRANSFER" && feeType === "EXCLUSIVE" ? amt - fee : amt;
+      delta = addedAmount * factor;
+    } else {
+      const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
+      delta = -removedAmount * factor;
+    }
+    accountUpdates.set(
+      t.accountId,
+      (accountUpdates.get(t.accountId) || 0) + delta,
+    );
+  };
+
+  affectedTransactionIds.forEach((txId) => {
+    const newTx = updatedTransactionsList.find((t) => t.id === txId);
+    const oldTx = transactions.find((t) => t.id === txId);
+
+    if (oldTx && newTx) {
+      applyLegToPotsPockets(oldTx, -1);
+      applyLegToPotsPockets(newTx, 1);
+
+      if (
+        cleanUpdates.accountId !== undefined ||
+        cleanUpdates.toAccountId !== undefined
+      ) {
+        applyLegToAccounts(oldTx, -1);
+        applyLegToAccounts(newTx, 1);
+      }
+    }
+  });
+
+  const now = new Date().toISOString();
+  if (potUpdates.size > 0) {
+    const updatedPotList = pots.map((p) => {
+      if (potUpdates.has(p.id)) {
+        const delta = potUpdates.get(p.id) || 0;
+        const newUsedAmount = p.usedAmount + delta;
+        return {
+          ...p,
+          usedAmount: Math.max(0, newUsedAmount),
+          amountLeft: p.limitAmount - Math.max(0, newUsedAmount),
+          updatedAt: now,
+        };
+      }
+      return p;
+    });
+    store.setPots(updatedPotList);
+    const affectedPots = updatedPotList.filter((p) => potUpdates.has(p.id));
+    StorageService.savePots(updatedPotList);
+    if (isCloudEnabled && affectedPots.length > 0) {
+      await SheetService.updateMany("Pots", affectedPots);
+    }
+  }
+
+  if (pocketUpdates.size > 0) {
+    const updatedPocketList = pockets.map((p) => {
+      if (pocketUpdates.has(p.id)) {
+        return {
+          ...p,
+          currentAmount: Math.max(
+            0,
+            p.currentAmount + (pocketUpdates.get(p.id) || 0),
+          ),
+          updatedAt: now,
+        };
+      }
+      return p;
+    });
+    store.setPockets(updatedPocketList);
+    const affectedPockets = updatedPocketList.filter((p) =>
+      pocketUpdates.has(p.id),
+    );
+    StorageService.savePockets(updatedPocketList);
+    if (isCloudEnabled && affectedPockets.length > 0) {
+      await SheetService.updateMany("Pockets", affectedPockets);
+    }
+  }
+
+  if (accountUpdates.size > 0) {
+    const updatedAccountList = accounts.map((a) => {
+      if (accountUpdates.has(a.id)) {
+        return {
+          ...a,
+          balance: a.balance + (accountUpdates.get(a.id) || 0),
+          updatedAt: now,
+        };
+      }
+      return a;
+    });
+    store.setAccounts(updatedAccountList);
+    StorageService.saveAccounts(updatedAccountList);
+    if (isCloudEnabled) {
+      const affectedAccounts = updatedAccountList.filter((a) =>
+        accountUpdates.has(a.id),
+      );
+      if (affectedAccounts.length > 0) {
+        await SheetService.updateMany("Accounts", affectedAccounts);
+      }
+    }
+  }
+
+  showToast(`Updated ${finalUpdatesMap.size} transactions`, "success");
 }

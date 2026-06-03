@@ -47,7 +47,7 @@ describe("submitTransaction", () => {
   it("adds an expense transaction and deducts account balance", async () => {
     await submitTransaction(
       tx({ type: TransactionType.EXPENSE, amount: 50 }),
-      [acc({ balance: 1000 })], [], [], 4.45,
+      [acc({ balance: 1000 })], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().transactions).toHaveLength(1);
     expect(useFinanceStore.getState().accounts[0].balance).toBe(950);
@@ -56,7 +56,7 @@ describe("submitTransaction", () => {
   it("adds an income transaction and credits account balance", async () => {
     await submitTransaction(
       tx({ type: TransactionType.INCOME, amount: 200 }),
-      [acc({ balance: 500 })], [], [], 4.45,
+      [acc({ balance: 500 })], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().accounts[0].balance).toBe(700);
   });
@@ -64,7 +64,7 @@ describe("submitTransaction", () => {
   it("assigns an id when none is provided", async () => {
     await submitTransaction(
       tx(),
-      [acc()], [], [], 4.45,
+      [acc()], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().transactions[0].id).toBeTruthy();
   });
@@ -79,7 +79,7 @@ describe("deleteTransaction", () => {
   it("removes a transaction and reverses its balance impact", async () => {
     await submitTransaction(
       tx({ id: "tx1", type: TransactionType.EXPENSE, amount: 50 }),
-      [acc({ balance: 950 })], [], [], 4.45,
+      [acc({ balance: 950 })], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().transactions).toHaveLength(1);
 
@@ -111,7 +111,7 @@ describe("recalculateBalancesCommand", () => {
 
   it("resets all account balances to zero when there are no transactions", async () => {
     await recalculateBalancesCommand(
-      [acc({ balance: 999 })], [], [], [], 4.45,
+      [acc({ balance: 999 })], [], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().accounts[0].balance).toBe(0);
   });
@@ -131,7 +131,7 @@ describe("recalculateBalancesCommand", () => {
       [acc({ id: "a1", balance: 0 })],
       [], [],
       useFinanceStore.getState().transactions,
-      4.45,
+      4.45, "test-user", false,
     );
 
     const balance = useFinanceStore.getState().accounts[0].balance;

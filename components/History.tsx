@@ -16,7 +16,7 @@ import {
 import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helper";
 import { useData } from "../context/DataContext";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { batchDeleteTransaction } from "../src/lib/application/commands";
+import { batchDeleteTransaction, batchEditTransactions } from "../src/lib/application/commands";
 import { cn } from "./history/cn";
 import { SCROLL_THRESHOLD } from "./history/constants";
 import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
@@ -57,7 +57,6 @@ const History: React.FC<Props> = ({
 		maskAmount,
 		maskText,
 		privacyMode,
-		handleBatchTransactionEdit,
 	} = useData();
 	const usdRate = useFinanceStore((s) => s.usdRate);
 	const { pots } = useFinanceStore();
@@ -189,12 +188,18 @@ const History: React.FC<Props> = ({
 
 	const handleBatchEditSubmit = useCallback(async () => {
 		batch.startSubmit();
-		await handleBatchTransactionEdit(
+		await batchEditTransactions(
 			batch.selectedIds,
 			batch.batchUpdates,
+			transactions,
+			accounts,
+			pots,
+			pockets,
+			usdRate,
+			false,
 		);
 		batch.endSubmit();
-	}, [batch, handleBatchTransactionEdit]);
+	}, [batch, batchEditTransactions, transactions, accounts, pots, pockets, usdRate]);
 
 	const handleChevronClick = useCallback(
 		(e: React.MouseEvent, id: string) => {

@@ -60,27 +60,8 @@ export interface DataContextType {
   setPots: React.Dispatch<React.SetStateAction<Pot[]>>;
   setPockets: React.Dispatch<React.SetStateAction<SavingPocket[]>>;
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
-  handleTransactionSubmit: (
-    tx: Omit<Transaction, "userId">,
-    newSubscription?: Omit<Subscription, "userId" | "id">,
-    isDestHistorical?: boolean,
-  ) => Promise<void>;
-  handleBulkTransactionImport: (
-    newTxs: Partial<Transaction>[],
-    accountId: string,
-    options?: { adjustBalance?: boolean; isHistorical?: boolean },
-  ) => Promise<void>;
-  handleTransactionDelete: (id: string) => Promise<void>;
-  handleBatchTransactionEdit: (
-    ids: string[],
-    updates: Partial<Transaction>,
-  ) => Promise<void>;
   handleMigrateData: () => Promise<void>;
   handleResetAndSync: () => Promise<void>;
-  recalculateBalances: (
-    startDateArg?: string | any,
-    endDateArg?: string | any,
-  ) => Promise<void>;
   getTotalValueReceived: (tx: Transaction) => number;
   calculateGXBankInterest: (
     balance: number,

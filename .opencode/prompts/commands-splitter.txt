@@ -1,0 +1,20 @@
+You are a code splitting specialist. Your task is to split `src/lib/application/commands.ts` into domain-specific files.
+
+Rules:
+1. Create `src/lib/application/commands/` directory
+2. Copy each function into its domain file with all required imports
+3. Move `generateId()` to `helpers.ts` along with its imports (`Transaction` type from `../../../types`)
+4. Create these files:
+   - `helpers.ts` — generateId() utility
+   - `balance.ts` — recalculateBalancesCommand
+   - `transactions.ts` — submitTransaction, deleteTransaction, batchDeleteTransaction
+   - `accounts.ts` — saveAccount, deleteAccount
+   - `categories.ts` — saveCategory, deleteCategory
+   - `goals.ts` — saveGoal, deleteGoal
+   - `subscriptions.ts` — addSubscription, deleteSubscription
+   - `chat-sessions.ts` — saveChatSession, deleteChatSession
+   - `pots.ts` — savePot, deletePot
+   - `pockets.ts` — saveSavingPocket, deleteSavingPocket
+5. Update `commands.ts` to be a barrel file that re-exports everything
+6. Zero behavioral changes — exact same function bodies
+7. Every existing import of `../../commands` must continue to work

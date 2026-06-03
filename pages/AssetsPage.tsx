@@ -1,20 +1,17 @@
 import React, { useState } from "react";
 import { useOutletContext, Link, useNavigate } from "react-router-dom";
 import { PlusIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
-import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { useUIStore } from "../src/stores/ui.store";
 import AccountCard from "../components/AccountCard";
 import { Account } from "../types";
 
 const AssetsPage: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    accounts,
-    pots,
-    transactions,
-    usdRate,
-    cryptoPrices,
-    displayCurrency,
-  } = useData();
+  const { accounts, pots, transactions } = useFinanceStore();
+  const usdRate = useFinanceStore((s) => s.usdRate);
+  const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
+  const { displayCurrency } = useUIStore();
   const { setShowAccountForm, setEditingAccount } = useOutletContext<any>();
 
   return (

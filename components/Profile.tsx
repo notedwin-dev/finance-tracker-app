@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
+import * as SecurityService from "../services/security.services";
+import * as TwoFAService from "../services/twofa.services";
 
 // Legacy vault type for backward compatibility
 type LegacyVaultProfile = UserProfile & {
@@ -29,8 +31,6 @@ import {
 	ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
-import * as SecurityService from "../services/security.services";
-import * as TwoFAService from "../services/twofa.services";
 import { getDeviceId } from "../services/storage.services";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
@@ -49,6 +49,7 @@ interface Props {
 	onUnlinkCloud?: () => void;
 	onResetSync?: () => void;
 	onSelectSheet?: (sheetId: string) => void;
+	onRecalculateBalances?: () => Promise<void>;
 	isSyncing?: boolean;
 }
 
@@ -65,6 +66,7 @@ const Profile: React.FC<Props> = ({
 	onUnlinkCloud,
 	onResetSync,
 	onSelectSheet,
+	onRecalculateBalances,
 	isSyncing = false,
 }) => {
 	// Cast to legacy type for backward compatibility
@@ -81,8 +83,13 @@ const Profile: React.FC<Props> = ({
 		enableVault,
 		disableVault,
 		showToast,
-		recalculateBalances,
 	} = useData();
+
+	const handleRecalculateBalances = async () => {
+		if (onRecalculateBalances) {
+			await onRecalculateBalances();
+		}
+	};
 	const [isEditing, setIsEditing] = useState(false);
 	const [name, setName] = useState(profile.name);
 	const [vaultTOTPCode, setVaultTOTPCode] = useState("");
@@ -1221,7 +1228,7 @@ const Profile: React.FC<Props> = ({
 							icon={CalculatorIcon}
 							label="Recalculate Balances"
 							description="Fix account balance desyncs from history"
-							onClick={recalculateBalances}
+							onClick={handleRecalculateBalances}
 							color="text-emerald-400"
 						/>
 

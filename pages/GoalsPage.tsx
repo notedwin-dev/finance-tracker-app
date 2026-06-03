@@ -1,20 +1,20 @@
 import React from "react";
 import Goals from "../components/Goals";
-import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import {
+  saveGoal, deleteGoal,
+  savePot, deletePot,
+  saveSavingPocket, deleteSavingPocket,
+} from "../src/lib/application/commands";
+import { useAuth } from "../services/auth.services";
 
 const GoalsPage: React.FC = () => {
-  const {
-    goals,
-    pots,
-    pockets,
-    accounts,
-    handleGoalUpdate,
-    handleGoalDelete,
-    handlePotSave,
-    handlePotDelete,
-    handlePocketSave,
-    handlePocketDelete,
-  } = useData();
+  const { profile } = useAuth();
+  const goals = useFinanceStore((s) => s.goals);
+  const pots = useFinanceStore((s) => s.pots);
+  const pockets = useFinanceStore((s) => s.pockets);
+  const accounts = useFinanceStore((s) => s.accounts);
+  const transactions = useFinanceStore((s) => s.transactions);
 
   return (
     <div className="animate-fadeIn max-w-4xl mx-auto">
@@ -23,12 +23,12 @@ const GoalsPage: React.FC = () => {
         pots={pots}
         pockets={pockets}
         accounts={accounts}
-        onAddGoal={handleGoalUpdate}
-        onDeleteGoal={handleGoalDelete}
-        onSavePot={handlePotSave}
-        onDeletePot={handlePotDelete}
-        onSavePocket={handlePocketSave}
-        onDeletePocket={handlePocketDelete}
+        onAddGoal={(g) => saveGoal(g, goals, profile?.id || "local")}
+        onDeleteGoal={(id) => deleteGoal(id, goals)}
+        onSavePot={(p) => savePot(p, pots, profile?.id || "local")}
+        onDeletePot={(id) => deletePot(id, pots)}
+        onSavePocket={(p) => saveSavingPocket(p, pockets, profile?.id || "local")}
+        onDeletePocket={(id) => deleteSavingPocket(id, pockets, transactions)}
       />
     </div>
   );

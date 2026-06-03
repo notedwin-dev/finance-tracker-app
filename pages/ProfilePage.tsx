@@ -3,23 +3,29 @@ import { useOutletContext } from "react-router-dom";
 import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { recalculateBalances } from "../src/lib/application/commands";
+import * as SheetService from "../services/sheets.services";
 
 const ProfilePage: React.FC = () => {
   const { profile, loginWithGoogle, updateProfile, unlinkCloud } = useAuth();
+  const {
+    accounts,
+    transactions,
+    categories,
+    goals,
+    subscriptions,
+    chatSessions,
+    pots,
+    pockets,
+    usdRate,
+  } = useFinanceStore();
   const {
     isSyncing,
     syncData,
     handleSelectExistingSheet,
     handleResetAndSync,
     handleMigrateData,
-    accounts,
-    transactions,
-    categories,
-    goals,
-    subscriptions,
-    pots,
-    pockets,
-    chatSessions,
   } = useData();
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
@@ -67,6 +73,23 @@ const ProfilePage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleRecalculateBalances = async () => {
+    try {
+      const isCloud = !(profile as any).offlineMode && SheetService.isClientReady();
+      await recalculateBalances(
+        accounts,
+        pots,
+        pockets,
+        transactions,
+        usdRate,
+        (profile as any).id || "local",
+        isCloud,
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className="animate-fadeIn max-w-2xl mx-auto w-full">
       <div className="mb-8 px-4 sm:px-0">
@@ -88,6 +111,7 @@ const ProfilePage: React.FC = () => {
         onUnlinkCloud={unlinkCloud}
         onResetSync={handleResetAndSync}
         onSelectSheet={handleSelectExistingSheet}
+        onRecalculateBalances={handleRecalculateBalances}
         isSyncing={isSyncing}
       />
     </div>

@@ -4,8 +4,13 @@ import History from "../components/History";
 import Modal from "../components/Modal";
 import BulkImportModal from "../components/BulkImportModal";
 import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { useUIStore } from "../src/stores/ui.store";
+import { usePrivacyStore } from "../src/stores/privacy.store";
+import { deleteTransaction, bulkImportTransactions } from "../src/lib/application/commands";
 import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
+import * as SheetService from "../services/sheets.services";
 import {
 	ChevronLeftIcon,
 	CreditCardIcon,
@@ -58,24 +63,18 @@ const AccountPage: React.FC = () => {
 		window.scrollTo(0, 0);
 	}, [id]);
 
+	const usdRate = useFinanceStore((s) => s.usdRate);
+	const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
+	const { displayCurrency } = useUIStore();
+	const { isVaultEnabled, isVaultUnlocked } = usePrivacyStore();
 	const {
-		transactions,
-		categories,
-		accounts,
-		pots,
-		pockets,
-		handleTransactionDelete,
-		handleBulkTransactionImport,
-		usdRate,
-		cryptoPrices,
-		displayCurrency,
 		maskAmount,
 		maskText,
-		isVaultEnabled,
-		isVaultUnlocked,
 		unlockVaultWithTOTP,
 		unlockVaultWithBiometrics,
 	} = useData();
+	const { transactions, categories, accounts, pots, pockets } =
+		useFinanceStore();
 	const {
 		setShowAddModal,
 		setEditingTransaction,
@@ -577,7 +576,16 @@ const AccountPage: React.FC = () => {
 								setEditingTransaction(t);
 								setShowAddModal(true);
 							}}
-							onDeleteTransaction={handleTransactionDelete}
+							onDeleteTransaction={(id) =>
+								deleteTransaction(
+									id,
+									accounts,
+									pots,
+									pockets,
+									usdRate,
+									transactions,
+								)
+							}
 						/>
 					</div>
 				</div>
@@ -955,10 +963,21 @@ const AccountPage: React.FC = () => {
 				onClose={() => setShowImportModal(false)}
 				accountId={account.id}
 				onImport={async (txs, isHistorical) => {
-					await handleBulkTransactionImport(txs, account.id, {
+					if (!profile) return;
+					const isCloud = !(profile as any).offlineMode && SheetService.isClientReady();
+					const profileId = (profile as any).id || "local";
+					await bulkImportTransactions(
+						txs,
+						account.id,
+						accounts,
+						pots,
+						pockets,
+						usdRate,
+						profileId,
+						isCloud,
 						isHistorical,
-						adjustBalance: !isHistorical,
-					});
+						!isHistorical,
+					);
 				}}
 			/>
 		</div>

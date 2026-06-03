@@ -22,7 +22,9 @@ import {
 } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
 import * as SheetService from "../services/sheets.services";
-import { useData } from "../context/DataContext";
+import { useSyncStore } from "../src/stores/sync.store";
+import { usePrivacyStore } from "../src/stores/privacy.store";
+import { syncData } from "../src/lib/application/commands";
 import { useFinanceStore } from "../src/stores/finance.store";
 import AIInsights from "../components/AIInsights";
 import TransactionForm from "../components/TransactionForm";
@@ -43,14 +45,10 @@ const zenLogo = "/images/ZenFinance.svg";
 
 const MainLayout: React.FC = () => {
   const { profile, logout, updateProfile, loginWithGoogle } = useAuth();
-  const {
-    transactions,
-    toast,
-    syncData,
-    isSyncing,
-    privacyMode,
-    setPrivacyMode,
-  } = useData();
+  const toast = useSyncStore((s) => s.toast);
+  const isSyncing = useSyncStore((s) => s.isSyncing);
+  const privacyMode = usePrivacyStore((s) => s.privacyMode);
+  const setPrivacyMode = usePrivacyStore((s) => s.setPrivacyMode);
 
   const categories = useFinanceStore((s) => s.categories);
   const goals = useFinanceStore((s) => s.goals);

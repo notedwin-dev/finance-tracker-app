@@ -9,7 +9,7 @@ import {
 	ChevronUpDownIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../services/auth.services";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
 import {
@@ -37,7 +37,7 @@ const DashboardPage: React.FC = () => {
 	const usdRate = useFinanceStore((s) => s.usdRate);
 	const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
 	const { displayCurrency, setDisplayCurrency } = useUIStore();
-	const { maskAmount, maskText } = useData();
+	const { maskAmount, maskText } = useMask();
 	const { setShowAddModal, setShowAccountForm } = useOutletContext<any>();
 
 	const [timeframe, setTimeframe] = useState<TimeFrame | "CUSTOM">("1M");

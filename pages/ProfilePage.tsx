@@ -2,9 +2,9 @@ import React from "react";
 import { useOutletContext } from "react-router-dom";
 import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
-import { useData } from "../context/DataContext";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { recalculateBalances, migrateData, resetAndSync, selectExistingSheet } from "../src/lib/application/commands";
+import { useSyncStore } from "../src/stores/sync.store";
+import { recalculateBalances, migrateData, resetAndSync, selectExistingSheet, syncData } from "../src/lib/application/commands";
 import * as SheetService from "../services/sheets.services";
 
 const ProfilePage: React.FC = () => {
@@ -20,10 +20,7 @@ const ProfilePage: React.FC = () => {
     pockets,
     usdRate,
   } = useFinanceStore();
-  const {
-    isSyncing,
-    syncData,
-  } = useData();
+  const isSyncing = useSyncStore((s) => s.isSyncing);
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
 
@@ -96,7 +93,7 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleSelectExistingSheet = async (sheetId?: string) => {
-    await selectExistingSheet(sheetId, syncData);
+    await selectExistingSheet(sheetId, () => syncData(profile, updateProfile, loginWithGoogle));
   };
 
   return (
@@ -116,7 +113,7 @@ const ProfilePage: React.FC = () => {
         onManageSubscriptions={() => setShowSubscriptionManager(true)}
         onExport={handleExportData}
         onMigrate={handleMigrateData}
-        onSync={syncData}
+        onSync={() => syncData(profile, updateProfile, loginWithGoogle)}
         onUnlinkCloud={unlinkCloud}
         onResetSync={handleResetAndSync}
         onSelectSheet={handleSelectExistingSheet}

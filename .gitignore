@@ -4,5 +4,5 @@ dist/
 build/
 .next/
 .agents/
-docs/
+# docs/
 .DS_Store

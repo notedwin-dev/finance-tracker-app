@@ -384,13 +384,20 @@ export async function disableVault(
         if (
           acc.details &&
           typeof acc.details === "string" &&
-          acc.details.startsWith("ENC:")
+          (acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
         ) {
           try {
             const decryptedStr = await SecurityService.decryptWithKey(
               acc.details,
               key,
             );
+            if (
+              !decryptedStr ||
+              decryptedStr.startsWith("ENC:") ||
+              decryptedStr.startsWith("SEC:")
+            ) {
+              return acc;
+            }
             return {
               ...acc,
               details: JSON.parse(decryptedStr),
@@ -404,17 +411,20 @@ export async function disableVault(
             return acc;
           }
         }
-        return { ...acc, isEncrypted: false };
+        return acc;
       }),
     );
 
+    useFinanceStore.getState().setAccounts(decryptedAccounts);
+    StorageService.saveAccounts(decryptedAccounts);
+
     usePrivacyStore.getState().setVaultUnlocked(false);
+    updateProfile({ isSecurityEnabled: false, isVaultLocked: false } as any);
 
     localStorage.removeItem("biometric_cred_id");
     localStorage.removeItem("biometric_cred_ids");
 
-    useFinanceStore.getState().setAccounts(decryptedAccounts);
-    StorageService.saveAccounts(decryptedAccounts);
+    showToast("Vault disabled and accounts decrypted.", "success");
 
     const cloudEnabled = isCloudEnabled(profile);
     if (cloudEnabled) {

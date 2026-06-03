@@ -38,6 +38,13 @@ export async function resetAndSync(
 
   setIsSyncing(true);
 
+  const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
+  if (!cloudData) {
+    showToast("No cloud data found. Cannot reset.", "alert");
+    setIsSyncing(false);
+    return;
+  }
+
   const keysToKeep = [
     "google_access_token",
     "google_token_expiry",
@@ -51,23 +58,20 @@ export async function resetAndSync(
   localStorage.clear();
   keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 
-  const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
-  if (cloudData) {
-    if (cloudData.profile) {
-      const mergedProfile = { ...profile, ...cloudData.profile };
-      StorageService.saveProfile(mergedProfile);
-      if (onProfileUpdate) onProfileUpdate(cloudData.profile);
-    }
-    StorageService.saveAccounts(cloudData.accounts);
-    StorageService.saveTransactions(cloudData.transactions);
-    StorageService.saveCategories(cloudData.categories);
-    StorageService.saveGoals(cloudData.goals);
-    StorageService.saveSubscriptions(cloudData.subscriptions || []);
-    StorageService.savePots(cloudData.pots || []);
-    StorageService.savePockets(cloudData.pockets || []);
-    StorageService.saveChatSessions(cloudData.chatSessions || []);
-    showToast("Sync reset complete", "success");
+  if (cloudData.profile) {
+    const mergedProfile = { ...profile, ...cloudData.profile };
+    StorageService.saveProfile(mergedProfile);
+    if (onProfileUpdate) onProfileUpdate(cloudData.profile);
   }
+  StorageService.saveAccounts(cloudData.accounts);
+  StorageService.saveTransactions(cloudData.transactions);
+  StorageService.saveCategories(cloudData.categories);
+  StorageService.saveGoals(cloudData.goals);
+  StorageService.saveSubscriptions(cloudData.subscriptions || []);
+  StorageService.savePots(cloudData.pots || []);
+  StorageService.savePockets(cloudData.pockets || []);
+  StorageService.saveChatSessions(cloudData.chatSessions || []);
+  showToast("Sync reset complete", "success");
 
   setIsSyncing(false);
 }
@@ -189,8 +193,8 @@ export function processSubscriptions(accounts: Account[], usdRate: number) {
       const acc = accounts.find((a) => a.id === t.accountId);
       let amount = t.amount;
       if (acc && t.currency !== acc.currency) {
-        if (t.currency === "USD") amount *= usdRate;
-        else if (t.currency === "MYR") amount /= usdRate;
+        if (t.currency === "USD" && usdRate > 0 && isFinite(usdRate)) amount *= usdRate;
+        else if (t.currency === "MYR" && usdRate > 0 && isFinite(usdRate)) amount /= usdRate;
       }
       accUpdates.set(t.accountId, (accUpdates.get(t.accountId) || 0) + amount);
     });
@@ -458,6 +462,8 @@ export async function syncData(
               if (toTimestamp(i.updatedAt) > toTimestamp(cloudItem.updatedAt)) {
                 map.set(id, { ...i, updatedAt: i.updatedAt || now });
               }
+            } else if (i.id) {
+              map.set(id, { ...i, updatedAt: i.updatedAt || now });
             }
           });
         } else {
@@ -563,12 +569,25 @@ export async function syncData(
       StorageService.saveChatSessions(mergedChatSessions);
 
       const syncTimestamp = new Date().toISOString();
+
+      processSubscriptions(store.accounts, store.usdRate);
+
+      const storeAfterSubs = useFinanceStore.getState();
+      const postSubAccounts = storeAfterSubs.accounts;
+      const postSubTxs = storeAfterSubs.transactions;
+      const postSubSubs = storeAfterSubs.subscriptions;
+
+      const postSubEncryptedAccounts = await Promise.all(
+        postSubAccounts.map((a) => encryptAccount(a, profile)),
+      );
+      StorageService.saveAccounts(postSubEncryptedAccounts);
+
       await SheetService.syncWithGoogleSheets(
-        encryptedAccounts,
-        mergedTransactions,
+        postSubEncryptedAccounts,
+        postSubTxs,
         mergedCategories,
         mergedGoals,
-        mergedSubs,
+        postSubSubs,
         mergedPots,
         mergedPockets,
         profile.syncChatToSheets ? mergedChatSessions : undefined,
@@ -578,10 +597,6 @@ export async function syncData(
           lastUpdatedAt: syncTimestamp,
         },
       );
-
-      const storedAccounts = store.accounts;
-      const storedUsdRate = store.usdRate;
-      processSubscriptions(storedAccounts, storedUsdRate);
 
       updateProfile(
         {

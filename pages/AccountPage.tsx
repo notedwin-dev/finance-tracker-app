@@ -96,9 +96,11 @@ const AccountPage: React.FC = () => {
 		confirmLabel: "Confirm",
 	});
 
+	const boundLoadData = (forceUnlock?: boolean) => loadData(profile, forceUnlock);
+
 	const handleVaultUnlock = async () => {
 		if (!vaultTOTPCode) return;
-		const success = await unlockVaultWithTOTP(vaultTOTPCode, profile, updateProfile, loadData);
+		const success = await unlockVaultWithTOTP(vaultTOTPCode, profile, updateProfile, boundLoadData);
 		if (success) {
 			setShowUnlockModal(false);
 			setVaultTOTPCode("");
@@ -109,7 +111,7 @@ const AccountPage: React.FC = () => {
 	};
 
 	const handleBiometricUnlock = async () => {
-		const success = await unlockVaultWithBiometrics(profile, updateProfile, loadData);
+		const success = await unlockVaultWithBiometrics(profile, updateProfile, boundLoadData);
 		if (success) {
 			setShowUnlockModal(false);
 			setUnlockError("");

@@ -10,12 +10,15 @@ import { loadData, syncData, processSubscriptions } from "../src/lib/application
 export function useAppInit() {
   const { profile, updateProfile, loginWithGoogle, isInitialized } = useAuth();
   const hasSynced = useRef(false);
-  const initialLoadDone = useRef(false);
+  const lastInitializedProfileId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!profile.id) return;
-    if (initialLoadDone.current) return;
-    initialLoadDone.current = true;
+    if (!profile.id) {
+      lastInitializedProfileId.current = undefined;
+      return;
+    }
+    if (lastInitializedProfileId.current === profile.id) return;
+    lastInitializedProfileId.current = profile.id;
 
     hasSynced.current = false;
     loadData(profile);
@@ -32,7 +35,6 @@ export function useAppInit() {
   useEffect(() => {
     if (!isInitialized) return;
     if (hasSynced.current || profile.offlineMode) {
-      const currentTxs = StorageService.getStoredTransactions();
       const currentSubs = StorageService.getStoredSubscriptions();
       const store = useFinanceStore.getState();
       if (currentSubs && currentSubs.length > 0) {
@@ -49,8 +51,12 @@ export function useAppInit() {
       !hasSynced.current
     ) {
       const doSync = async () => {
-        await syncData(profile, updateProfile, loginWithGoogle);
-        hasSynced.current = true;
+        try {
+          await syncData(profile, updateProfile, loginWithGoogle);
+          hasSynced.current = true;
+        } catch {
+          hasSynced.current = true;
+        }
       };
       doSync();
     }

@@ -613,116 +613,27 @@ export async function batchEditTransactions(
   const pocketUpdates = new Map<string, number>();
   const accountUpdates = new Map<string, number>();
 
-  const applyLegToPotsPockets = (t: Transaction, factor: 1 | -1) => {
+  const applyDeltas = (t: Transaction, factor: 1 | -1) => {
     if (t.isHistorical) return;
-
-    if (t.potId) {
-      const potId = String(t.potId);
-      const pot = pots.find((p) => p.id === potId);
-      const txDateStr = normalizeDate(t.date);
-      const isAfterPotReset =
-        !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
-
-      if (isAfterPotReset) {
-        let potDelta = 0;
-        if (
-          t.type === "INCOME" ||
-          t.type === "ACCOUNT_OPENING"
-        ) {
-          potDelta = -t.amount;
-        } else {
-          potDelta = t.amount;
-        }
-        potUpdates.set(
-          potId,
-          (potUpdates.get(potId) || 0) + potDelta * factor,
-        );
-      }
+    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
+      accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
     }
-
-    if (t.savingPocketId) {
-      const pocket = pockets.find((p) => p.id === t.savingPocketId);
-      const txDateStr = normalizeDate(t.date);
-      const isAfterPocketReset =
-        !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-      if (isAfterPocketReset) {
-        let pocketDelta = 0;
-        if (
-          t.type === "INCOME" ||
-          t.type === "ACCOUNT_OPENING"
-        ) {
-          pocketDelta = t.amount;
-        } else {
-          pocketDelta = -t.amount;
-        }
-        pocketUpdates.set(
-          t.savingPocketId,
-          (pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta * factor,
-        );
-      }
+    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
+      potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
+    }
+    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
+      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
     }
   };
 
-  const applyLegToAccounts = (t: Transaction, factor: 1 | -1) => {
-    if (t.isHistorical) return;
-
-    const acc = accounts.find((a) => a.id === t.accountId);
-    if (!acc) return;
-
-    const amt =
-      t.currency === acc.currency
-        ? t.amount
-        : t.currency === "USD"
-          ? t.amount * usdRate
-          : t.amount / usdRate;
-
-    const fee = t.fee
-      ? t.currency === acc.currency
-        ? t.fee
-        : t.currency === "USD"
-          ? t.fee * usdRate
-          : t.fee / usdRate
-      : 0;
-
-    const feeType = t.feeType || "INCLUSIVE";
-
-    let delta = 0;
-    const isInflow =
-      t.type === "INCOME" ||
-      t.type === "ACCOUNT_OPENING" ||
-      (t.type === "ADJUSTMENT" && t.amount >= 0) ||
-      (t.type === "TRANSFER" && t.transferDirection === "IN");
-
-    if (isInflow) {
-      const addedAmount =
-        t.type === "TRANSFER" && feeType === "EXCLUSIVE" ? amt - fee : amt;
-      delta = addedAmount * factor;
-    } else {
-      const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-      delta = -removedAmount * factor;
-    }
-    accountUpdates.set(
-      t.accountId,
-      (accountUpdates.get(t.accountId) || 0) + delta,
-    );
-  };
-
+  // Only recalculate impacts for affected transactions (including pot removal)
   affectedTransactionIds.forEach((txId) => {
     const newTx = updatedTransactionsList.find((t) => t.id === txId);
     const oldTx = transactions.find((t) => t.id === txId);
 
     if (oldTx && newTx) {
-      applyLegToPotsPockets(oldTx, -1);
-      applyLegToPotsPockets(newTx, 1);
-
-      if (
-        cleanUpdates.accountId !== undefined ||
-        cleanUpdates.toAccountId !== undefined
-      ) {
-        applyLegToAccounts(oldTx, -1);
-        applyLegToAccounts(newTx, 1);
-      }
+      applyDeltas(oldTx, -1);
+      applyDeltas(newTx, 1);
     }
   });
 

@@ -14,7 +14,7 @@ import {
 } from "chart.js";
 import { Line, Pie } from "react-chartjs-2";
 import { Transaction, TransactionType } from "../types";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
 import Modal from "./Modal";
 
 // Register ChartJS components
@@ -873,7 +873,7 @@ export const MonthlyBreakdown: React.FC<Props> = ({
   usdRate = 4.5,
   displayCurrency = "MYR",
 }) => {
-  const { maskAmount } = useData();
+  const { maskAmount } = useMask();
 
   const monthlyStats = useMemo(() => {
     const stats: {

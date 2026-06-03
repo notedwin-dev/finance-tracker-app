@@ -1338,115 +1338,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 
 
-	const handleSelectExistingSheet = async (fileId?: string) => {
-		try {
-			let selectedFileId = fileId;
 
-			// If no fileId provided, fall back to old picker (deprecated)
-			if (!selectedFileId) {
-				selectedFileId = await SheetService.selectSpreadsheetWithPicker();
-			}
+	useEffect(() => {
+		usePrivacyStore.getState().setPrivacyMode(privacyMode);
+	}, [privacyMode]);
 
-			if (selectedFileId) {
-				// Store selected file ID to skip search next time
-				localStorage.setItem("zenfinance_selected_sheet_id", selectedFileId);
-				// Clear cached sheet name when switching spreadsheets
-				SheetService.clearSheetNameCache();
+	useEffect(() => {
+		usePrivacyStore.getState().setVaultEnabled(isSecurityEnabled);
+		usePrivacyStore.getState().setVaultCreated(isSecurityEnabled);
+	}, [isSecurityEnabled]);
 
-				showToast("Spreadsheet linked! Synchronizing...", "success");
-				// Trigger a fresh sync with the newly linked file
-				syncData();
-			}
-		} catch (e) {
-			console.error("Failed to select sheet", e);
-			showToast("Could not link spreadsheet.", "alert");
-		}
-	};
-
-	const handleMigrateData = async () => {
-		const findings = StorageService.rescueScatteredData();
-		if (findings.length === 0) {
-			showToast("No orphaned data found", "info");
-			return;
-		}
-		if (!confirm(`Merge ${findings.length} orphaned records?`)) return;
-		findings.forEach((f) => {
-			const baseKey = Object.values(StorageService.KEYS).find((k) =>
-				f.key.startsWith(k),
-			);
-			if (baseKey) {
-				StorageService.importFromKey(f.key, baseKey as string);
-				localStorage.removeItem(f.key);
-			}
-		});
-		showToast("Data recovered!", "success");
-		loadData();
-	};
-
-	const handleResetAndSync = async () => {
-		if (!confirm("Reset local cache?")) return;
-		setIsSyncing(true);
-		const keysToKeep = [
-			"google_access_token",
-			"google_token_expiry",
-			"google_refresh_token",
-			"encrypted_vault_key",
-			"device_id",
-			StorageService.KEYS.PROFILE,
-		];
-		const saved: any = {};
-		keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-		localStorage.clear();
-		keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
-		const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
-		if (cloudData) {
-			if (cloudData.profile) {
-				const mergedProfile = { ...profile, ...cloudData.profile };
-				StorageService.saveProfile(mergedProfile);
-				updateProfile(cloudData.profile);
-			}
-			// Note: we don't encrypt here because they are already encrypted in Sheets
-			StorageService.saveAccounts(cloudData.accounts);
-			StorageService.saveTransactions(cloudData.transactions);
-			StorageService.saveCategories(cloudData.categories);
-			StorageService.saveGoals(cloudData.goals);
-			StorageService.saveSubscriptions(cloudData.subscriptions || []);
-			StorageService.savePots(cloudData.pots || []);
-			StorageService.savePockets(cloudData.pockets || []);
-			StorageService.saveChatSessions(cloudData.chatSessions || []);
-			loadData();
-			showToast("Sync reset complete", "success");
-		}
-		setIsSyncing(false);
-	};
-
-	const getTotalValueReceived = (tx: Transaction) => {
-		if (tx.isSubsidized && tx.marketValue) {
-			return tx.marketValue;
-		}
-		return tx.amount;
-	};
-
-	const calculateGXBankInterest = (
-		balance: number,
-		pocketType: "SAVING_POCKET" | "BONUS_POCKET",
-		tenureMonths?: 2 | 3,
-	) => {
-		if (balance < 500) return 0;
-		const effectiveBalance = Math.min(balance, 25000);
-
-		const baseRate = 0.02; // 2%
-		let bonusRate = 0;
-
-		if (pocketType === "BONUS_POCKET") {
-			if (tenureMonths === 2)
-				bonusRate = 0.0058; // 0.58%
-			else if (tenureMonths === 3) bonusRate = 0.02; // 2%
-		}
-
-		const rate = baseRate + bonusRate;
-		return (effectiveBalance * rate) / 365;
-	};
+	useEffect(() => {
+		usePrivacyStore.getState().setSecurityUnlocked(securityUnlocked);
+	}, [securityUnlocked]);
 
 	return (
 		<DataContext.Provider
@@ -1481,20 +1385,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				toast,
 				showToast,
 				syncData,
-				handleSelectExistingSheet,
 				loadData,
-				setAccounts,
-				setTransactions,
-				setCategories,
-				setGoals,
-				setSubscriptions,
-				setPots,
-				setPockets,
-				setChatSessions,
-				handleMigrateData,
-				handleResetAndSync,
-				getTotalValueReceived,
-				calculateGXBankInterest,
 			}}
 		>
 			{children}

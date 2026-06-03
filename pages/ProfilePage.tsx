@@ -4,7 +4,7 @@ import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { recalculateBalances } from "../src/lib/application/commands";
+import { recalculateBalances, migrateData, resetAndSync, selectExistingSheet } from "../src/lib/application/commands";
 import * as SheetService from "../services/sheets.services";
 
 const ProfilePage: React.FC = () => {
@@ -23,9 +23,6 @@ const ProfilePage: React.FC = () => {
   const {
     isSyncing,
     syncData,
-    handleSelectExistingSheet,
-    handleResetAndSync,
-    handleMigrateData,
   } = useData();
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
@@ -88,6 +85,18 @@ const ProfilePage: React.FC = () => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleMigrateData = async () => {
+    await migrateData();
+  };
+
+  const handleResetAndSync = async () => {
+    await resetAndSync(profile, updateProfile);
+  };
+
+  const handleSelectExistingSheet = async (sheetId?: string) => {
+    await selectExistingSheet(sheetId, syncData);
   };
 
   return (

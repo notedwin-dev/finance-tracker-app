@@ -50,22 +50,5 @@ export interface DataContextType {
   toast: { message: string; type: "success" | "alert" | "info" } | null;
   showToast: (message: string, type: "success" | "alert" | "info") => void;
   syncData: () => Promise<void>;
-  handleSelectExistingSheet: (sheetId?: string) => Promise<void>;
   loadData: () => Promise<void>;
-  setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
-  setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
-  setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
-  setGoals: React.Dispatch<React.SetStateAction<Goal[]>>;
-  setSubscriptions: React.Dispatch<React.SetStateAction<Subscription[]>>;
-  setPots: React.Dispatch<React.SetStateAction<Pot[]>>;
-  setPockets: React.Dispatch<React.SetStateAction<SavingPocket[]>>;
-  setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
-  handleMigrateData: () => Promise<void>;
-  handleResetAndSync: () => Promise<void>;
-  getTotalValueReceived: (tx: Transaction) => number;
-  calculateGXBankInterest: (
-    balance: number,
-    pocketType: "SAVING_POCKET" | "BONUS_POCKET",
-    tenureMonths?: 2 | 3,
-  ) => number;
 }

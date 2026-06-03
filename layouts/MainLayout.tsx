@@ -47,8 +47,6 @@ const MainLayout: React.FC = () => {
     transactions,
     toast,
     syncData,
-    handleMigrateData,
-    handleResetAndSync,
     isSyncing,
     privacyMode,
     setPrivacyMode,

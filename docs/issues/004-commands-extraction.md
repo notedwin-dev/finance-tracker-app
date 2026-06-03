@@ -13,12 +13,12 @@ After the prior migration, 5 handlers remain in DataProvider: `batchTransactionE
 
 ## Sub-tasks
 
-- [ ] **B.1 — `batchEditTransactions`** — Extract `handleBatchTransactionEdit` into `commands/transactions.ts`; update `History.tsx` to call command
-- [ ] **B.2 — `bulkImportTransactions`** — Extract `handleBulkTransactionImport` into `commands/transactions.ts`; update `AccountPage.tsx` to call command
+- [x] **B.1 — `batchEditTransactions`** — Extracted to `commands/transactions.ts`; `History.tsx` calls command directly (c5ea1c8)
+- [x] **B.2 — `bulkImportTransactions`** — Extracted to `commands/transactions.ts`; `AccountPage.tsx` calls command directly (c5ea1c8)
 - [ ] **B.3 — `migrateData`** — Extract `handleMigrateData` into a new sync command; update `Profile`/`MainLayout`
 - [ ] **B.4 — `resetAndSync`** — Extract `handleResetAndSync` into a new sync command; update `Profile`/`MainLayout`
-- [ ] **B.5 — `recalculateBalances`** — Extract `recalculateBalances` into `commands/balance.ts`; update `Profile.tsx`
-- [ ] **B.6 — Cleanup** — Remove all 5 handlers from DataProvider and their signatures from `DataContextType`
+- [x] **B.5 — `recalculateBalances`** — Extracted to `commands/balance.ts`; `Profile.tsx` calls command directly (c5ea1c8)
+- [x] **B.6 — Partial cleanup** — 5 dead signatures removed from `DataContextType`; corresponding implementations removed from DataProvider (c5ea1c8). Remaining: `handleMigrateData`, `handleResetAndSync`, `handleSelectExistingSheet`
 
 ## Verification
 

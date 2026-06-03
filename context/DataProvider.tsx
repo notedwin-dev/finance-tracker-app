@@ -696,12 +696,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		const storedCategories = StorageService.getStoredCategories();
 		const storedGoals = StorageService.getStoredGoals();
 		const storedPots = StorageService.getStoredPots();
+		const storedPockets = StorageService.getStoredPockets();
 		const storedChatSessions = StorageService.getStoredChatSessions();
 		const storedSubs = StorageService.getStoredSubscriptions();
 		setTransactions(loadedTxs);
 		setCategories(storedCategories);
 		setGoals(storedGoals);
 		setPots(storedPots);
+		setPockets(storedPockets);
 		setChatSessions(storedChatSessions);
 		setSubscriptions(storedSubs);
 
@@ -712,6 +714,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		store.setCategories(storedCategories);
 		store.setGoals(storedGoals);
 		store.setPots(storedPots);
+		store.setPockets(storedPockets);
 		store.setChatSessions(storedChatSessions);
 		store.setSubscriptions(storedSubs);
 	};

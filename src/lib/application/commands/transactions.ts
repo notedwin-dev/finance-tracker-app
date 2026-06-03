@@ -138,11 +138,10 @@ export async function submitTransaction(
 
   // Cloud sync
   if (isCloudEnabled) {
-    const allTxs = updatedTransactions;
     if (isEdit) {
       await SheetService.updateOne("Transactions", txWithUser.id, txWithUser);
       if (partnerLeg) {
-        if (allTxs.some((t: Transaction) => t.id === partnerLeg.id)) {
+        if (store.transactions.some((t: Transaction) => t.id === partnerLeg.id)) {
           await SheetService.updateOne("Transactions", partnerLeg.id, partnerLeg);
         } else {
           await SheetService.insertOne("Transactions", partnerLeg);
@@ -535,6 +534,7 @@ export async function batchEditTransactions(
       const partner = transactions.find((t) => t.id === originalTx.linkedTransactionId);
       if (partner) {
         const partnerUpdates: any = { ...cleanUpdates };
+        // Swap account/ pocket linkage fields for the partner side
         if (cleanUpdates.accountId !== undefined) {
           partnerUpdates.toAccountId = cleanUpdates.accountId;
         }
@@ -546,6 +546,13 @@ export async function batchEditTransactions(
         }
         if (cleanUpdates.toSavingPocketId !== undefined) {
           partnerUpdates.savingPocketId = cleanUpdates.toSavingPocketId;
+        }
+        // Sync shared transfer fields to keep both legs consistent
+        const sharedFields = ["amount", "currency", "date", "fee", "feeType", "notes", "shopName"] as const;
+        for (const field of sharedFields) {
+          if (cleanUpdates[field as keyof typeof cleanUpdates] !== undefined) {
+            partnerUpdates[field] = cleanUpdates[field as keyof typeof cleanUpdates];
+          }
         }
         partnerUpdates.updatedAt = new Date().toISOString();
         finalUpdatesMap.set(partner.id, partnerUpdates);

@@ -149,7 +149,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 
 ### Pure Domain Functions over Class Methods
 - **Why:** Simpler to test (no instantiation), tree-shakeable, no hidden `this` bugs, natural TypeScript inference.
-- **Pattern:** `computeBalanceDeltas(tx, factor, accounts, pots, pockets, usdRate)` — every dependency is explicit.
+- **Pattern:** `computeAccountTransactionAmount(tx, factor, accounts, usdRate)`, `computeBudgetConsumption(tx, factor, pots)`, `computeSavingsMovement(tx, factor, pockets)` — every dependency is explicit.
 
 ### `factor: 1 | -1` over Separate Apply/Reverse Functions
 - **Why:** Balance operations are symmetric — applying a transaction (`factor = 1`) and reversing it (`factor = -1`) use the same logic with flipped sign. This eliminates the need for separate `applyLegToBalances` and `reverseLegToBalances`.
@@ -163,8 +163,8 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 
 ### Balance Engine Replaces 4 Inline Copies
 - `applyLegToBalances` was duplicated in `handleTransactionSubmit`, `handleTransactionDelete`, `handleBatchTransactionDelete`, and `recalculateBalances`.
-- Extracted to `computeBalanceDeltas` — single source of truth, 22 tests.
-- Note: During extraction, a sign bug was **intentionally fixed**: `recalculateBalances` treated pocket adjustments with the wrong sign (positive for all adjustments) compared to the CRUD handlers (negative for non-income adjustments). The extracted function matches the CRUD handler behavior (which is exercised on every transaction), making `recalculateBalances` consistent.
+- Extracted to three named functions — `computeAccountTransactionAmount` (account-level transaction amounts), `computeBudgetConsumption` (budget/pocket consumption), and `computeSavingsMovement` (transfers/savings adjustments) — forming a single source of truth, covered by 22 tests.
+- Note: During extraction, a sign bug was **intentionally fixed**: `recalculateBalances` treated pocket adjustments with the wrong sign (positive for all adjustments) compared to the CRUD handlers (negative for non-income adjustments). The extracted functions match the CRUD handler behavior (which is exercised on every transaction), making `recalculateBalances` consistent.
 
 ---
 

@@ -69,13 +69,15 @@ export async function recalculateBalances(
     updatedAt: now,
   }));
 
-  store.setAccounts(updatedAccounts);
-  store.setPots(updatedPots);
-  store.setPockets(updatedPockets);
+  if (!startDate && !endDate) {
+    store.setAccounts(updatedAccounts);
+    store.setPots(updatedPots);
+    store.setPockets(updatedPockets);
 
-  StorageService.saveAccounts(updatedAccounts);
-  StorageService.savePots(updatedPots);
-  StorageService.savePockets(updatedPockets);
+    StorageService.saveAccounts(updatedAccounts);
+    StorageService.savePots(updatedPots);
+    StorageService.savePockets(updatedPockets);
+  }
 
   if (isCloudEnabled && !startDate && !endDate) {
     if (updatedAccounts.length > 0) {

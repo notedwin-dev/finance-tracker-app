@@ -963,7 +963,9 @@ const AccountPage: React.FC = () => {
 				onClose={() => setShowImportModal(false)}
 				accountId={account.id}
 				onImport={async (txs, isHistorical) => {
-					const isCloud = !profile.offlineMode && SheetService.isClientReady();
+					if (!profile) return;
+					const isCloud = !(profile as any).offlineMode && SheetService.isClientReady();
+					const profileId = (profile as any).id || "local";
 					await bulkImportTransactions(
 						txs,
 						account.id,
@@ -971,7 +973,7 @@ const AccountPage: React.FC = () => {
 						pots,
 						pockets,
 						usdRate,
-						profile.id || "local",
+						profileId,
 						isCloud,
 						isHistorical,
 						!isHistorical,

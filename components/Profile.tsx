@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
-import { recalculateBalances } from "../src/lib/application/commands";
-import { useFinanceStore } from "../src/stores/finance.store";
-import * as SheetService from "../services/sheets.services";
+import * as SecurityService from "../services/security.services";
+import * as TwoFAService from "../services/twofa.services";
 
 // Legacy vault type for backward compatibility
 type LegacyVaultProfile = UserProfile & {
@@ -32,8 +31,6 @@ import {
 	ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
 import { useData } from "../context/DataContext";
-import * as SecurityService from "../services/security.services";
-import * as TwoFAService from "../services/twofa.services";
 import { getDeviceId } from "../services/storage.services";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
@@ -52,6 +49,7 @@ interface Props {
 	onUnlinkCloud?: () => void;
 	onResetSync?: () => void;
 	onSelectSheet?: (sheetId: string) => void;
+	onRecalculateBalances?: () => Promise<void>;
 	isSyncing?: boolean;
 }
 
@@ -68,6 +66,7 @@ const Profile: React.FC<Props> = ({
 	onUnlinkCloud,
 	onResetSync,
 	onSelectSheet,
+	onRecalculateBalances,
 	isSyncing = false,
 }) => {
 	// Cast to legacy type for backward compatibility
@@ -87,20 +86,8 @@ const Profile: React.FC<Props> = ({
 	} = useData();
 
 	const handleRecalculateBalances = async () => {
-		try {
-			const store = useFinanceStore.getState();
-			const isCloud = !(rawProfile as any).offlineMode && SheetService.isClientReady();
-			await recalculateBalances(
-				store.accounts,
-				store.pots,
-				store.pockets,
-				store.transactions,
-				store.usdRate,
-				(rawProfile as any).id || "local",
-				isCloud,
-			);
-		} catch (err) {
-			console.error(err);
+		if (onRecalculateBalances) {
+			await onRecalculateBalances();
 		}
 	};
 	const [isEditing, setIsEditing] = useState(false);

@@ -63,7 +63,7 @@ describe("submitTransaction", () => {
 
   it("assigns an id when none is provided", async () => {
     await submitTransaction(
-      tx(),
+      tx({ id: "" }),
       [acc()], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().transactions[0].id).toBeTruthy();
@@ -79,13 +79,14 @@ describe("deleteTransaction", () => {
   it("removes a transaction and reverses its balance impact", async () => {
     await submitTransaction(
       tx({ id: "tx1", type: TransactionType.EXPENSE, amount: 50 }),
-      [acc({ balance: 950 })], [], [], 4.45, "test-user", false,
+      [acc({ balance: 1000 })], [], [], 4.45, "test-user", false,
     );
     expect(useFinanceStore.getState().transactions).toHaveLength(1);
 
+    const storeAccounts = useFinanceStore.getState().accounts;
     await deleteTransaction(
       "tx1",
-      [acc({ balance: 950 })], [], [], 4.45,
+      storeAccounts, [], [], 4.45,
       useFinanceStore.getState().transactions,
     );
     expect(useFinanceStore.getState().transactions).toHaveLength(0);

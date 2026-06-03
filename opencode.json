@@ -32,8 +32,13 @@
       "prompt": "{file:.opencode/prompts/state-migrator.txt}",
       "temperature": 0.1,
       "permission": {
+        "read": {
+          ".env": "deny",
+          ".env.*": "deny",
+          "**/node_modules/**": "deny",
+          "**/dist/**": "deny"
+        },
         "edit": "allow",
-        "read": "allow",
         "glob": "allow",
         "grep": "allow",
         "bash": "allow"
@@ -46,8 +51,13 @@
       "prompt": "{file:.opencode/prompts/commands-splitter.txt}",
       "temperature": 0.1,
       "permission": {
+        "read": {
+          ".env": "deny",
+          ".env.*": "deny",
+          "**/node_modules/**": "deny",
+          "**/dist/**": "deny"
+        },
         "edit": "allow",
-        "read": "allow",
         "glob": "allow",
         "grep": "allow",
         "bash": "allow"
@@ -60,8 +70,13 @@
       "prompt": "{file:.opencode/prompts/page-migrator.txt}",
       "temperature": 0.1,
       "permission": {
+        "read": {
+          ".env": "deny",
+          ".env.*": "deny",
+          "**/node_modules/**": "deny",
+          "**/dist/**": "deny"
+        },
         "edit": "allow",
-        "read": "allow",
         "glob": "allow",
         "grep": "allow",
         "bash": "allow"

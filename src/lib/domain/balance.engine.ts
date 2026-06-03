@@ -14,7 +14,7 @@ export function computeBudgetConsumption(
     const pot = pots.find((p) => p.id === potId);
     const txDateStr = normalizeDate(t.date);
     const isAfterPotReset =
-      !pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
+      pot && (!pot.resetDate || txDateStr >= normalizeDate(pot.resetDate));
 
     if (isAfterPotReset) {
       let potDelta = 0;
@@ -44,7 +44,7 @@ export function computeSavingsMovement(
     const pocket = pockets.find((p) => p.id === t.savingPocketId);
     const txDateStr = normalizeDate(t.date);
     const isAfterPocketReset =
-      !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+      pocket && (!pocket.resetDate || txDateStr >= normalizeDate(pocket.resetDate));
 
     if (isAfterPocketReset) {
       const sourceAmount = t.amount;
@@ -73,7 +73,7 @@ export function computeSavingsMovement(
     const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
     const txDateStr = normalizeDate(t.date);
     const isAfterPocketReset =
-      !pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
+      pocket && (!pocket.resetDate || txDateStr >= normalizeDate(pocket.resetDate));
 
     if (isAfterPocketReset) {
       const fee = t.fee || 0;

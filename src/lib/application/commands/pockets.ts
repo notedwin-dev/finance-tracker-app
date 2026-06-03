@@ -34,14 +34,14 @@ export async function deleteSavingPocket(
   const { showToast } = useSyncStore.getState();
 
   const updatedPockets = existingPockets.filter((p) => p.id !== id);
-  store.setPockets(updatedPockets);
   await StorageService.savePockets(updatedPockets);
+  store.setPockets(updatedPockets);
 
   const updatedTransactions = existingTransactions.map((t) =>
     t.savingPocketId === id ? { ...t, savingPocketId: null as string | null } : t,
   );
-  store.setTransactions(updatedTransactions);
   await StorageService.saveTransactions(updatedTransactions);
+  store.setTransactions(updatedTransactions);
 
   showToast("Saving pocket deleted", "success");
 }

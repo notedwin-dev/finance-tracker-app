@@ -61,6 +61,7 @@ const MainLayout: React.FC = () => {
   const accounts = useFinanceStore((s) => s.accounts);
   const pots = useFinanceStore((s) => s.pots);
   const pockets = useFinanceStore((s) => s.pockets);
+  const storeTransactions = useFinanceStore((s) => s.transactions);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -423,7 +424,7 @@ const MainLayout: React.FC = () => {
           sessions={chatSessions}
           activeSessionId={activeChatId}
           accounts={accounts}
-          transactions={transactions}
+          transactions={storeTransactions}
           categories={categories}
           pots={pots}
           goals={goals}
@@ -457,12 +458,12 @@ const MainLayout: React.FC = () => {
         <AccountForm
           initialAccount={editingAccount}
           accounts={accounts}
-          onSave={(a) => saveAccount(a, accounts, transactions, profile.id || "local")}
+          onSave={(a) => saveAccount(a, accounts, storeTransactions, profile.id || "local")}
           onClose={() => {
             setShowAccountForm(false);
             setEditingAccount(undefined);
           }}
-          onDelete={(id) => deleteAccount(id, accounts)}
+          onDelete={(id) => deleteAccount(id, accounts, storeTransactions)}
         />
       )}
 

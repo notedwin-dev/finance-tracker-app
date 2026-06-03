@@ -23,7 +23,6 @@ export async function saveAccount(
     ? [...existingAccounts, accountWithUser]
     : existingAccounts.map((a) => (a.id === acc.id ? accountWithUser : a));
 
-  store.setAccounts(updated);
   await StorageService.saveAccounts(updated);
 
   if (isNew && accountWithUser.balance !== 0) {
@@ -40,9 +39,11 @@ export async function saveAccount(
       updatedAt: new Date().toISOString(),
     };
     const updatedTxs = [openingTx, ...existingTransactions];
-    store.setTransactions(updatedTxs);
     await StorageService.saveTransactions(updatedTxs);
+    store.setTransactions(updatedTxs);
   }
+
+  store.setAccounts(updated);
 
   if (!isNew) {
     const oldAcc = existingAccounts.find((a) => a.id === acc.id);
@@ -62,8 +63,8 @@ export async function saveAccount(
         note: `Manually changed balance from ${oldAcc.balance} to ${accountWithUser.balance}`,
       };
       const updatedTxs = [adjustmentTx, ...existingTransactions];
-      store.setTransactions(updatedTxs);
       await StorageService.saveTransactions(updatedTxs);
+      store.setTransactions(updatedTxs);
     }
   }
 
@@ -73,12 +74,19 @@ export async function saveAccount(
 export async function deleteAccount(
   accountId: string,
   existingAccounts: Account[],
+  existingTransactions: Transaction[],
 ): Promise<void> {
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
 
+  const referencing = existingTransactions.filter((t) => t.accountId === accountId);
+  if (referencing.length > 0) {
+    showToast(`Cannot delete: ${referencing.length} transaction(s) reference this account`, "alert");
+    return;
+  }
+
   const updated = existingAccounts.filter((a) => a.id !== accountId);
-  store.setAccounts(updated);
   await StorageService.saveAccounts(updated);
+  store.setAccounts(updated);
   showToast("Account deleted", "success");
 }

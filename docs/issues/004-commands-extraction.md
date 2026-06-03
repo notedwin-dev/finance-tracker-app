@@ -5,11 +5,11 @@
 
 ## Summary
 
-Extract the 5 remaining complex handlers from DataProvider into `src/lib/application/commands/`.
+Extract the 3 remaining handlers from DataProvider into `src/lib/application/commands/`.
 
 ## Rationale
 
-After the prior migration, 5 handlers remain in DataProvider: `batchTransactionEdit`, `bulkTransactionImport`, `migrateData`, `resetAndSync`, and `recalculateBalances`. Each contains cloud sync logic that must be preserved.
+After the prior migration, 3 handlers remain in DataProvider: `handleMigrateData`, `handleResetAndSync`, and `handleSelectExistingSheet`.
 
 ## Sub-tasks
 

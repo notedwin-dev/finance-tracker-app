@@ -3,9 +3,11 @@ import { useOutletContext } from "react-router-dom";
 import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
 
 const ProfilePage: React.FC = () => {
   const { profile, loginWithGoogle, updateProfile, unlinkCloud } = useAuth();
+  const { goals, subscriptions, chatSessions } = useFinanceStore();
   const {
     isSyncing,
     syncData,
@@ -15,11 +17,8 @@ const ProfilePage: React.FC = () => {
     accounts,
     transactions,
     categories,
-    goals,
-    subscriptions,
     pots,
     pockets,
-    chatSessions,
   } = useData();
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();

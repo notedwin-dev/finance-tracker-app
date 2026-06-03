@@ -1,16 +1,13 @@
 import React, { useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import History from "../components/History";
-import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { deleteTransaction } from "../src/lib/application/commands";
 
 const HistoryPage: React.FC = () => {
-  const {
-    transactions,
-    categories,
-    accounts,
-    pockets,
-    handleTransactionDelete,
-  } = useData();
+  const usdRate = useFinanceStore((s) => s.usdRate);
+  const { transactions, categories, accounts, pockets, pots } =
+    useFinanceStore();
   const { showAddModal, setShowAddModal, setEditingTransaction } =
     useOutletContext<any>();
 
@@ -70,7 +67,9 @@ const HistoryPage: React.FC = () => {
           setEditingTransaction(t);
           setShowAddModal(true);
         }}
-        onDeleteTransaction={handleTransactionDelete}
+        onDeleteTransaction={(id) =>
+          deleteTransaction(id, accounts, pots, pockets, usdRate, transactions)
+        }
       />
     </div>
   );

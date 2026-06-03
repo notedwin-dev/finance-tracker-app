@@ -60,8 +60,6 @@ export interface DataContextType {
   setPots: React.Dispatch<React.SetStateAction<Pot[]>>;
   setPockets: React.Dispatch<React.SetStateAction<SavingPocket[]>>;
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
-  handleAccountSave: (acc: Omit<Account, "userId">) => Promise<void>;
-  handleAccountDelete: (id: string) => Promise<void>;
   handleTransactionSubmit: (
     tx: Omit<Transaction, "userId">,
     newSubscription?: Omit<Subscription, "userId" | "id">,
@@ -73,23 +71,10 @@ export interface DataContextType {
     options?: { adjustBalance?: boolean; isHistorical?: boolean },
   ) => Promise<void>;
   handleTransactionDelete: (id: string) => Promise<void>;
-  handleBatchTransactionDelete: (ids: string[]) => Promise<void>;
   handleBatchTransactionEdit: (
     ids: string[],
     updates: Partial<Transaction>,
   ) => Promise<void>;
-  handleCategorySave: (cat: Omit<Category, "userId">) => Promise<void>;
-  handleCategoryDelete: (id: string) => Promise<void>;
-  handleGoalUpdate: (goal: Omit<Goal, "userId">) => Promise<void>;
-  handleGoalDelete: (id: string) => Promise<void>;
-  handlePotSave: (pot: Omit<Pot, "userId">) => Promise<void>;
-  handlePotDelete: (id: string) => Promise<void>;
-  handlePocketSave: (pocket: Omit<SavingPocket, "userId">) => Promise<void>;
-  handlePocketDelete: (id: string) => Promise<void>;
-  handleAddSubscription: (sub: Omit<Subscription, "userId">) => Promise<void>;
-  handleDeleteSubscription: (id: string) => Promise<void>;
-  handleSaveChatSession: (session: ChatSession) => void;
-  handleDeleteChatSession: (id: string) => void;
   handleMigrateData: () => Promise<void>;
   handleResetAndSync: () => Promise<void>;
   recalculateBalances: (

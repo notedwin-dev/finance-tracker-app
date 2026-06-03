@@ -22,11 +22,19 @@ import {
 } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
 import AIInsights from "../components/AIInsights";
 import TransactionForm from "../components/TransactionForm";
 import AccountForm from "../components/AccountForm";
 import CategoryManager from "../components/CategoryManager";
 import SubscriptionManager from "../components/SubscriptionManager";
+import {
+  saveCategory, deleteCategory,
+  saveGoal, deleteGoal,
+  addSubscription, deleteSubscription,
+  saveChatSession, deleteChatSession,
+  saveAccount, deleteAccount,
+} from "../src/lib/application/commands";
 import { Transaction, Account, TransactionType, Subscription } from "../types";
 
 const zenLogo = "/images/ZenFinance.svg";
@@ -34,24 +42,9 @@ const zenLogo = "/images/ZenFinance.svg";
 const MainLayout: React.FC = () => {
   const { profile, logout, updateProfile, loginWithGoogle } = useAuth();
   const {
-    accounts,
     transactions,
-    categories,
-    pots,
-    pockets,
-    goals,
-    subscriptions,
-    chatSessions,
     toast,
     handleTransactionSubmit,
-    handleAccountSave,
-    handleAccountDelete,
-    handleCategorySave,
-    handleCategoryDelete,
-    handleAddSubscription,
-    handleDeleteSubscription,
-    handleSaveChatSession,
-    handleDeleteChatSession,
     syncData,
     handleMigrateData,
     handleResetAndSync,
@@ -59,6 +52,14 @@ const MainLayout: React.FC = () => {
     privacyMode,
     setPrivacyMode,
   } = useData();
+
+  const categories = useFinanceStore((s) => s.categories);
+  const goals = useFinanceStore((s) => s.goals);
+  const subscriptions = useFinanceStore((s) => s.subscriptions);
+  const chatSessions = useFinanceStore((s) => s.chatSessions);
+  const accounts = useFinanceStore((s) => s.accounts);
+  const pots = useFinanceStore((s) => s.pots);
+  const pockets = useFinanceStore((s) => s.pockets);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -397,8 +398,8 @@ const MainLayout: React.FC = () => {
           goals={goals}
           subscriptions={subscriptions}
           onClose={() => navigate(-1)}
-          onSaveSession={handleSaveChatSession}
-          onDeleteSession={handleDeleteChatSession}
+          onSaveSession={(s) => saveChatSession(s, chatSessions)}
+          onDeleteSession={(id) => deleteChatSession(id, chatSessions)}
           onSelectSession={setActiveChatId}
           onNewChat={() => setActiveChatId(null)}
         />
@@ -425,12 +426,12 @@ const MainLayout: React.FC = () => {
         <AccountForm
           initialAccount={editingAccount}
           accounts={accounts}
-          onSave={handleAccountSave}
+          onSave={(a) => saveAccount(a, accounts, transactions, profile.id || "local")}
           onClose={() => {
             setShowAccountForm(false);
             setEditingAccount(undefined);
           }}
-          onDelete={handleAccountDelete}
+          onDelete={(id) => deleteAccount(id, accounts)}
         />
       )}
 
@@ -438,8 +439,8 @@ const MainLayout: React.FC = () => {
         <CategoryManager
           categories={categories}
           onClose={() => setShowCategoryManager(false)}
-          onSave={handleCategorySave}
-          onDelete={handleCategoryDelete}
+          onSave={(cat) => saveCategory(cat, categories, profile.id || "local")}
+          onDelete={(id) => deleteCategory(id, categories)}
         />
       )}
 
@@ -448,8 +449,8 @@ const MainLayout: React.FC = () => {
           subscriptions={subscriptions}
           accounts={accounts}
           categories={categories}
-          onAdd={handleAddSubscription}
-          onDelete={handleDeleteSubscription}
+          onAdd={(s) => addSubscription(s, subscriptions, profile.id || "local")}
+          onDelete={(id) => deleteSubscription(id, subscriptions)}
           onRecordPayment={handleRecordSubscriptionPayment}
           onClose={() => setShowSubscriptionManager(false)}
         />

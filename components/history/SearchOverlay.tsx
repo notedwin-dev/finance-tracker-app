@@ -159,11 +159,12 @@ const SearchOverlay: React.FC<Props> = ({
             placeholder="Search transactions..."
             className="flex-1 bg-transparent border-none outline-none text-white text-lg placeholder:text-gray-600"
           />
-          {query && (
-            <button
-              onClick={() => onQueryChange("")}
-              className="text-gray-500 hover:text-white transition-colors p-1"
-            >
+           {query && (
+             <button
+               onClick={() => onQueryChange("")}
+               aria-label="Clear search"
+               className="text-gray-500 hover:text-white transition-colors p-1"
+             >
               <XMarkIcon className="w-4 h-4" />
             </button>
           )}

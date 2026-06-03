@@ -10,6 +10,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../services/auth.services";
 import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { useUIStore } from "../src/stores/ui.store";
 import {
 	RevenueChart,
 	MonthlyBreakdown,
@@ -31,18 +33,11 @@ type TimeFrame = "1D" | "1W" | "1M" | "YTD" | "ALL";
 const DashboardPage: React.FC = () => {
 	const { profile } = useAuth();
 	const navigate = useNavigate();
-	const {
-		accounts,
-		transactions,
-		categories,
-		pots,
-		usdRate,
-		cryptoPrices,
-		displayCurrency,
-		setDisplayCurrency,
-		maskAmount,
-		maskText,
-	} = useData();
+	const { accounts, transactions, categories, pots } = useFinanceStore();
+	const usdRate = useFinanceStore((s) => s.usdRate);
+	const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
+	const { displayCurrency, setDisplayCurrency } = useUIStore();
+	const { maskAmount, maskText } = useData();
 	const { setShowAddModal, setShowAccountForm } = useOutletContext<any>();
 
 	const [timeframe, setTimeframe] = useState<TimeFrame | "CUSTOM">("1M");

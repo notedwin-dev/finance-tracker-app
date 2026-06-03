@@ -6,6 +6,11 @@ import { getUSDToMYRRate } from "../services/exchange.services";
 import { getCryptoPrices, CryptoPrices } from "../services/coin.services";
 import { normalizeDate, parseDateSafe } from "../helpers/transactions.helper";
 import {
+  computeAccountTransactionAmount,
+  computeBudgetConsumption,
+  computeSavingsMovement,
+} from "../src/lib/domain/balance.engine";
+import {
 	Account,
 	Category,
 	Transaction,
@@ -20,6 +25,10 @@ import {
 } from "../types";
 import { DataContext } from "./DataContext";
 import * as SecurityService from "../services/security.services";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { useUIStore } from "../src/stores/ui.store";
+import { usePrivacyStore } from "../src/stores/privacy.store";
+import { useSyncStore } from "../src/stores/sync.store";
 
 // Legacy vault type for backward compatibility during migration
 type LegacyVaultProfile = UserProfile & {
@@ -57,7 +66,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		BTC: 65000,
 		ETH: 3500,
 	});
-	const [displayCurrency, setDisplayCurrency] = useState<"MYR" | "USD">("MYR");
+	const [displayCurrency, setDisplayCurrencyState] = useState<"MYR" | "USD">("MYR");
+	const setDisplayCurrency = (currency: "MYR" | "USD") => {
+		setDisplayCurrencyState(currency);
+		useUIStore.getState().setDisplayCurrency(currency);
+	};
 	const [exchangeRate, setExchangeRate] = useState<ExchangeRateData | null>(
 		null,
 	);
@@ -77,6 +90,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 	const setSecurityUnlockedWithRef = (val: boolean) => {
 		securityUnlockedRef.current = val;
 		setSecurityUnlocked(val);
+		usePrivacyStore.getState().setVaultUnlocked(val);
 	};
 	const [masterKey, setMasterKey] = useState<CryptoKey | null>(null);
 
@@ -668,6 +682,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 	const showToast = (message: string, type: "success" | "alert" | "info") => {
 		setToast({ message, type });
+		useSyncStore.getState().showToast(message, type);
 		setTimeout(() => setToast(null), 3000);
 	};
 
@@ -690,6 +705,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		setChatSessions(StorageService.getStoredChatSessions());
 		const storedSubs = StorageService.getStoredSubscriptions();
 		setSubscriptions(storedSubs);
+
+		// Pipe loaded data into Zustand stores
+		const store = useFinanceStore.getState();
+		store.setAccounts(decryptedAccounts);
+		store.setTransactions(loadedTxs);
+		store.setCategories(StorageService.getStoredCategories());
+		store.setGoals(StorageService.getStoredGoals());
+		store.setPots(StorageService.getStoredPots());
+		store.setChatSessions(StorageService.getStoredChatSessions());
+		store.setSubscriptions(storedSubs);
 	};
 
 	useEffect(() => {
@@ -698,9 +723,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		getUSDToMYRRate().then((data) => {
 			setExchangeRate(data);
 			setUsdRate(data.rate);
+			useFinanceStore.getState().setUsdRate(data.rate);
+			useFinanceStore.getState().setExchangeRate(data);
 		});
 		getCryptoPrices().then((prices) => {
 			setCryptoPrices(prices);
+			useFinanceStore.getState().setCryptoPrices(prices);
 		});
 	}, [profile.id]);
 
@@ -1247,6 +1275,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				setChatSessions(mergedChatSessions);
 				StorageService.saveChatSessions(mergedChatSessions);
 
+				// Pipe merged data into Zustand stores
+				const mergedStore = useFinanceStore.getState();
+				mergedStore.setAccounts(mergedAccounts);
+				mergedStore.setCategories(mergedCategories);
+				mergedStore.setTransactions(mergedTransactions);
+				mergedStore.setGoals(mergedGoals);
+				mergedStore.setSubscriptions(mergedSubs);
+				mergedStore.setPots(mergedPots);
+				mergedStore.setPockets(mergedPockets);
+				mergedStore.setChatSessions(mergedChatSessions);
+
 				const syncTimestamp = new Date().toISOString();
 				await SheetService.syncWithGoogleSheets(
 					encryptedAccounts,
@@ -1288,115 +1327,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		} finally {
 			setIsSyncing(false);
 			syncInProgress.current = false;
-		}
-	};
-
-	const handleAccountSave = async (acc: Omit<Account, "userId">) => {
-		const isNew = !accounts.some((a) => a.id === acc.id);
-		const accountWithUser = {
-			...acc,
-			userId: profile.id || "local",
-			updatedAt: new Date().toISOString(), // Always update timestamp on save to prevent stale cloud overwrites
-		} as Account;
-
-		// Encrypt for external storage
-		const encryptedAccount = await encryptAccount(accountWithUser);
-
-		// CRITICAL: Safety check. If vault is enabled, we should NOT save to Sheets
-		// if the details are still in plain object form.
-		const isActuallyEncrypted =
-			!isVaultEnabled ||
-			!encryptedAccount.details ||
-			(typeof encryptedAccount.details === "string" &&
-				encryptedAccount.details.startsWith("ENC:"));
-
-		let updated;
-		if (isNew) {
-			updated = [...accounts, accountWithUser];
-			if (isCloudEnabled && isActuallyEncrypted)
-				await SheetService.insertOne("Accounts", encryptedAccount);
-
-			// Automatically create an 'Opening Balance' transaction if balance > 0
-			if (accountWithUser.balance !== 0) {
-				const openingTx: Transaction = {
-					id: crypto.randomUUID(),
-					userId: accountWithUser.userId,
-					accountId: accountWithUser.id,
-					amount: Math.abs(accountWithUser.balance),
-					currency: accountWithUser.currency,
-					type: TransactionType.ACCOUNT_OPENING,
-					shopName: "Opening Balance",
-					date: new Date().toLocaleDateString("en-CA"),
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString(),
-				};
-				const updatedTxs = [openingTx, ...transactions];
-				setTransactions(updatedTxs);
-				StorageService.saveTransactions(updatedTxs);
-				if (isCloudEnabled)
-					await SheetService.insertOne("Transactions", openingTx);
-			}
-		} else {
-			const oldAcc = accounts.find((a) => a.id === acc.id);
-			updated = accounts.map((a) => (a.id === acc.id ? accountWithUser : a));
-
-			// If balance was manually changed, create an adjustment transaction
-			// This ensures 'Recalculate Balances' will respect the manual change later.
-			if (oldAcc && oldAcc.balance !== accountWithUser.balance) {
-				const diff = accountWithUser.balance - oldAcc.balance;
-				const adjustmentTx: Transaction = {
-					id: crypto.randomUUID(),
-					userId: accountWithUser.userId,
-					accountId: accountWithUser.id,
-					amount: diff, // Use raw diff (can be negative)
-					currency: accountWithUser.currency,
-					type: TransactionType.ADJUSTMENT,
-					shopName: "Manual Balance Adjustment",
-					date: new Date().toLocaleDateString("en-CA"),
-					createdAt: new Date().toISOString(),
-					updatedAt: new Date().toISOString(),
-					note: `Manually changed balance from ${oldAcc.balance} to ${accountWithUser.balance}`,
-				};
-				const updatedTxs = [adjustmentTx, ...transactions];
-				setTransactions(updatedTxs);
-				StorageService.saveTransactions(updatedTxs);
-				if (isCloudEnabled)
-					await SheetService.insertOne("Transactions", adjustmentTx);
-			}
-
-			if (isCloudEnabled && isActuallyEncrypted)
-				await SheetService.updateOne("Accounts", acc.id, encryptedAccount);
-		}
-		setAccounts(updated);
-
-		// Save encrypted to local storage
-		const encryptedAccounts = await Promise.all(
-			updated.map((a) => encryptAccount(a)),
-		);
-		StorageService.saveAccounts(encryptedAccounts);
-		showToast("Account saved", "success");
-	};
-
-	const handleAccountDelete = async (id: string) => {
-		const updated = accounts.filter((a) => a.id !== id);
-		const encryptedAccounts = await Promise.all(
-			updated.map((a) => encryptAccount(a)),
-		);
-
-		const success = await executeWrite({
-			cloudWrite: async () => {
-				await SheetService.deleteOne("Accounts", id);
-				await updateCloudTimestamp();
-			},
-			localCache: () => {
-				setAccounts(updated);
-				StorageService.saveAccounts(encryptedAccounts);
-			},
-			errorMessage: "Failed to delete account",
-		});
-
-		if (success) {
-			showToast("Account deleted", "success");
 		}
 	};
 
@@ -1687,153 +1617,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			}
 		}
 
-		const getConvertedAmount = (
-			amount: number,
-			txCurrency: string,
-			accCurrency: string,
-		) => {
-			if (txCurrency === accCurrency) return amount;
-			if (txCurrency === "USD" && accCurrency === "MYR")
-				return amount * usdRate;
-			if (txCurrency === "MYR" && accCurrency === "USD")
-				return amount / usdRate;
-			return amount;
-		};
-
 		const accountUpdates = new Map<string, number>();
 		const potUpdates = new Map<string, number>();
 		const pocketUpdates = new Map<string, number>();
 
-		const applyLegToBalances = (t: Transaction, factor: 1 | -1) => {
-			if (t.isHistorical) return;
-
-			// 1. Account Balance
-			const acc = accounts.find((a) => a.id === t.accountId);
-			if (acc) {
-				const amt = getConvertedAmount(t.amount, t.currency, acc.currency);
-				const fee = t.fee
-					? getConvertedAmount(t.fee, t.currency, acc.currency)
-					: 0;
-				const feeType = t.feeType || "INCLUSIVE";
-
-				let delta = 0;
-				const isInflow =
-					t.type === TransactionType.INCOME ||
-					t.type === TransactionType.ACCOUNT_OPENING ||
-					(t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
-					(t.type === TransactionType.TRANSFER && t.transferDirection === "IN");
-
-				if (isInflow) {
-					const addedAmount =
-						t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
-							? amt - fee
-							: amt;
-					delta = addedAmount * factor;
-				} else {
-					const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-					delta = -removedAmount * factor;
-				}
-				accountUpdates.set(
-					t.accountId,
-					(accountUpdates.get(t.accountId) || 0) + delta,
-				);
-
-				// Legacy single-record transfer logic
-				if (
-					t.type === TransactionType.TRANSFER &&
-					t.toAccountId &&
-					!t.transferDirection &&
-					!t.linkedTransactionId
-				) {
-					const toAcc = accounts.find((a) => a.id === t.toAccountId);
-					if (toAcc) {
-						const toAmt = getConvertedAmount(
-							t.amount,
-							t.currency,
-							toAcc.currency,
-						);
-						const toFee = t.fee
-							? getConvertedAmount(t.fee, t.currency, toAcc.currency)
-							: 0;
-						const addedAmount = feeType === "EXCLUSIVE" ? toAmt - toFee : toAmt;
-						accountUpdates.set(
-							t.toAccountId,
-							(accountUpdates.get(t.toAccountId) || 0) + addedAmount * factor,
-						);
-					}
-				}
+		const applyDeltas = (tx: Transaction, factor: 1 | -1) => {
+			for (const [id, delta] of computeAccountTransactionAmount(tx, factor, accounts, usdRate)) {
+				accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
 			}
-
-			// 2. Pots
-			if (t.potId) {
-				const potId = String(t.potId);
-				const pot = pots.find((p) => p.id === potId);
-				const txDateStr = normalizeDate(t.date);
-				const isAfterPotReset =
-					!pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
-
-				if (isAfterPotReset) {
-					let potDelta = 0;
-					if (
-						t.type === TransactionType.INCOME ||
-						t.type === TransactionType.ACCOUNT_OPENING
-					) {
-						potDelta = -t.amount * factor;
-					} else {
-						potDelta = t.amount * factor;
-					}
-					potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
-				}
+			for (const [id, delta] of computeBudgetConsumption(tx, factor, pots)) {
+				potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
 			}
-
-			// 3. Pockets
-			if (t.savingPocketId) {
-				const pocket = pockets.find((p) => p.id === t.savingPocketId);
-				const txDateStr = normalizeDate(t.date);
-				const isAfterPocketReset =
-					!pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-				if (isAfterPocketReset) {
-					const sourceAmount = t.amount;
-					let pocketDelta = 0;
-					if (
-						t.type === TransactionType.INCOME ||
-						t.type === TransactionType.ACCOUNT_OPENING
-					) {
-						pocketDelta = t.amount * factor;
-					} else {
-						pocketDelta = -sourceAmount * factor;
-					}
-					pocketUpdates.set(
-						t.savingPocketId,
-						(pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
-					);
-				}
-			}
-
-			// Legacy single-record pocket logic
-			if (
-				t.type === TransactionType.TRANSFER &&
-				t.toSavingPocketId &&
-				!t.transferDirection &&
-				!t.linkedTransactionId
-			) {
-				const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
-				const txDateStr = normalizeDate(t.date);
-				const isAfterPocketReset =
-					!pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-				if (isAfterPocketReset) {
-					const fee = t.fee || 0;
-					const feeType = t.feeType || "INCLUSIVE";
-					const targetAmount =
-						feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-					pocketUpdates.set(
-						t.toSavingPocketId,
-						(pocketUpdates.get(t.toSavingPocketId) || 0) +
-							targetAmount * factor,
-					);
-				}
+			for (const [id, delta] of computeSavingsMovement(tx, factor, pockets)) {
+				pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
 			}
 		};
 
@@ -1844,17 +1640,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				: null;
 
 		// Restore old impacts
-		if (oldTx) applyLegToBalances(oldTx, -1);
-		if (oldPartner) applyLegToBalances(oldPartner, -1);
+		if (oldTx) applyDeltas(oldTx, -1);
+		if (oldPartner) applyDeltas(oldPartner, -1);
 
 		// Apply new impacts
-		applyLegToBalances(txWithUser, 1);
-		if (partnerLeg) applyLegToBalances(partnerLeg, 1);
+		applyDeltas(txWithUser, 1);
+		if (partnerLeg) applyDeltas(partnerLeg, 1);
 
 		// Deletions
 		if (partnerIdToDelete) {
 			const p = transactions.find((t) => t.id === partnerIdToDelete);
-			if (p) applyLegToBalances(p, -1);
+			if (p) applyDeltas(p, -1);
 		}
 
 		// Commit Updates
@@ -1933,503 +1729,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		showToast("Transaction saved", "success");
 	};
 
-	const handleTransactionDelete = async (id: string) => {
-		const tx = transactions.find((t) => t.id === id);
-		if (!tx) return;
-
-		const idsToDelete = [id];
-		const txsToProcess = [tx];
-
-		// Check for linked partner
-		if (tx.linkedTransactionId) {
-			const partner = transactions.find((t) => t.id === tx.linkedTransactionId);
-			if (partner) {
-				idsToDelete.push(partner.id);
-				txsToProcess.push(partner);
-			}
-		}
-
-		const accountUpdates = new Map<string, number>();
-		const potUpdates = new Map<string, number>();
-		const pocketUpdates = new Map<string, number>();
-
-		const getConvertedAmount = (
-			amount: number,
-			txCurrency: string,
-			accCurrency: string,
-		) => {
-			if (txCurrency === accCurrency) return amount;
-			if (txCurrency === "USD" && accCurrency === "MYR")
-				return amount * usdRate;
-			if (txCurrency === "MYR" && accCurrency === "USD")
-				return amount / usdRate;
-			return amount;
-		};
-
-		const applyLegToBalances = (t: Transaction, factor: 1 | -1) => {
-			if (t.isHistorical) return;
-
-			// 1. Account Balance
-			const acc = accounts.find((a) => a.id === t.accountId);
-			if (acc) {
-				const amt = getConvertedAmount(t.amount, t.currency, acc.currency);
-				const fee = t.fee
-					? getConvertedAmount(t.fee, t.currency, acc.currency)
-					: 0;
-				const feeType = t.feeType || "INCLUSIVE";
-
-				let delta = 0;
-				const isInflow =
-					t.type === TransactionType.INCOME ||
-					t.type === TransactionType.ACCOUNT_OPENING ||
-					(t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
-					(t.type === TransactionType.TRANSFER && t.transferDirection === "IN");
-
-				if (isInflow) {
-					const addedAmount =
-						t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
-							? amt - fee
-							: amt;
-					delta = addedAmount * factor;
-				} else {
-					const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-					delta = -removedAmount * factor;
-				}
-				accountUpdates.set(
-					t.accountId,
-					(accountUpdates.get(t.accountId) || 0) + delta,
-				);
-
-				// Legacy single-record logic
-				if (
-					t.type === TransactionType.TRANSFER &&
-					t.toAccountId &&
-					!t.transferDirection &&
-					!t.linkedTransactionId
-				) {
-					const toAcc = accounts.find((a) => a.id === t.toAccountId);
-					if (toAcc) {
-						const toAmt = getConvertedAmount(
-							t.amount,
-							t.currency,
-							toAcc.currency,
-						);
-						const toFee = t.fee
-							? getConvertedAmount(t.fee, t.currency, toAcc.currency)
-							: 0;
-						const addedAmount = feeType === "EXCLUSIVE" ? toAmt - toFee : toAmt;
-						accountUpdates.set(
-							t.toAccountId,
-							(accountUpdates.get(t.toAccountId) || 0) + addedAmount * factor,
-						);
-					}
-				}
-			}
-
-			// 2. Pots
-			if (t.potId) {
-				const potId = String(t.potId);
-				let potDelta = 0;
-				if (
-					t.type === TransactionType.INCOME ||
-					t.type === TransactionType.ACCOUNT_OPENING
-				) {
-					potDelta = -t.amount * factor;
-				} else {
-					potDelta = t.amount * factor;
-				}
-				potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
-			}
-
-			// 3. Pockets
-			if (t.savingPocketId) {
-				const sourceAmount = t.amount;
-				let pocketDelta = 0;
-				if (
-					t.type === TransactionType.INCOME ||
-					t.type === TransactionType.ACCOUNT_OPENING
-				) {
-					pocketDelta = t.amount * factor;
-				} else {
-					pocketDelta = -sourceAmount * factor;
-				}
-				pocketUpdates.set(
-					t.savingPocketId,
-					(pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
-				);
-			}
-
-			// Legacy single-record pocket logic
-			if (
-				t.type === TransactionType.TRANSFER &&
-				t.toSavingPocketId &&
-				!t.transferDirection &&
-				!t.linkedTransactionId
-			) {
-				const fee = t.fee || 0;
-				const feeType = t.feeType || "INCLUSIVE";
-				const targetAmount =
-					feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-				pocketUpdates.set(
-					t.toSavingPocketId,
-					(pocketUpdates.get(t.toSavingPocketId) || 0) + targetAmount * factor,
-				);
-			}
-		};
-
-		// Restore balances (-1 factor because we are deleting)
-		txsToProcess.forEach((t) => applyLegToBalances(t, -1));
-
-		// Update States
-		if (accountUpdates.size > 0) {
-			const updatedAccounts = accounts.map((a) => {
-				if (accountUpdates.has(a.id)) {
-					return {
-						...a,
-						balance: a.balance + (accountUpdates.get(a.id) || 0),
-						updatedAt: new Date().toISOString(),
-					};
-				}
-				return a;
-			});
-			setAccounts(updatedAccounts);
-			StorageService.saveAccounts(updatedAccounts);
-		}
-
-		if (potUpdates.size > 0) {
-			const updatedPots = pots.map((p) => {
-				if (potUpdates.has(p.id)) {
-					const newUsedAmount = Math.max(
-						0,
-						p.usedAmount + (potUpdates.get(p.id) || 0),
-					);
-					return {
-						...p,
-						usedAmount: newUsedAmount,
-						amountLeft: p.limitAmount - newUsedAmount,
-						updatedAt: new Date().toISOString(),
-					};
-				}
-				return p;
-			});
-			setPots(updatedPots);
-			StorageService.savePots(updatedPots);
-
-			// Batch update affected pots to cloud
-			if (isCloudEnabled) {
-				const affectedPots = updatedPots.filter((p) => potUpdates.has(p.id));
-				if (affectedPots.length > 0) {
-					await SheetService.updateMany("Pots", affectedPots);
-				}
-			}
-		}
-
-		if (pocketUpdates.size > 0) {
-			const updatedPockets = pockets.map((p) => {
-				if (pocketUpdates.has(p.id)) {
-					const newCurrentAmount = Math.max(
-						0,
-						p.currentAmount + (pocketUpdates.get(p.id) || 0),
-					);
-					return {
-						...p,
-						currentAmount: newCurrentAmount,
-						updatedAt: new Date().toISOString(),
-					};
-				}
-				return p;
-			});
-			setPockets(updatedPockets);
-			StorageService.savePockets(updatedPockets);
-
-			// Batch update affected pockets to cloud
-			if (isCloudEnabled) {
-				const affectedPockets = updatedPockets.filter((p) =>
-					pocketUpdates.has(p.id),
-				);
-				if (affectedPockets.length > 0) {
-					await SheetService.updateMany("Pockets", affectedPockets);
-				}
-			}
-		}
-
-		const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
-		setTransactions(updatedTxs);
-		StorageService.saveTransactions(updatedTxs);
-
-		if (isCloudEnabled) {
-			for (const idToDel of idsToDelete) {
-				await SheetService.deleteOne("Transactions", idToDel);
-			}
-		}
-
-		showToast("Transaction deleted", "success");
-	};
-
-	const handleBatchTransactionDelete = async (ids: string[]) => {
-		// Collect all unique IDs to delete including partners
-		const idsToDeleteSet = new Set<string>(ids);
-		const txsToProcess: Transaction[] = [];
-
-		ids.forEach((id) => {
-			const tx = transactions.find((t) => t.id === id);
-			if (tx) {
-				txsToProcess.push(tx);
-				if (
-					tx.linkedTransactionId &&
-					!idsToDeleteSet.has(tx.linkedTransactionId)
-				) {
-					const partner = transactions.find(
-						(t) => t.id === tx.linkedTransactionId,
-					);
-					if (partner) {
-						idsToDeleteSet.add(partner.id);
-						txsToProcess.push(partner);
-					}
-				}
-			}
-		});
-
-		if (txsToProcess.length === 0) return;
-
-		const accountUpdates = new Map<string, number>();
-		const potUpdates = new Map<string, number>();
-		const pocketUpdates = new Map<string, number>();
-
-		const getConvertedAmount = (
-			amount: number,
-			txCurrency: string,
-			accCurrency: string,
-		) => {
-			if (txCurrency === accCurrency) return amount;
-			if (txCurrency === "USD" && accCurrency === "MYR")
-				return amount * usdRate;
-			if (txCurrency === "MYR" && accCurrency === "USD")
-				return amount / usdRate;
-			return amount;
-		};
-
-		const applyLegToBalances = (t: Transaction, factor: 1 | -1) => {
-			if (t.isHistorical) return;
-
-			// 1. Account Balance
-			const acc = accounts.find((a) => a.id === t.accountId);
-			if (acc) {
-				const amt = getConvertedAmount(t.amount, t.currency, acc.currency);
-				const fee = t.fee
-					? getConvertedAmount(t.fee, t.currency, acc.currency)
-					: 0;
-				const feeType = t.feeType || "INCLUSIVE";
-
-				let delta = 0;
-				const isInflow =
-					t.type === TransactionType.INCOME ||
-					t.type === TransactionType.ACCOUNT_OPENING ||
-					(t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
-					(t.type === TransactionType.TRANSFER && t.transferDirection === "IN");
-
-				if (isInflow) {
-					const addedAmount =
-						t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
-							? amt - fee
-							: amt;
-					delta = addedAmount * factor;
-				} else {
-					const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-					delta = -removedAmount * factor;
-				}
-				accountUpdates.set(
-					t.accountId,
-					(accountUpdates.get(t.accountId) || 0) + delta,
-				);
-
-				// Legacy single-record logic
-				if (
-					t.type === TransactionType.TRANSFER &&
-					t.toAccountId &&
-					!t.transferDirection &&
-					!t.linkedTransactionId
-				) {
-					const toAcc = accounts.find((a) => a.id === t.toAccountId);
-					if (toAcc) {
-						const toAmt = getConvertedAmount(
-							t.amount,
-							t.currency,
-							toAcc.currency,
-						);
-						const toFee = t.fee
-							? getConvertedAmount(t.fee, t.currency, toAcc.currency)
-							: 0;
-						const addedAmount = feeType === "EXCLUSIVE" ? toAmt - toFee : toAmt;
-						accountUpdates.set(
-							t.toAccountId,
-							(accountUpdates.get(t.toAccountId) || 0) + addedAmount * factor,
-						);
-					}
-				}
-			}
-
-			// 2. Pots
-			if (t.potId) {
-				const potId = String(t.potId);
-				const pot = pots.find((p) => p.id === potId);
-				const txDateStr = normalizeDate(t.date);
-				const isAfterPotReset =
-					!pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
-
-				if (isAfterPotReset) {
-					let potDelta = 0;
-					if (
-						t.type === TransactionType.INCOME ||
-						t.type === TransactionType.ACCOUNT_OPENING
-					) {
-						potDelta = -t.amount * factor;
-					} else {
-						potDelta = t.amount * factor;
-					}
-					potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
-				}
-			}
-
-			// 3. Pockets
-			if (t.savingPocketId) {
-				const pocket = pockets.find((p) => p.id === t.savingPocketId);
-				const txDateStr = normalizeDate(t.date);
-				const isAfterPocketReset =
-					!pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-				if (isAfterPocketReset) {
-					const sourceAmount = t.amount;
-					let pocketDelta = 0;
-					if (
-						t.type === TransactionType.INCOME ||
-						t.type === TransactionType.ACCOUNT_OPENING
-					) {
-						pocketDelta = t.amount * factor;
-					} else {
-						pocketDelta = -sourceAmount * factor;
-					}
-					pocketUpdates.set(
-						t.savingPocketId,
-						(pocketUpdates.get(t.savingPocketId) || 0) + pocketDelta,
-					);
-				}
-			}
-
-			// Legacy single-record pocket logic
-			if (
-				t.type === TransactionType.TRANSFER &&
-				t.toSavingPocketId &&
-				!t.transferDirection &&
-				!t.linkedTransactionId
-			) {
-				const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
-				const txDateStr = normalizeDate(t.date);
-				const isAfterPocketReset =
-					!pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-				if (isAfterPocketReset) {
-					const fee = t.fee || 0;
-					const feeType = t.feeType || "INCLUSIVE";
-					const targetAmount =
-						feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-					pocketUpdates.set(
-						t.toSavingPocketId,
-						(pocketUpdates.get(t.toSavingPocketId) || 0) +
-							targetAmount * factor,
-					);
-				}
-			}
-		};
-
-		// Restore balances
-		txsToProcess.forEach((tx) => applyLegToBalances(tx, -1));
-
-		// Update States
-		if (accountUpdates.size > 0) {
-			const updatedAccounts = accounts.map((a) => {
-				if (accountUpdates.has(a.id)) {
-					return {
-						...a,
-						balance: a.balance + (accountUpdates.get(a.id) || 0),
-						updatedAt: new Date().toISOString(),
-					};
-				}
-				return a;
-			});
-			setAccounts(updatedAccounts);
-			StorageService.saveAccounts(updatedAccounts);
-		}
-
-		if (potUpdates.size > 0) {
-			const updatedPots = pots.map((p) => {
-				if (potUpdates.has(p.id)) {
-					const newUsedAmount = Math.max(
-						0,
-						p.usedAmount + (potUpdates.get(p.id) || 0),
-					);
-					return {
-						...p,
-						usedAmount: newUsedAmount,
-						amountLeft: p.limitAmount - newUsedAmount,
-						updatedAt: new Date().toISOString(),
-					};
-				}
-				return p;
-			});
-			setPots(updatedPots);
-			StorageService.savePots(updatedPots);
-
-			// Batch update affected pots to cloud
-			if (isCloudEnabled) {
-				const affectedPots = updatedPots.filter((p) => potUpdates.has(p.id));
-				if (affectedPots.length > 0) {
-					await SheetService.updateMany("Pots", affectedPots);
-				}
-			}
-		}
-
-		if (pocketUpdates.size > 0) {
-			const updatedPockets = pockets.map((p) => {
-				if (pocketUpdates.has(p.id)) {
-					const newCurrentAmount = Math.max(
-						0,
-						p.currentAmount + (pocketUpdates.get(p.id) || 0),
-					);
-					return {
-						...p,
-						currentAmount: newCurrentAmount,
-						updatedAt: new Date().toISOString(),
-					};
-				}
-				return p;
-			});
-			setPockets(updatedPockets);
-			StorageService.savePockets(updatedPockets);
-
-			// Batch update affected pockets to cloud
-			if (isCloudEnabled) {
-				const affectedPockets = updatedPockets.filter((p) =>
-					pocketUpdates.has(p.id),
-				);
-				if (affectedPockets.length > 0) {
-					await SheetService.updateMany("Pockets", affectedPockets);
-				}
-			}
-		}
-
-		const idsToDelete = Array.from(idsToDeleteSet);
-		const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
-		setTransactions(updatedTxs);
-		StorageService.saveTransactions(updatedTxs);
-
-		if (isCloudEnabled) {
-			for (const id of idsToDelete) {
-				await SheetService.deleteOne("Transactions", id);
-			}
-		}
-		showToast(`${txsToProcess.length} transactions deleted`, "success");
-	};
 
 	const handleBatchTransactionEdit = async (
 		ids: string[],
@@ -2741,193 +2040,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		showToast(`Updated ${finalUpdatesMap.size} transactions`, "success");
 	};
 
-	const handleCategorySave = async (cat: Omit<Category, "userId">) => {
-		const isEdit = categories.some((c) => c.id === cat.id);
-		const catWithUser = {
-			...cat,
-			userId: profile.id || "local",
-			updatedAt: new Date().toISOString(),
-		} as Category;
-		const updated = isEdit
-			? categories.map((c) => (c.id === cat.id ? catWithUser : c))
-			: [...categories, catWithUser];
-		setCategories(updated);
-		StorageService.saveCategories(updated);
-		if (isCloudEnabled) {
-			if (isEdit)
-				await SheetService.updateOne("Categories", cat.id, catWithUser);
-			else await SheetService.insertOne("Categories", catWithUser);
-		}
-		showToast("Category saved", "success");
-	};
-
-	const handleCategoryDelete = async (id: string) => {
-		const updated = categories.filter((c) => c.id !== id);
-		setCategories(updated);
-		StorageService.saveCategories(updated);
-		if (isCloudEnabled) await SheetService.deleteOne("Categories", id);
-		showToast("Category deleted", "success");
-	};
-
-	const handleGoalUpdate = async (goal: Omit<Goal, "userId">) => {
-		const isEdit = goals.some((g) => g.id === goal.id);
-		const goalWithUser = {
-			...goal,
-			userId: profile.id || "local",
-			updatedAt: new Date().toISOString(),
-		} as Goal;
-		const updated = isEdit
-			? goals.map((g) => (g.id === goal.id ? goalWithUser : g))
-			: [...goals, goalWithUser];
-		setGoals(updated);
-		StorageService.saveGoals(updated);
-		if (isCloudEnabled) {
-			if (isEdit) await SheetService.updateOne("Goals", goal.id, goalWithUser);
-			else await SheetService.insertOne("Goals", goalWithUser);
-		}
-		showToast("Goal updated", "success");
-	};
-
-	const handleGoalDelete = async (id: string) => {
-		const updated = goals.filter((g) => g.id !== id);
-		setGoals(updated);
-		StorageService.saveGoals(updated);
-		if (isCloudEnabled) await SheetService.deleteOne("Goals", id);
-		showToast("Goal deleted", "success");
-	};
-
-	const handlePotSave = async (pot: Omit<Pot, "userId">) => {
-		const isEdit = pots.some((p) => p.id === pot.id);
-		const amountLeft = pot.limitAmount - pot.usedAmount;
-		const potWithUser = {
-			...pot,
-			amountLeft,
-			userId: profile.id || "local",
-			updatedAt: new Date().toISOString(),
-		} as Pot;
-		const updated = isEdit
-			? pots.map((p) => (p.id === pot.id ? potWithUser : p))
-			: [...pots, potWithUser];
-		setPots(updated);
-		StorageService.savePots(updated);
-		if (isCloudEnabled) {
-			if (isEdit) await SheetService.updateOne("Pots", pot.id, potWithUser);
-			else await SheetService.insertOne("Pots", potWithUser);
-		}
-		showToast("Pot saved", "success");
-	};
-
-	const handlePotDelete = async (id: string) => {
-		const updated = pots.filter((p) => p.id !== id);
-		setPots(updated);
-		StorageService.savePots(updated);
-		if (isCloudEnabled) await SheetService.deleteOne("Pots", id);
-		showToast("Pot deleted", "success");
-	};
-
-	const handlePocketSave = async (pocket: Omit<SavingPocket, "userId">) => {
-		const isNew = !pockets.find((p) => p.id === pocket.id);
-		const pocketWithUser = {
-			...pocket,
-			userId: profile.id || "local",
-			updatedAt: new Date().toISOString(),
-		} as SavingPocket;
-
-		let updated;
-		if (isNew) {
-			updated = [...pockets, pocketWithUser];
-			if (isCloudEnabled)
-				await SheetService.insertOne("Pockets", pocketWithUser);
-		} else {
-			updated = pockets.map((p) => (p.id === pocket.id ? pocketWithUser : p));
-			if (isCloudEnabled)
-				await SheetService.updateOne("Pockets", pocket.id, pocketWithUser);
-		}
-		setPockets(updated);
-		StorageService.savePockets(updated);
-		showToast("Saving Pocket saved", "success");
-	};
-
-	const handlePocketDelete = async (id: string) => {
-		try {
-			const pocketToDelete = pockets.find((p) => p.id === id);
-			if (!pocketToDelete) return;
-
-			const newPockets = pockets.filter((p) => p.id !== id);
-			setPockets(newPockets);
-			StorageService.savePockets(newPockets);
-
-			// Update transactions that were linked to this pocket
-			const updatedTransactions = transactions.map((t) =>
-				t.savingPocketId === id ? { ...t, savingPocketId: null as any } : t,
-			);
-
-			const transactionsChanged = updatedTransactions.some(
-				(t, i) => t !== transactions[i],
-			);
-
-			if (transactionsChanged) {
-				setTransactions(updatedTransactions);
-				StorageService.saveTransactions(updatedTransactions);
-			}
-
-			if (isCloudEnabled) {
-				await SheetService.deleteOne("Pockets", id);
-				if (transactionsChanged) {
-					// Sync to push transaction changes
-					await syncData();
-				}
-			}
-			showToast("Saving pocket deleted", "success");
-		} catch (error) {
-			console.error("Error deleting pocket:", error);
-			showToast("Failed to delete pocket", "alert");
-		}
-	};
-
-	const handleAddSubscription = async (sub: Omit<Subscription, "userId">) => {
-		const currentUserId = profile.id || "guest";
-		const newSub: Subscription = {
-			...sub,
-			userId: currentUserId,
-			updatedAt: new Date().toISOString(),
-		};
-		const updated = [...subscriptions, newSub];
-		setSubscriptions(updated);
-		StorageService.saveSubscriptions(updated);
-		if (isCloudEnabled) await SheetService.insertOne("Subscriptions", newSub);
-		showToast("Subscription added", "success");
-	};
-
-	const handleDeleteSubscription = async (id: string) => {
-		const updated = subscriptions.filter((s) => s.id !== id);
-		setSubscriptions(updated);
-		StorageService.saveSubscriptions(updated);
-		if (isCloudEnabled) await SheetService.deleteOne("Subscriptions", id);
-	};
-
-	const handleSaveChatSession = async (session: ChatSession) => {
-		const isEdit = chatSessions.some((s) => s.id === session.id);
-		const sessionWithUpdate = {
-			...session,
-			updatedAt: new Date().toISOString(),
-		};
-		const updated = isEdit
-			? chatSessions.map((s) => (s.id === session.id ? sessionWithUpdate : s))
-			: [...chatSessions, sessionWithUpdate];
-		setChatSessions(updated);
-		StorageService.saveChatSessions(updated);
-		if (isCloudEnabled && profile.syncChatToSheets) {
-			if (isEdit)
-				await SheetService.updateOne(
-					"ChatSessions",
-					session.id,
-					sessionWithUpdate,
-				);
-			else await SheetService.insertOne("ChatSessions", sessionWithUpdate);
-		}
-	};
-
 	const handleSelectExistingSheet = async (fileId?: string) => {
 		try {
 			let selectedFileId = fileId;
@@ -2950,15 +2062,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		} catch (e) {
 			console.error("Failed to select sheet", e);
 			showToast("Could not link spreadsheet.", "alert");
-		}
-	};
-
-	const handleDeleteChatSession = async (id: string) => {
-		const updated = chatSessions.filter((s) => s.id !== id);
-		setChatSessions(updated);
-		StorageService.saveChatSessions(updated);
-		if (isCloudEnabled && profile.syncChatToSheets) {
-			await SheetService.deleteOne("ChatSessions", id);
 		}
 	};
 
@@ -3031,168 +2134,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				pots.map((p) => p.id),
 			);
 
-			const getConvertedAmount = (
-				amount: number,
-				txCurrency: string,
-				accCurrency: string,
-			) => {
-				if (txCurrency === accCurrency) return amount;
-				if (txCurrency === "USD" && accCurrency === "MYR")
-					return amount * usdRate;
-				if (txCurrency === "MYR" && accCurrency === "USD")
-					return amount / usdRate;
-				return amount;
-			};
-
-			const applyLeg = (t: Transaction) => {
-				if (t.isHistorical) return;
-
-				// Date range filtering
+			// Filter and apply all transactions
+			transactions.forEach((t) => {
 				const txDateStr = normalizeDate(t.date);
 				if (startDate && txDateStr < normalizeDate(startDate)) return;
 				if (endDate && txDateStr > normalizeDate(endDate)) return;
 
-				// 1. Account Balance
-				const acc = accounts.find((a) => a.id === t.accountId);
-				if (acc) {
-					const amt = getConvertedAmount(t.amount, t.currency, acc.currency);
-					const fee = t.fee
-						? getConvertedAmount(t.fee, t.currency, acc.currency)
-						: 0;
-					const feeType = t.feeType || "INCLUSIVE";
-
-					let delta = 0;
-					if (t.type === TransactionType.ADJUSTMENT) {
-						delta = amt; // Support both positive and negative adjustments directly
-					} else {
-						const isInflow =
-							t.type === TransactionType.INCOME ||
-							t.type === TransactionType.ACCOUNT_OPENING ||
-							(t.type === TransactionType.TRANSFER &&
-								t.transferDirection === "IN");
-
-						if (isInflow) {
-							const addedAmount =
-								t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
-									? amt - fee
-									: amt;
-							delta = addedAmount;
-						} else {
-							// Expenses or OUT transfers
-							const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-							delta = -removedAmount;
-						}
-					}
-					accountUpdates.set(
-						t.accountId,
-						(accountUpdates.get(t.accountId) || 0) + delta,
-					);
-
-					// Legacy single-record transfer logic (toAccountId in the same record)
-					if (
-						t.type === TransactionType.TRANSFER &&
-						t.toAccountId &&
-						!t.transferDirection &&
-						!t.linkedTransactionId
-					) {
-						const toAcc = accounts.find((a) => a.id === t.toAccountId);
-						if (toAcc) {
-							const toAmt = getConvertedAmount(
-								t.amount,
-								t.currency,
-								toAcc.currency,
-							);
-							const toFee = t.fee
-								? getConvertedAmount(t.fee, t.currency, toAcc.currency)
-								: 0;
-							const addedAmount =
-								feeType === "EXCLUSIVE" ? toAmt - toFee : toAmt;
-							accountUpdates.set(
-								t.toAccountId,
-								(accountUpdates.get(t.toAccountId) || 0) + addedAmount,
-							);
-						}
-					}
+				for (const [id, delta] of computeAccountTransactionAmount(t, 1, accounts, usdRate)) {
+					accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
 				}
-
-				// 2. Pots (Spending Limits) - respect pot's reset date cutoff
-				if (t.potId) {
-					const potId = String(t.potId); // Ensure consistent string type
-					const pot = pots.find((p) => p.id === potId);
-					// Only count this transaction if it's on or after the pot's reset date
-					const isAfterPotReset =
-						!pot?.resetDate || txDateStr >= normalizeDate(pot.resetDate);
-
-					if (isAfterPotReset) {
-						let potDelta = 0;
-						// Use the transaction amount directly (pots track in transaction currency)
-						if (t.type === TransactionType.ADJUSTMENT) {
-							potDelta = t.amount; // Positive adjustment increases usage, negative decreases
-						} else if (
-							t.type === TransactionType.INCOME ||
-							t.type === TransactionType.ACCOUNT_OPENING
-						) {
-							potDelta = -t.amount; // Incoming money restores pot limit
-						} else {
-							potDelta = t.amount; // Spending uses pot limit
-						}
-						potUpdates.set(potId, (potUpdates.get(potId) || 0) + potDelta);
-					}
+				for (const [id, delta] of computeBudgetConsumption(t, 1, pots)) {
+					potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
 				}
-
-				// 3. Pockets (Goals/Savings) - respect pocket's reset date cutoff
-				if (t.savingPocketId) {
-					const pocketId = String(t.savingPocketId); // Ensure consistent string type
-					const pocket = pockets.find((p) => p.id === pocketId);
-					// Only count this transaction if it's on or after the pocket's reset date
-					const isAfterPocketReset =
-						!pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-					if (isAfterPocketReset) {
-						let pocketDelta = 0;
-						if (t.type === TransactionType.ADJUSTMENT) {
-							pocketDelta = t.amount;
-						} else if (
-							t.type === TransactionType.INCOME ||
-							t.type === TransactionType.ACCOUNT_OPENING
-						) {
-							pocketDelta = t.amount;
-						} else {
-							pocketDelta = -t.amount;
-						}
-						pocketUpdates.set(
-							pocketId,
-							(pocketUpdates.get(pocketId) || 0) + pocketDelta,
-						);
-					}
+				for (const [id, delta] of computeSavingsMovement(t, 1, pockets)) {
+					pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
 				}
-
-				// Legacy single-record pocket logic
-				if (
-					t.type === TransactionType.TRANSFER &&
-					t.toSavingPocketId &&
-					!t.transferDirection &&
-					!t.linkedTransactionId
-				) {
-					const pocketId = String(t.toSavingPocketId); // Ensure consistent string type
-					const pocket = pockets.find((p) => p.id === pocketId);
-					const isAfterPocketReset =
-						!pocket?.resetDate || txDateStr >= normalizeDate(pocket.resetDate);
-
-					if (isAfterPocketReset) {
-						const fee = t.fee || 0;
-						const feeType = t.feeType || "INCLUSIVE";
-						const targetAmount =
-							feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-						pocketUpdates.set(
-							pocketId,
-							(pocketUpdates.get(pocketId) || 0) + targetAmount,
-						);
-					}
-				}
-			};
-
-			transactions.forEach(applyLeg);
+			});
 
 			// Apply Updates
 			const updatedAccounts = accounts.map((a) => ({
@@ -3368,24 +2325,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				setPots,
 				setPockets,
 				setChatSessions,
-				handleAccountSave,
-				handleAccountDelete,
 				handleTransactionSubmit,
 				handleBulkTransactionImport,
-				handleTransactionDelete,
-				handleCategorySave,
-				handleCategoryDelete,
-				handleGoalUpdate,
-				handleGoalDelete,
-				handlePotSave,
-				handlePotDelete,
-				handlePocketSave,
-				handlePocketDelete,
-				handleAddSubscription,
-				handleDeleteSubscription,
-				handleSaveChatSession,
-				handleDeleteChatSession,
-				handleBatchTransactionDelete,
 				handleBatchTransactionEdit,
 				handleMigrateData,
 				handleResetAndSync,

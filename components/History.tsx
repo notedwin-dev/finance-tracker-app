@@ -15,6 +15,8 @@ import {
 } from "@heroicons/react/24/solid";
 import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helper";
 import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { batchDeleteTransaction } from "../src/lib/application/commands";
 import { cn } from "./history/cn";
 import { SCROLL_THRESHOLD } from "./history/constants";
 import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
@@ -55,10 +57,10 @@ const History: React.FC<Props> = ({
 		maskAmount,
 		maskText,
 		privacyMode,
-		handleBatchTransactionDelete,
 		handleBatchTransactionEdit,
-		pots,
 	} = useData();
+	const usdRate = useFinanceStore((s) => s.usdRate);
+	const { pots } = useFinanceStore();
 
 	const [startDate, setStartDate] = useState("");
 	const [endDate, setEndDate] = useState("");
@@ -179,11 +181,11 @@ const History: React.FC<Props> = ({
 				`Delete ${batch.selectedIds.length} transactions? This cannot be undone.`,
 			)
 		) {
-			await handleBatchTransactionDelete(batch.selectedIds);
+			await batchDeleteTransaction(batch.selectedIds, accounts, pots, pockets, usdRate, transactions);
 			batch.clearSelection();
 		}
 		batch.endSubmit();
-	}, [batch, handleBatchTransactionDelete]);
+	}, [batch, batchDeleteTransaction, accounts, pots, pockets, usdRate, transactions]);
 
 	const handleBatchEditSubmit = useCallback(async () => {
 		batch.startSubmit();

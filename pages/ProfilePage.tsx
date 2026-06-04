@@ -38,9 +38,15 @@ const ProfilePage: React.FC = () => {
       );
     }
 
+    const sanitizedAccounts = accounts.map((a) => {
+      const bag = a as unknown as Record<string, unknown>;
+      const { details, isEncrypted, ...rest } = bag;
+      return rest;
+    });
+
     const data = {
       profile,
-      accounts,
+      accounts: sanitizedAccounts,
       transactions: filteredTransactions,
       categories,
       goals,

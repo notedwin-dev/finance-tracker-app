@@ -36,6 +36,11 @@ const AccountForm: React.FC<Props> = ({
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const sanitizeNote = (value: string) =>
+    value
+      .replace(/\d{3,}/g, "[redacted]")
+      .replace(/last\s*\d{3,}/gi, "[redacted]");
+
   const [confirmationModal, setConfirmationModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -366,9 +371,9 @@ const AccountForm: React.FC<Props> = ({
               <h3 className="text-sm font-bold text-white mb-3">Notes</h3>
               <textarea
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => setNote(sanitizeNote(e.target.value))}
                 className="w-full bg-surface border border-gray-700 rounded-xl p-3 text-white text-sm focus:border-primary focus:outline-none"
-                placeholder="Optional notes (e.g. last 4 digits, bank branch)"
+                placeholder="Optional notes (e.g. payment reference, internal memo)"
                 rows={2}
               />
             </div>

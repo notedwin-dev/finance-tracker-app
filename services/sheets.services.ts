@@ -388,7 +388,7 @@ export const createUser = async (userData: any) => {
 			// Add headers - profile + cloud settings
 			await window.gapi.client.sheets.spreadsheets.values.update({
 				spreadsheetId: fileId,
-				range: `'${sheetName}'!A1:I1`,
+				range: `'${sheetName}'!A1:J1`,
 				valueInputOption: "RAW",
 				resource: {
 					values: [
@@ -402,6 +402,7 @@ export const createUser = async (userData: any) => {
 							"showAIAssistant",
 							"syncChatToSheets",
 							"lastUpdatedAt",
+							"lastSyncAt",
 						],
 					],
 				},
@@ -658,20 +659,38 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 			return;
 		}
 
+		// Strip legacy v1 sensitive fields before building headers/rows so removed columns are not reintroduced
+		const sensitiveFields = new Set([
+			"details",
+			"isEncrypted",
+			"accountNumber",
+			"cardNumber",
+			"holderName",
+			"expiry",
+			"cvv",
+		]);
+		const sanitizedItems = combinedData.map((item) => {
+			const sanitized: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(item)) {
+				if (!sensitiveFields.has(key)) sanitized[key] = value;
+			}
+			return sanitized;
+		});
+
 		// Generate headers from all items to ensure no fields are lost (migration support)
 		const headerSet = new Set<string>();
 		// Force 'id' to be the first column if it exists in any item
-		const hasId = combinedData.some((item) => item.id !== undefined);
+		const hasId = sanitizedItems.some((item) => item.id !== undefined);
 		if (hasId) headerSet.add("id");
 
-		combinedData.forEach((item) => {
+		sanitizedItems.forEach((item) => {
 			Object.keys(item).forEach((key) => {
 				headerSet.add(key);
 			});
 		});
 		const headers = Array.from(headerSet);
 
-		const rowsToUpdate = combinedData.map((item) => {
+		const rowsToUpdate = sanitizedItems.map((item) => {
 			return headers.map((header) => {
 				const val = item[header];
 				if (typeof val === "object" && val !== null) {

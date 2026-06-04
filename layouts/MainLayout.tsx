@@ -302,6 +302,8 @@ const MainLayout: React.FC = () => {
             )}
             <button
               onClick={() => setMaskMode(!maskMode)}
+              aria-label="Toggle mask mode"
+              aria-pressed={maskMode}
               className={`p-2 rounded-xl transition-all ${
                 maskMode
                   ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"

@@ -21,6 +21,7 @@ import { useFinanceStore } from "../src/stores/finance.store";
 import { runVaultSchemaMigration } from "../src/lib/application/commands/migration";
 import { needsV1Migration } from "../src/lib/domain/migration";
 import { useMask } from "../helpers/useMask";
+import { useMaskStore } from "../src/stores/mask.store";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
@@ -59,6 +60,7 @@ const Profile: React.FC<Props> = ({
 	isSyncing = false,
 }) => {
 	const { maskText } = useMask();
+	const maskMode = useMaskStore((s) => s.maskMode);
 	const accounts = useFinanceStore((s) => s.accounts);
 	const showV1Migration = needsV1Migration(profile, accounts);
 
@@ -288,16 +290,18 @@ const Profile: React.FC<Props> = ({
 							color="text-indigo-400"
 							action={
 								<button
-									onClick={() =>
-										onUpdate({ maskMode: !profile.maskMode })
-									}
+									onClick={() => {
+										const next = !maskMode;
+										useMaskStore.getState().setMaskMode(next);
+										onUpdate({ maskMode: next });
+									}}
 									className={`w-11 h-6 rounded-full transition-colors relative ${
-										profile.maskMode ? "bg-primary" : "bg-gray-800"
+										maskMode ? "bg-primary" : "bg-gray-800"
 									}`}
 								>
 									<div
 										className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-											profile.maskMode ? "left-6" : "left-1"
+											maskMode ? "left-6" : "left-1"
 										}`}
 									/>
 								</button>

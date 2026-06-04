@@ -46,7 +46,8 @@ export function stripVaultFromAccount(acc: Account): Account {
 export function stripVaultFromProfile(profile: UserProfile): UserProfile {
   const cleaned = stripFields(profile, VAULT_PROFILE_FIELDS);
   if (cleaned.maskMode === undefined) {
-    cleaned.maskMode = false;
+    const profileBag = profile as unknown as Record<string, unknown>;
+    cleaned.maskMode = (profileBag.privacyMode as boolean | undefined) ?? false;
   }
   return cleaned;
 }

@@ -5,6 +5,7 @@ import { useSyncStore } from "../../../stores/sync.store";
 import type { UserProfile, Account, Transaction, Subscription } from "../../../../types";
 import { TransactionType } from "../../../../types";
 import { normalizeDate, parseDateSafe } from "../../../../helpers/transactions.helper";
+import { stripVaultFromAccount } from "../../domain/migration";
 
 export async function migrateData(): Promise<void> {
   const { showToast } = useSyncStore.getState();
@@ -448,7 +449,8 @@ export async function syncData(
       const cloudAccounts: Account[] = cloudData.accounts || [];
       const localAccounts: Account[] = StorageService.getStoredAccounts();
 
-      const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority);
+      const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority)
+        .map(stripVaultFromAccount);
       const store = useFinanceStore.getState();
       store.setAccounts(mergedAccounts);
       await StorageService.saveAccounts(mergedAccounts);
@@ -514,7 +516,7 @@ export async function syncData(
       processSubscriptions(store.accounts, store.usdRate, { persist: false });
 
       const storeAfterSubs = useFinanceStore.getState();
-      const postSubAccounts = storeAfterSubs.accounts;
+      const postSubAccounts = storeAfterSubs.accounts.map(stripVaultFromAccount);
       const postSubTxs = storeAfterSubs.transactions;
       const postSubSubs = storeAfterSubs.subscriptions;
 

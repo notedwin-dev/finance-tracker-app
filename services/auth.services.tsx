@@ -246,6 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	const logout = () => {
 		googleLogout();
 		SheetService.clearGapiAccessToken();
+		localStorage.removeItem("google_refresh_token");
 		const emptyProfile: UserProfile = {
 			name: "",
 			email: "",

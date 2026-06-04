@@ -4,6 +4,7 @@ import History from "../components/History";
 import Modal from "../components/Modal";
 import BulkImportModal from "../components/BulkImportModal";
 import { useMask } from "../helpers/useMask";
+import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
 import { deleteTransaction, bulkImportTransactions, loadData } from "../src/lib/application/commands";
@@ -61,6 +62,7 @@ const AccountPage: React.FC = () => {
 	const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
 	const { displayCurrency } = useUIStore();
 	const { maskAmount, maskText } = useMask();
+	const maskMode = useMaskStore((s) => s.maskMode);
 	const { transactions, categories, accounts, pots, pockets } =
 		useFinanceStore();
 	const {
@@ -617,7 +619,9 @@ const AccountPage: React.FC = () => {
 					{account.note && (
 						<div className="bg-surface/40 backdrop-blur-3xl p-6 sm:p-8 rounded-4xl sm:rounded-[2.5rem] border border-white/5 shadow-2xl">
 							<p className="text-[10px] text-gray-500 italic leading-relaxed whitespace-pre-wrap">
-								{account.note}
+								{maskMode
+									? "•".repeat(Math.min(account.note.length, 32))
+									: account.note}
 							</p>
 						</div>
 					)}

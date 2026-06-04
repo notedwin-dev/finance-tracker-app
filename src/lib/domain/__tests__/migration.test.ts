@@ -41,7 +41,7 @@ describe("CURRENT_SCHEMA_VERSION", () => {
 
 describe("stripVaultFromAccount", () => {
   it("strips plaintext details object", () => {
-    const acc = asAccount({ details: { cardNumber: "4111111111111111", cvv: "123" } });
+    const acc = asAccount({ details: { cardNumber: "NON_PAN_PLACEHOLDER", cvv: "123" } });
     const cleaned = stripVaultFromAccount(acc);
     expect((cleaned as unknown as Record<string, unknown>).details).toBeUndefined();
     expect((cleaned as unknown as Record<string, unknown>).isEncrypted).toBeUndefined();
@@ -158,6 +158,20 @@ describe("stripVaultFromProfile", () => {
     const cleaned = stripVaultFromProfile({ ...baseProfile, maskMode: true });
     expect(cleaned.maskMode).toBe(true);
   });
+
+  it("falls back to privacyMode when maskMode is absent", () => {
+    const cleaned = stripVaultFromProfile(
+      asProfile({ privacyMode: true }),
+    );
+    expect(cleaned.maskMode).toBe(true);
+  });
+
+  it("prefers maskMode over privacyMode when both present", () => {
+    const cleaned = stripVaultFromProfile(
+      asProfile({ maskMode: false, privacyMode: true }),
+    );
+    expect(cleaned.maskMode).toBe(false);
+  });
 });
 
 describe("migrateSchemaV1toV2", () => {
@@ -185,7 +199,7 @@ describe("migrateSchemaV1toV2", () => {
     expect(accBag.isEncrypted).toBeUndefined();
     expect(profBag.totpSecret).toBeUndefined();
     expect(profBag.privacyMode).toBeUndefined();
-    expect(cleanedProf.maskMode).toBe(false);
+    expect(cleanedProf.maskMode).toBe(true);
     expect(cleanedProf.schemaVersion).toBe(2);
   });
 

@@ -39,7 +39,7 @@ export async function resetAndSync(
   setIsSyncing(true);
 
   const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
-  if (!cloudData) {
+  if (!cloudData || !cloudData.accounts) {
     showToast("No cloud data found. Cannot reset.", "alert");
     setIsSyncing(false);
     return;
@@ -102,8 +102,10 @@ export async function selectExistingSheet(
 // Module-level refs for sync debouncing (replaces React useRef)
 let syncInProgress = false;
 let lastSyncTime = 0;
+let loadDataToken = 0;
 
 export async function loadData(profile: any, forceUnlock: boolean = false): Promise<void> {
+  const myToken = ++loadDataToken;
   const storedAccounts = StorageService.getStoredAccounts();
   const decryptedAccounts = await Promise.all(
     storedAccounts.map(async (a) => {
@@ -112,6 +114,8 @@ export async function loadData(profile: any, forceUnlock: boolean = false): Prom
     }),
   );
 
+  if (myToken !== loadDataToken) return;
+
   const loadedTxs = StorageService.getStoredTransactions();
   const storedCategories = StorageService.getStoredCategories();
   const storedGoals = StorageService.getStoredGoals();
@@ -119,6 +123,8 @@ export async function loadData(profile: any, forceUnlock: boolean = false): Prom
   const storedPockets = StorageService.getStoredPockets();
   const storedChatSessions = StorageService.getStoredChatSessions();
   const storedSubs = StorageService.getStoredSubscriptions();
+
+  if (myToken !== loadDataToken) return;
 
   const store = useFinanceStore.getState();
   store.setAccounts(decryptedAccounts);
@@ -131,24 +137,44 @@ export async function loadData(profile: any, forceUnlock: boolean = false): Prom
   store.setSubscriptions(storedSubs);
 }
 
-export function processSubscriptions(accounts: Account[], usdRate: number) {
+export function processSubscriptions(
+  accounts: Account[],
+  usdRate: number,
+  options: { persist?: boolean } = { persist: true },
+) {
+  const { persist = true } = options;
   const subs = StorageService.getStoredSubscriptions();
   const currentTxs = StorageService.getStoredTransactions();
   const today = new Date().toLocaleDateString("en-CA");
   let newTxs: Transaction[] = [];
   let updatedSubs = [...subs];
   let processedCount = 0;
+  let bailedSubIds = new Set<string>();
   const storedProfile = StorageService.getStoredProfile();
   const currentUserId = storedProfile.id || "guest";
+
+  const rateValid = usdRate > 0 && isFinite(usdRate);
+  if (!rateValid) {
+    console.warn(
+      "processSubscriptions: usdRate invalid, cross-currency subs will be skipped to avoid silent balance corruption",
+    );
+  }
 
   updatedSubs = updatedSubs.map((sub) => {
     if (!sub.active) return sub;
     let nextDateStr = normalizeDate(sub.nextPaymentDate);
+    if (!nextDateStr) {
+      console.warn(`processSubscriptions: invalid nextPaymentDate for sub ${sub.id}, skipping`);
+      return sub;
+    }
     let hasProcessed = false;
-    while (nextDateStr <= today) {
+    let iterations = 0;
+    const MAX_ITERATIONS = 365;
+    while (nextDateStr <= today && iterations < MAX_ITERATIONS) {
+      iterations++;
       hasProcessed = true;
       const newTx: Transaction = {
-        id: crypto.randomUUID(),
+        id: `sub-${sub.id}-${nextDateStr}`,
         userId: currentUserId,
         accountId: sub.accountId,
         amount: sub.amount,
@@ -169,6 +195,14 @@ export function processSubscriptions(accounts: Account[], usdRate: number) {
       else d.setDate(d.getDate() + 1);
       nextDateStr = d.toLocaleDateString("en-CA");
     }
+    if (iterations >= MAX_ITERATIONS) {
+      console.warn(
+        `processSubscriptions: sub ${sub.id} hit iteration cap; nextPaymentDate may be corrupted`,
+        sub.nextPaymentDate,
+      );
+      bailedSubIds.add(sub.id);
+      return { ...sub, nextPaymentDate: nextDateStr };
+    }
     if (hasProcessed) {
       processedCount++;
       return {
@@ -180,42 +214,57 @@ export function processSubscriptions(accounts: Account[], usdRate: number) {
     return { ...sub, nextPaymentDate: nextDateStr };
   });
 
-  if (newTxs.length > 0) {
-    const allTxs = [...currentTxs, ...newTxs];
+  if (newTxs.length === 0) return;
+
+  const dedupedNewTxs = newTxs.filter(
+    (t) => !currentTxs.some((existing) => existing.id === t.id),
+  );
+  if (dedupedNewTxs.length === 0) return;
+
+  const allTxs = [...currentTxs, ...dedupedNewTxs];
+  const accUpdates = new Map<string, number>();
+  dedupedNewTxs.forEach((t) => {
+    const acc = accounts.find((a) => a.id === t.accountId);
+    if (!acc) return;
+    if (t.currency !== acc.currency && !rateValid) {
+      console.warn(
+        `processSubscriptions: skipping cross-currency sub for ${t.id} due to invalid usdRate`,
+      );
+      return;
+    }
+    let amount = t.amount;
+    if (acc && t.currency !== acc.currency) {
+      if (t.currency === "USD") amount *= usdRate;
+      else if (t.currency === "MYR") amount /= usdRate;
+    }
+    accUpdates.set(t.accountId, (accUpdates.get(t.accountId) || 0) + amount);
+  });
+
+  const updatedAccounts = accounts.map((a) => {
+    if (accUpdates.has(a.id))
+      return {
+        ...a,
+        balance: a.balance - (accUpdates.get(a.id) || 0),
+        updatedAt: new Date().toISOString(),
+      };
+    return a;
+  });
+
+  const store = useFinanceStore.getState();
+  store.setTransactions(allTxs);
+  store.setSubscriptions(updatedSubs);
+  store.setAccounts(updatedAccounts);
+
+  if (persist) {
     StorageService.saveTransactions(allTxs);
     StorageService.saveSubscriptions(updatedSubs);
-    const store = useFinanceStore.getState();
-    store.setTransactions(allTxs);
-    store.setSubscriptions(updatedSubs);
-
-    const accUpdates = new Map<string, number>();
-    newTxs.forEach((t) => {
-      const acc = accounts.find((a) => a.id === t.accountId);
-      let amount = t.amount;
-      if (acc && t.currency !== acc.currency) {
-        if (t.currency === "USD" && usdRate > 0 && isFinite(usdRate)) amount *= usdRate;
-        else if (t.currency === "MYR" && usdRate > 0 && isFinite(usdRate)) amount /= usdRate;
-      }
-      accUpdates.set(t.accountId, (accUpdates.get(t.accountId) || 0) + amount);
-    });
-
-    const updatedAccounts = accounts.map((a) => {
-      if (accUpdates.has(a.id))
-        return {
-          ...a,
-          balance: a.balance - (accUpdates.get(a.id) || 0),
-          updatedAt: new Date().toISOString(),
-        };
-      return a;
-    });
     StorageService.saveAccounts(updatedAccounts);
-    store.setAccounts(updatedAccounts);
-
-    useSyncStore.getState().showToast(
-      `Processed ${processedCount} subscription payments.`,
-      "success",
-    );
   }
+
+  useSyncStore.getState().showToast(
+    `Processed ${processedCount} subscription payments.`,
+    "success",
+  );
 }
 
 export async function syncData(
@@ -510,7 +559,7 @@ export async function syncData(
       const encryptedAccounts = await Promise.all(
         mergedAccounts.map((a) => encryptAccount(a, profile)),
       );
-      StorageService.saveAccounts(encryptedAccounts);
+      await StorageService.saveAccounts(encryptedAccounts);
 
       const mergedCategories = merge(
         StorageService.getStoredCategories(),
@@ -570,7 +619,7 @@ export async function syncData(
 
       const syncTimestamp = new Date().toISOString();
 
-      processSubscriptions(store.accounts, store.usdRate);
+      processSubscriptions(store.accounts, store.usdRate, { persist: false });
 
       const storeAfterSubs = useFinanceStore.getState();
       const postSubAccounts = storeAfterSubs.accounts;
@@ -580,7 +629,10 @@ export async function syncData(
       const postSubEncryptedAccounts = await Promise.all(
         postSubAccounts.map((a) => encryptAccount(a, profile)),
       );
-      StorageService.saveAccounts(postSubEncryptedAccounts);
+
+      await StorageService.saveAccounts(postSubEncryptedAccounts);
+      await StorageService.saveTransactions(postSubTxs);
+      await StorageService.saveSubscriptions(postSubSubs);
 
       await SheetService.syncWithGoogleSheets(
         postSubEncryptedAccounts,

@@ -5,4 +5,5 @@ build/
 .next/
 .agents/
 # docs/
+opencode-power-pack/
 .DS_Store

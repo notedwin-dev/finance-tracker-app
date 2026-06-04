@@ -38,9 +38,11 @@ const ProfilePage: React.FC = () => {
       );
     }
 
+    const sanitizedAccounts = accounts.map(({ details, ...rest }) => rest);
+
     const data = {
       profile,
-      accounts,
+      accounts: sanitizedAccounts,
       transactions: filteredTransactions,
       categories,
       goals,
@@ -53,6 +55,7 @@ const ProfilePage: React.FC = () => {
         startDate: startDate || "all",
         endDate: endDate || "all",
       },
+      _note: "Encrypted account details (card numbers, account numbers, etc.) are intentionally excluded from this export for privacy. They remain encrypted in your cloud backup and local storage.",
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",

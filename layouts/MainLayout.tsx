@@ -454,7 +454,7 @@ const MainLayout: React.FC = () => {
         <AccountForm
           initialAccount={editingAccount}
           accounts={accounts}
-          onSave={(a) => saveAccount(a, accounts, storeTransactions, profile.id || "local")}
+          onSave={(a) => saveAccount(a, accounts, storeTransactions, profile.id || "local", profile)}
           onClose={() => {
             setShowAccountForm(false);
             setEditingAccount(undefined);

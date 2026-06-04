@@ -115,9 +115,9 @@ export async function decryptAccount(
 
   if (!profile.totpSecret) {
     console.warn(
-      `Account ${acc.id} is encrypted but no TOTP secret found - resetting to empty`,
+      `Account ${acc.id} is encrypted but no TOTP secret found - keeping encrypted blob`,
     );
-    return { ...acc, details: {} };
+    return acc;
   }
 
   try {
@@ -125,7 +125,7 @@ export async function decryptAccount(
       console.warn(
         `Account ${acc.id} uses old password-based encryption. Cannot decrypt.`,
       );
-      return { ...acc, details: {} };
+      return acc;
     }
 
     const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
@@ -181,18 +181,27 @@ export async function unlockVaultWithBiometrics(
       return false;
     }
 
-    if (!profile.totpSecret) {
-      showToast("2FA not set up - please set up TOTP first", "alert");
-      return false;
-    }
+  if (!profile.totpSecret) {
+    showToast("2FA not set up - please set up TOTP first", "alert");
+    return false;
+  }
 
-    usePrivacyStore.getState().setVaultUnlocked(true);
-    updateProfile({ isVaultLocked: false } as any);
-
+  try {
     await loadData(true);
+  } catch (e) {
+    console.error("loadData failed during biometric vault unlock:", e);
+    useSyncStore.getState().showToast(
+      "Vault unlock failed: could not decrypt accounts. Try again.",
+      "alert",
+    );
+    return false;
+  }
 
-    showToast("Vault unlocked with biometrics", "success");
-    return true;
+  usePrivacyStore.getState().setVaultUnlocked(true);
+  updateProfile({ isVaultLocked: false } as any);
+
+  showToast("Vault unlocked with biometrics", "success");
+  return true;
   } catch (error) {
     console.error("Biometric unlock failed:", error);
     useSyncStore.getState().showToast("Failed to unlock with biometrics", "alert");
@@ -209,24 +218,33 @@ export async function unlockVaultWithTOTP(
   try {
     const { showToast } = useSyncStore.getState();
 
-    if (!profile.totpSecret) {
-      showToast("2FA not set up", "alert");
-      return false;
-    }
+  if (!profile.totpSecret) {
+    showToast("2FA not set up", "alert");
+    return false;
+  }
 
-    const isValid = TwoFAService.verifyTOTP(profile.totpSecret, totpCode);
-    if (!isValid) {
-      showToast("Invalid 2FA code", "alert");
-      return false;
-    }
+  const isValid = TwoFAService.verifyTOTP(profile.totpSecret, totpCode);
+  if (!isValid) {
+    showToast("Invalid 2FA code", "alert");
+    return false;
+  }
 
-    usePrivacyStore.getState().setVaultUnlocked(true);
-    updateProfile({ isVaultLocked: false } as any);
-
+  try {
     await loadData(true);
+  } catch (e) {
+    console.error("loadData failed during vault unlock:", e);
+    useSyncStore.getState().showToast(
+      "Vault unlock failed: could not decrypt accounts. Try again.",
+      "alert",
+    );
+    return false;
+  }
 
-    showToast("Vault unlocked with 2FA", "success");
-    return true;
+  usePrivacyStore.getState().setVaultUnlocked(true);
+  updateProfile({ isVaultLocked: false } as any);
+
+  showToast("Vault unlocked with 2FA", "success");
+  return true;
   } catch (error) {
     console.error("TOTP unlock failed:", error);
     useSyncStore.getState().showToast("Failed to unlock with 2FA", "alert");
@@ -293,6 +311,8 @@ export async function enableVault(
   }
 
   usePrivacyStore.getState().setVaultUnlocked(true);
+  usePrivacyStore.getState().setVaultEnabled(true);
+  usePrivacyStore.getState().setVaultCreated(true);
   updateProfile(
     {
       isSecurityEnabled: true,
@@ -419,10 +439,24 @@ export async function disableVault(
     StorageService.saveAccounts(decryptedAccounts);
 
     usePrivacyStore.getState().setVaultUnlocked(false);
-    updateProfile({ isSecurityEnabled: false, isVaultLocked: false } as any);
+    usePrivacyStore.getState().setVaultEnabled(false);
+    usePrivacyStore.getState().setVaultCreated(false);
+    usePrivacyStore.getState().setSecurityUnlocked(false);
+    usePrivacyStore.getState().setMasterKey(null);
+    updateProfile({
+      isSecurityEnabled: false,
+      isVaultLocked: false,
+      totpSecret: undefined,
+      biometricCredIds: [],
+      biometricCredId: undefined,
+      vaultSalt: undefined,
+    } as any, true);
 
     localStorage.removeItem("biometric_cred_id");
     localStorage.removeItem("biometric_cred_ids");
+    localStorage.removeItem("encrypted_vault_key");
+    localStorage.removeItem("vault_password_session");
+    sessionStorage.removeItem("vault_password_session");
 
     showToast("Vault disabled and accounts decrypted.", "success");
 

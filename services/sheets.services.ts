@@ -1243,7 +1243,7 @@ export const loadFromGoogleSheets = async (
 	const validSheets = sheetNamesToLoad.filter((s) =>
 		existingSheets.includes(s),
 	);
-	if (validSheets.length === 0) return result;
+	if (validSheets.length === 0) return null;
 
 	try {
 		const response =

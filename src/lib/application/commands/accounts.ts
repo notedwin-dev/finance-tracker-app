@@ -1,13 +1,15 @@
-import { Account, Transaction, TransactionType } from "../../../../types";
+import { Account, Transaction, TransactionType, UserProfile } from "../../../../types";
 import * as StorageService from "../../../../services/storage.services";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
+import { encryptAccount } from "./privacy";
 
 export async function saveAccount(
   acc: Omit<Account, "userId">,
   existingAccounts: Account[],
   existingTransactions: Transaction[],
   userId: string,
+  profile?: UserProfile,
 ): Promise<void> {
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
@@ -23,7 +25,11 @@ export async function saveAccount(
     ? [...existingAccounts, accountWithUser]
     : existingAccounts.map((a) => (a.id === acc.id ? accountWithUser : a));
 
-  await StorageService.saveAccounts(updated);
+  const toPersist = profile
+    ? await Promise.all(updated.map((a) => encryptAccount(a, profile)))
+    : updated;
+
+  await StorageService.saveAccounts(toPersist);
 
   if (isNew && accountWithUser.balance !== 0) {
     const openingTx: Transaction = {
@@ -43,7 +49,7 @@ export async function saveAccount(
     store.setTransactions(updatedTxs);
   }
 
-  store.setAccounts(updated);
+  store.setAccounts(toPersist);
 
   if (!isNew) {
     const oldAcc = existingAccounts.find((a) => a.id === acc.id);

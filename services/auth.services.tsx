@@ -2,6 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { useGoogleLogin, googleLogout } from "@react-oauth/google";
 import * as SheetService from "./sheets.services";
 import * as StorageService from "./storage.services";
+import { usePrivacyStore } from "../src/stores/privacy.store";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { useSyncStore } from "../src/stores/sync.store";
 import { UserProfile } from "../types";
 import { hashPassword, verifyPassword } from "./crypto.services";
 
@@ -303,6 +306,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		};
 		setProfile(emptyProfile);
 		StorageService.saveProfile(emptyProfile);
+
+		usePrivacyStore.getState().reset();
+		useFinanceStore.getState().reset();
+		useSyncStore.getState().setIsSyncing(false);
 	};
 
 	return (

@@ -666,17 +666,6 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 
 		combinedData.forEach((item) => {
 			Object.keys(item).forEach((key) => {
-				// Security check: Never allow sensitive account details to become top-level columns
-				const sensitiveFields = [
-					"accountNumber",
-					"cardNumber",
-					"cvv",
-					"expiry",
-					"holderName",
-				];
-				if (sheetName === "Accounts" && sensitiveFields.includes(key)) {
-					return;
-				}
 				headerSet.add(key);
 			});
 		});

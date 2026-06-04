@@ -234,6 +234,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		if (err?.status === 401) {
 			console.warn("Unauthorized in getSpreadsheetId, clearing token");
 			clearGapiAccessToken();
+			throw err;
 		}
 		console.error("Error finding sheet", err);
 		return null;
@@ -249,6 +250,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		if (err?.status === 401) {
 			console.warn("Unauthorized in creating sheet, clearing token");
 			clearGapiAccessToken();
+			throw err;
 		}
 		console.error("Error creating sheet", err);
 		return null;
@@ -1339,7 +1341,10 @@ export const loadFromGoogleSheets = async (
 				);
 		});
 	} catch (err: any) {
-		if (err?.status === 401) clearGapiAccessToken();
+		if (err?.status === 401) {
+			clearGapiAccessToken();
+			throw err;
+		}
 		console.warn("Batch load failed", err);
 	}
 

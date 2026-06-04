@@ -666,10 +666,17 @@ export async function syncData(
       );
 
       useSyncStore.getState().showToast("Cloud sync complete", "success");
+    } else {
+      useSyncStore.getState().dismissToast();
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error("Sync failed", e);
-    useSyncStore.getState().showToast("Cloud sync failed. Working offline.", "info");
+    if (e?.status === 401) {
+      useSyncStore.getState().showToast("Session expired. Please sign in again.", "info");
+      loginWithGoogle();
+    } else {
+      useSyncStore.getState().showToast("Cloud sync failed. Working offline.", "info");
+    }
     useSyncStore.getState().setIsSyncing(false);
   } finally {
     useSyncStore.getState().setIsSyncing(false);

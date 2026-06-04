@@ -2,23 +2,11 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { useGoogleLogin, googleLogout } from "@react-oauth/google";
 import * as SheetService from "./sheets.services";
 import * as StorageService from "./storage.services";
-import { usePrivacyStore } from "../src/stores/privacy.store";
+import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useSyncStore } from "../src/stores/sync.store";
 import { UserProfile } from "../types";
 import { hashPassword, verifyPassword } from "./crypto.services";
-
-// Legacy vault profile type for backward compatibility
-type LegacyVaultProfile = UserProfile & {
-	isVaultEnabled?: boolean;
-	isVaultCreated?: boolean;
-	isVaultLocked?: boolean;
-	vaultSalt?: string;
-	encryptedVaultPassword?: string;
-	biometricCredId?: string;
-	biometricCredIds?: string[];
-	devices?: any[];
-};
 
 interface AuthContextType {
 	profile: UserProfile;
@@ -150,7 +138,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			}
 
 			setAuthStatus("Synchronizing profile...");
-			const legacyProfile = profile as LegacyVaultProfile;
 			const newProfile: UserProfile = {
 				...profile,
 				id: userId,
@@ -159,29 +146,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				photoUrl: userInfo.picture,
 				isLoggedIn: true,
 				offlineMode: false,
-				// Sync cloud settings if they exist
-				isSecurityEnabled:
-					cloudUser?.isSecurityEnabled ?? profile.isSecurityEnabled,
-				totpSecret: cloudUser?.totpSecret ?? profile.totpSecret,
-				totpEnabled: cloudUser?.totpEnabled ?? profile.totpEnabled,
-				privacyMode: cloudUser?.privacyMode ?? profile.privacyMode,
-				...({
-					isVaultEnabled:
-						cloudUser?.isSecurityEnabled ?? legacyProfile.isVaultEnabled,
-					isVaultCreated:
-						cloudUser?.isSecurityEnabled ?? legacyProfile.isVaultCreated,
-					isVaultLocked:
-						cloudUser?.isVaultLocked ?? legacyProfile.isVaultLocked,
-				} as any),
-				biometricCredIds: Array.from(
-					new Set([
-						...(cloudUser?.biometricCredIds || []),
-						...(profile.biometricCredIds || []),
-					]),
-				).filter(Boolean),
-				devices: Array.from(
-					new Set([...(cloudUser?.devices || []), ...(profile.devices || [])]),
-				),
+				schemaVersion: 2,
+				maskMode: cloudUser?.maskMode ?? profile.maskMode ?? false,
 				geminiApiKey: cloudUser?.geminiApiKey ?? profile.geminiApiKey ?? "",
 			};
 
@@ -214,7 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	const emailLogin = async (email: string, pass: string) => {
 		if (!SheetService.isClientReady()) {
 			throw new Error(
-				"Please connect Google first to access your secure vault.",
+				"Please connect Google first to access your data.",
 			);
 		}
 		const user = await SheetService.findUser(email);
@@ -223,31 +189,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		const isValid = await verifyPassword(pass, user.password);
 		if (!isValid) throw new Error("Invalid password.");
 
-		const legacyProfile = profile as LegacyVaultProfile;
 		const newProfile: UserProfile = {
 			...profile,
 			id: user.email,
 			name: user.name,
 			email: user.email,
 			isLoggedIn: true,
-			isSecurityEnabled: user.isSecurityEnabled ?? profile.isSecurityEnabled,
-			totpSecret: user.totpSecret ?? profile.totpSecret,
-			totpEnabled: user.totpEnabled ?? profile.totpEnabled,
-			privacyMode: user.privacyMode ?? profile.privacyMode,
-			...({
-				isVaultEnabled: user.isSecurityEnabled ?? legacyProfile.isVaultEnabled,
-				isVaultCreated: user.isSecurityEnabled ?? legacyProfile.isVaultCreated,
-				isVaultLocked: user.isVaultLocked ?? legacyProfile.isVaultLocked,
-			} as any),
-			biometricCredIds: Array.from(
-				new Set([
-					...(user.biometricCredIds || []),
-					...(profile.biometricCredIds || []),
-				]),
-			).filter(Boolean),
-			devices: Array.from(
-				new Set([...(user.devices || []), ...(profile.devices || [])]),
-			),
+			schemaVersion: 2,
+			maskMode: user.maskMode ?? profile.maskMode ?? false,
 			geminiApiKey: user.geminiApiKey ?? profile.geminiApiKey ?? "",
 		};
 		StorageService.saveProfile(newProfile);
@@ -257,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	const emailSignup = async (email: string, pass: string, name: string) => {
 		if (!SheetService.isClientReady()) {
 			throw new Error(
-				"Please connect Google first to initialize your secure vault.",
+				"Please connect Google first to initialize your account.",
 			);
 		}
 		const existing = await SheetService.findUser(email);
@@ -280,10 +229,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			email: "local@zenfinance",
 			isLoggedIn: true,
 			offlineMode: true,
+			schemaVersion: 2,
 		};
 		StorageService.saveProfile(offlineProfile);
 		setProfile(offlineProfile);
-		// No need for reload, state update is enough
 	};
 
 	const unlinkCloud = () => {
@@ -297,8 +246,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	const logout = () => {
 		googleLogout();
 		SheetService.clearGapiAccessToken();
-		localStorage.removeItem("vault_password_session");
-		sessionStorage.removeItem("vault_password_session");
 		const emptyProfile: UserProfile = {
 			name: "",
 			email: "",
@@ -307,7 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		setProfile(emptyProfile);
 		StorageService.saveProfile(emptyProfile);
 
-		usePrivacyStore.getState().reset();
+		useMaskStore.getState().reset();
 		useFinanceStore.getState().reset();
 		useSyncStore.getState().setIsSyncing(false);
 	};

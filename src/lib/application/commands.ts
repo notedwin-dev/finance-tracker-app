@@ -9,4 +9,4 @@ export { saveSavingPocket, deleteSavingPocket } from "./commands/pockets";
 export { recalculateBalances, recalculateBalances as recalculateBalancesCommand } from "./commands/balance";
 export { generateId } from "./commands/helpers";
 export { migrateData, resetAndSync, selectExistingSheet, loadData, syncData, processSubscriptions } from "./commands/sync";
-export { unlockVaultWithBiometrics, unlockVaultWithTOTP, enableBiometricUnlock, enableVault, lockVault, disableVault, decryptAccount, normalizeAccount, encryptAccount } from "./commands/privacy";
+export { runVaultSchemaMigration } from "./commands/migration";

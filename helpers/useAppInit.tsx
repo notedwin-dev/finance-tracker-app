@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../services/auth.services";
 import { getUSDToMYRRate } from "../services/exchange.services";
 import { getCryptoPrices } from "../services/coin.services";
@@ -10,7 +10,7 @@ import { loadData, syncData, processSubscriptions } from "../src/lib/application
 
 export function useAppInit() {
   const { profile, updateProfile, loginWithGoogle, isInitialized } = useAuth();
-  const hasSynced = useRef(false);
+  const [hasSynced, setHasSynced] = useState(false);
   const lastInitializedProfileId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export function useAppInit() {
     if (lastInitializedProfileId.current === profile.id) return;
     lastInitializedProfileId.current = profile.id;
 
-    hasSynced.current = false;
+    setHasSynced(false);
     loadData(profile).catch((e) => {
       console.error("loadData failed during init:", e);
       useSyncStore.getState().showToast(
@@ -41,33 +41,33 @@ export function useAppInit() {
 
   useEffect(() => {
     if (!isInitialized) return;
-    if (hasSynced.current || profile.offlineMode) {
+    if (hasSynced || profile.offlineMode) {
       const currentSubs = StorageService.getStoredSubscriptions();
       const store = useFinanceStore.getState();
       if (currentSubs && currentSubs.length > 0) {
         processSubscriptions(store.accounts, store.usdRate);
       }
     }
-  }, [hasSynced.current, profile.offlineMode, isInitialized]);
+  }, [hasSynced, profile.offlineMode, isInitialized]);
 
   useEffect(() => {
     if (
       profile.isLoggedIn &&
       isInitialized &&
       !profile.offlineMode &&
-      !hasSynced.current
+      !hasSynced
     ) {
       const doSync = async () => {
         try {
           await syncData(profile, updateProfile, loginWithGoogle);
-          hasSynced.current = true;
+          setHasSynced(true);
         } catch (e) {
           console.warn("Auto-sync failed, will retry on next dep change", e);
         }
       };
       doSync();
     }
-  }, [profile.isLoggedIn, isInitialized, profile.offlineMode]);
+  }, [profile.isLoggedIn, isInitialized, profile.offlineMode, hasSynced]);
 
   useEffect(() => {
     const isLocked = profile.isVaultLocked === true;

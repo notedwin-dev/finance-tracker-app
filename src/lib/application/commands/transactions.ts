@@ -36,17 +36,18 @@ export async function submitTransaction(
   const userId = profileId || "local";
   const isEdit = !!existingTx;
 
-  const needsConversion = accounts.some(
-    (a) => a.currency !== tx.currency && a.currency !== tx.currency,
-  );
   const txAccount = accounts.find((a) => a.id === tx.accountId);
-  if (
-    usdRate <= 0 &&
-    txAccount &&
-    tx.currency !== txAccount.currency &&
+  const toAccount = tx.toAccountId
+    ? accounts.find((a) => a.id === tx.toAccountId)
+    : undefined;
+
+  const isCrossCurrency = (acc: Account | undefined) =>
+    !!acc &&
+    acc.currency !== tx.currency &&
     (tx.currency === "USD" || tx.currency === "MYR") &&
-    (txAccount.currency === "USD" || txAccount.currency === "MYR")
-  ) {
+    (acc.currency === "USD" || acc.currency === "MYR");
+
+  if (usdRate <= 0 && (isCrossCurrency(txAccount) || isCrossCurrency(toAccount))) {
     showToast(
       "Exchange rate not loaded. Please wait a moment and try again.",
       "alert",

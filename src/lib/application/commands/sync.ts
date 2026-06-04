@@ -219,7 +219,13 @@ export function processSubscriptions(
   const dedupedNewTxs = newTxs.filter(
     (t) => !currentTxs.some((existing) => existing.id === t.id),
   );
-  if (dedupedNewTxs.length === 0) return;
+  if (dedupedNewTxs.length === 0) {
+    useSyncStore.getState().showToast(
+      "No new subscription payments to apply.",
+      "info",
+    );
+    return;
+  }
 
   const allTxs = [...currentTxs, ...dedupedNewTxs];
   const accUpdates = new Map<string, number>();
@@ -262,7 +268,7 @@ export function processSubscriptions(
   }
 
   useSyncStore.getState().showToast(
-    `Processed ${processedCount} subscription payments.`,
+    `Processed ${processedCount} subscription payments, ${dedupedNewTxs.length} new transactions applied.`,
     "success",
   );
 }

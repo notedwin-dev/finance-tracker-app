@@ -17,6 +17,9 @@ import {
 	CalculatorIcon,
 } from "@heroicons/react/24/outline";
 import { useSyncStore } from "../src/stores/sync.store";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { runVaultSchemaMigration } from "../src/lib/application/commands/migration";
+import { needsV1Migration } from "../src/lib/domain/migration";
 import { useMask } from "../helpers/useMask";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
@@ -56,6 +59,8 @@ const Profile: React.FC<Props> = ({
 	isSyncing = false,
 }) => {
 	const { maskText } = useMask();
+	const accounts = useFinanceStore((s) => s.accounts);
+	const showV1Migration = needsV1Migration(profile, accounts);
 
 	const handleRecalculateBalances = async () => {
 		if (onRecalculateBalances) {
@@ -423,6 +428,43 @@ const Profile: React.FC<Props> = ({
 							onClick={handleRecalculateBalances}
 							color="text-emerald-400"
 						/>
+						{showV1Migration && (
+							<SettingItem
+								icon={ArrowPathIcon}
+								label="Migrate v1 data"
+								description="One-time v1 → v2 cleanup. Strips legacy vault fields and syncs to cloud."
+								color="text-amber-400"
+								onClick={() => {
+									setConfirmationModal({
+										isOpen: true,
+										title: "Run v1 → v2 Migration",
+										description:
+											"This will strip legacy vault fields from your local data and push the cleaned data to Google Sheets. Run on the device with the most complete data, while online. This cannot be undone.",
+										confirmLabel: "Run Migration",
+										onConfirm: () => {
+											runVaultSchemaMigration()
+												.then(() =>
+													useSyncStore
+														.getState()
+														.showToast(
+															"Migration complete",
+															"success",
+														),
+												)
+												.catch((e) => {
+													console.error("Migration error:", e);
+													useSyncStore
+														.getState()
+														.showToast(
+															"Migration failed. Check console.",
+															"alert",
+														);
+												});
+										},
+									});
+								}}
+							/>
+						)}
 
 						<SectionHeader title="AI Assistant" />
 						<SettingItem

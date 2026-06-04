@@ -23,7 +23,7 @@ import {
 import { useAuth } from "../services/auth.services";
 import * as SheetService from "../services/sheets.services";
 import { useSyncStore } from "../src/stores/sync.store";
-import { usePrivacyStore } from "../src/stores/privacy.store";
+import { useMaskStore } from "../src/stores/mask.store";
 import { syncData } from "../src/lib/application/commands";
 import { useFinanceStore } from "../src/stores/finance.store";
 import AIInsights from "../components/AIInsights";
@@ -47,8 +47,8 @@ const MainLayout: React.FC = () => {
   const { profile, logout, updateProfile, loginWithGoogle } = useAuth();
   const toast = useSyncStore((s) => s.toast);
   const isSyncing = useSyncStore((s) => s.isSyncing);
-  const privacyMode = usePrivacyStore((s) => s.privacyMode);
-  const setPrivacyMode = usePrivacyStore((s) => s.setPrivacyMode);
+  const maskMode = useMaskStore((s) => s.maskMode);
+  const setMaskMode = useMaskStore((s) => s.setMaskMode);
 
   const categories = useFinanceStore((s) => s.categories);
   const goals = useFinanceStore((s) => s.goals);
@@ -223,7 +223,7 @@ const MainLayout: React.FC = () => {
           />
         </nav>
 
-        {/* Privacy Mode Toggle */}
+        {/* Mask Mode Toggle */}
         <div className="mt-auto space-y-3 pt-6 border-t border-gray-800">
           {!isOnline && (
             <div className="flex items-center gap-3 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl">
@@ -244,29 +244,29 @@ const MainLayout: React.FC = () => {
           )}
 
           <button
-            onClick={() => setPrivacyMode(!privacyMode)}
+            onClick={() => setMaskMode(!maskMode)}
             className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/50 hover:bg-gray-800/50 border border-gray-800/50 transition-all group"
           >
             <div className="flex items-center gap-3">
               <div className="text-gray-400 group-hover:text-indigo-400 transition-colors">
-                {privacyMode ? (
+                {maskMode ? (
                   <EyeSlashIcon className="w-5 h-5" />
                 ) : (
                   <EyeIcon className="w-5 h-5" />
                 )}
               </div>
               <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors">
-                Privacy Mode
+                Mask Mode
               </span>
             </div>
             <div
               className={`w-8 h-4 rounded-full relative transition-colors ${
-                privacyMode ? "bg-indigo-500" : "bg-gray-700"
+                maskMode ? "bg-indigo-500" : "bg-gray-700"
               }`}
             >
               <div
                 className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
-                  privacyMode ? "right-1" : "left-1"
+                  maskMode ? "right-1" : "left-1"
                 }`}
               />
             </div>
@@ -301,14 +301,14 @@ const MainLayout: React.FC = () => {
               </div>
             )}
             <button
-              onClick={() => setPrivacyMode(!privacyMode)}
+              onClick={() => setMaskMode(!maskMode)}
               className={`p-2 rounded-xl transition-all ${
-                privacyMode
+                maskMode
                   ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"
                   : "bg-surface border border-gray-800 text-gray-400"
               }`}
             >
-              {privacyMode ? (
+              {maskMode ? (
                 <EyeSlashIcon className="w-5 h-5" />
               ) : (
                 <EyeIcon className="w-5 h-5" />

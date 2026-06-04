@@ -14,7 +14,8 @@ import {
 	MagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
 import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helper";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
+import { usePrivacyStore } from "../src/stores/privacy.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { batchDeleteTransaction, batchEditTransactions } from "../src/lib/application/commands";
 import { cn } from "./history/cn";
@@ -53,11 +54,8 @@ const History: React.FC<Props> = ({
 	onEditTransaction,
 	onDeleteTransaction,
 }) => {
-	const {
-		maskAmount,
-		maskText,
-		privacyMode,
-	} = useData();
+	const { maskAmount, maskText } = useMask();
+	const privacyMode = usePrivacyStore((s) => s.privacyMode);
 	const usdRate = useFinanceStore((s) => s.usdRate);
 	const { pots } = useFinanceStore();
 

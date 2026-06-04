@@ -3,11 +3,11 @@ import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import Modal from "../components/Modal";
 import BulkImportModal from "../components/BulkImportModal";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
 import { usePrivacyStore } from "../src/stores/privacy.store";
-import { deleteTransaction, bulkImportTransactions } from "../src/lib/application/commands";
+import { deleteTransaction, bulkImportTransactions, unlockVaultWithTOTP, unlockVaultWithBiometrics, loadData } from "../src/lib/application/commands";
 import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
 import * as SheetService from "../services/sheets.services";
@@ -57,7 +57,7 @@ ChartJS.register(
 const AccountPage: React.FC = () => {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
-	const { profile } = useAuth();
+	const { profile, updateProfile } = useAuth();
 
 	useEffect(() => {
 		window.scrollTo(0, 0);
@@ -67,12 +67,7 @@ const AccountPage: React.FC = () => {
 	const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
 	const { displayCurrency } = useUIStore();
 	const { isVaultEnabled, isVaultUnlocked } = usePrivacyStore();
-	const {
-		maskAmount,
-		maskText,
-		unlockVaultWithTOTP,
-		unlockVaultWithBiometrics,
-	} = useData();
+	const { maskAmount, maskText } = useMask();
 	const { transactions, categories, accounts, pots, pockets } =
 		useFinanceStore();
 	const {
@@ -101,9 +96,11 @@ const AccountPage: React.FC = () => {
 		confirmLabel: "Confirm",
 	});
 
+	const boundLoadData = (forceUnlock?: boolean) => loadData(profile, forceUnlock);
+
 	const handleVaultUnlock = async () => {
 		if (!vaultTOTPCode) return;
-		const success = await unlockVaultWithTOTP(vaultTOTPCode);
+		const success = await unlockVaultWithTOTP(vaultTOTPCode, profile, updateProfile, boundLoadData);
 		if (success) {
 			setShowUnlockModal(false);
 			setVaultTOTPCode("");
@@ -114,7 +111,7 @@ const AccountPage: React.FC = () => {
 	};
 
 	const handleBiometricUnlock = async () => {
-		const success = await unlockVaultWithBiometrics();
+		const success = await unlockVaultWithBiometrics(profile, updateProfile, boundLoadData);
 		if (success) {
 			setShowUnlockModal(false);
 			setUnlockError("");
@@ -725,7 +722,6 @@ const AccountPage: React.FC = () => {
 												{maskText(
 													(account.details as AccountDetails).holderName!,
 													true,
-													true,
 												)}
 											</p>
 										</div>
@@ -739,7 +735,6 @@ const AccountPage: React.FC = () => {
 												<p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
 													{maskText(
 														(account.details as AccountDetails).accountNumber!,
-														true,
 														true,
 													)}
 												</p>
@@ -774,7 +769,6 @@ const AccountPage: React.FC = () => {
 												<p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
 													{maskText(
 														(account.details as AccountDetails).cardNumber!,
-														true,
 														true,
 													)}
 												</p>

@@ -76,8 +76,8 @@ const initialState: FinanceState = {
   pots: [],
   pockets: [],
   chatSessions: [],
-  usdRate: 4.45,
-  cryptoPrices: { BTC: 65000, ETH: 3500 },
+  usdRate: 0,
+  cryptoPrices: { BTC: 0, ETH: 0 },
   exchangeRate: null,
 };
 

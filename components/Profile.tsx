@@ -30,7 +30,17 @@ import {
 	ShieldCheckIcon,
 	ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
-import { useData } from "../context/DataContext";
+import { useSyncStore } from "../src/stores/sync.store";
+import { usePrivacyStore } from "../src/stores/privacy.store";
+import { useMask } from "../helpers/useMask";
+import {
+	unlockVaultWithBiometrics,
+	unlockVaultWithTOTP,
+	lockVault,
+	enableVault,
+	disableVault,
+	loadData,
+} from "../src/lib/application/commands";
 import { getDeviceId } from "../services/storage.services";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
@@ -72,18 +82,11 @@ const Profile: React.FC<Props> = ({
 	// Cast to legacy type for backward compatibility
 	const profile = rawProfile as LegacyVaultProfile;
 
-	const {
-		maskText,
-		isVaultEnabled,
-		isVaultCreated,
-		isVaultUnlocked,
-		unlockVaultWithTOTP,
-		unlockVaultWithBiometrics,
-		lockVault,
-		enableVault,
-		disableVault,
-		showToast,
-	} = useData();
+	const { maskText } = useMask();
+	const isVaultEnabled = usePrivacyStore((s) => s.isVaultEnabled);
+	const isVaultCreated = usePrivacyStore((s) => s.isVaultCreated);
+	const isVaultUnlocked = usePrivacyStore((s) => s.isVaultUnlocked);
+	const showToast = useSyncStore((s) => s.showToast);
 
 	const handleRecalculateBalances = async () => {
 		if (onRecalculateBalances) {
@@ -148,7 +151,11 @@ const Profile: React.FC<Props> = ({
 
 			// Try biometric unlock
 			try {
-				const success = await unlockVaultWithBiometrics();
+				const success = await unlockVaultWithBiometrics(
+					profile,
+					onUpdate,
+					(forceUnlock) => loadData(profile, forceUnlock),
+				);
 				if (success) {
 					showToast("Vault unlocked with Biometrics!", "success");
 					setShowVaultPrompt(false);
@@ -212,7 +219,11 @@ const Profile: React.FC<Props> = ({
 			isDestructive: true,
 			onConfirm: async () => {
 				if (isVaultEnabled) {
-					await disableVault();
+					await disableVault(
+						profile,
+						onUpdate,
+						(forceUnlock) => loadData(profile, forceUnlock),
+					);
 				}
 				onUpdate({
 					totpSecret: "",
@@ -462,8 +473,12 @@ const Profile: React.FC<Props> = ({
 													}
 													setIsSyncingLocal(true);
 													try {
-														await enableVault();
-														setVaultTOTPCode("");
+					await enableVault(
+						profile,
+						onUpdate,
+						(forceUnlock) => loadData(profile, forceUnlock),
+					);
+					setVaultTOTPCode("");
 														setShowVaultPrompt(false);
 
 														// Check biometrics availability
@@ -544,7 +559,13 @@ const Profile: React.FC<Props> = ({
 													setVaultError("");
 													try {
 														const success =
-															await unlockVaultWithTOTP(vaultTOTPCode);
+															await unlockVaultWithTOTP(
+																vaultTOTPCode,
+																profile,
+																onUpdate,
+																(forceUnlock) =>
+																	loadData(profile, forceUnlock),
+															);
 														if (success) {
 															setVaultTOTPCode("");
 															showToast("Vault unlocked!", "success");
@@ -573,7 +594,11 @@ const Profile: React.FC<Props> = ({
 												<button
 													disabled={isSyncingLocal}
 													onClick={() => {
-														lockVault();
+														lockVault(
+															profile,
+															onUpdate,
+															() => loadData(profile),
+														);
 														setShowVaultPrompt(false);
 													}}
 													className="w-full bg-surface text-white border border-gray-800 font-black py-4 rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
@@ -593,7 +618,12 @@ const Profile: React.FC<Props> = ({
 															onConfirm: async () => {
 																setIsSyncingLocal(true);
 																try {
-																	await disableVault();
+																	await disableVault(
+																		profile,
+																		onUpdate,
+																		(forceUnlock) =>
+																			loadData(profile, forceUnlock),
+																	);
 																	setShowVaultPrompt(false);
 																	showToast("Vault disabled", "info");
 																} finally {

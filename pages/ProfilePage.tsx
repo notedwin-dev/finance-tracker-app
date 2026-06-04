@@ -2,9 +2,9 @@ import React from "react";
 import { useOutletContext } from "react-router-dom";
 import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
-import { useData } from "../context/DataContext";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { recalculateBalances } from "../src/lib/application/commands";
+import { useSyncStore } from "../src/stores/sync.store";
+import { recalculateBalances, migrateData, resetAndSync, selectExistingSheet, syncData } from "../src/lib/application/commands";
 import * as SheetService from "../services/sheets.services";
 
 const ProfilePage: React.FC = () => {
@@ -20,13 +20,7 @@ const ProfilePage: React.FC = () => {
     pockets,
     usdRate,
   } = useFinanceStore();
-  const {
-    isSyncing,
-    syncData,
-    handleSelectExistingSheet,
-    handleResetAndSync,
-    handleMigrateData,
-  } = useData();
+  const isSyncing = useSyncStore((s) => s.isSyncing);
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
 
@@ -44,9 +38,11 @@ const ProfilePage: React.FC = () => {
       );
     }
 
+    const sanitizedAccounts = accounts.map(({ details, ...rest }) => rest);
+
     const data = {
       profile,
-      accounts,
+      accounts: sanitizedAccounts,
       transactions: filteredTransactions,
       categories,
       goals,
@@ -59,6 +55,7 @@ const ProfilePage: React.FC = () => {
         startDate: startDate || "all",
         endDate: endDate || "all",
       },
+      _note: "Encrypted account details (card numbers, account numbers, etc.) are intentionally excluded from this export for privacy. They remain encrypted in your cloud backup and local storage.",
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
@@ -90,6 +87,18 @@ const ProfilePage: React.FC = () => {
     }
   };
 
+  const handleMigrateData = async () => {
+    await migrateData();
+  };
+
+  const handleResetAndSync = async () => {
+    await resetAndSync(profile, updateProfile);
+  };
+
+  const handleSelectExistingSheet = async (sheetId?: string) => {
+    await selectExistingSheet(sheetId, () => syncData(profile, updateProfile, loginWithGoogle));
+  };
+
   return (
     <div className="animate-fadeIn max-w-2xl mx-auto w-full">
       <div className="mb-8 px-4 sm:px-0">
@@ -107,7 +116,7 @@ const ProfilePage: React.FC = () => {
         onManageSubscriptions={() => setShowSubscriptionManager(true)}
         onExport={handleExportData}
         onMigrate={handleMigrateData}
-        onSync={syncData}
+        onSync={() => syncData(profile, updateProfile, loginWithGoogle)}
         onUnlinkCloud={unlinkCloud}
         onResetSync={handleResetAndSync}
         onSelectSheet={handleSelectExistingSheet}

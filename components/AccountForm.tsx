@@ -6,7 +6,8 @@ import {
   LockClosedIcon,
   FingerPrintIcon,
 } from "@heroicons/react/24/outline";
-import { useData } from "../context/DataContext";
+import { usePrivacyStore } from "../src/stores/privacy.store";
+import { unlockVaultWithTOTP, unlockVaultWithBiometrics, loadData } from "../src/lib/application/commands";
 import { useAuth } from "../services/auth.services";
 import * as SecurityService from "../services/security.services";
 import Modal from "./Modal";
@@ -26,13 +27,9 @@ const AccountForm: React.FC<Props> = ({
   onDelete,
   onClose,
 }) => {
-  const { profile } = useAuth();
-  const {
-    isVaultEnabled,
-    isVaultUnlocked,
-    unlockVaultWithTOTP,
-    unlockVaultWithBiometrics,
-  } = useData();
+  const { profile, updateProfile } = useAuth();
+  const isVaultEnabled = usePrivacyStore((s) => s.isVaultEnabled);
+  const isVaultUnlocked = usePrivacyStore((s) => s.isVaultUnlocked);
   const [activeTab, setActiveTab] = useState<"PRESETS" | "CUSTOM">("PRESETS");
 
   // Form State
@@ -74,9 +71,11 @@ const AccountForm: React.FC<Props> = ({
     confirmLabel: "Confirm",
   });
 
+  const boundLoadData = (forceUnlock?: boolean) => loadData(profile, forceUnlock);
+
   const handleVaultUnlock = async () => {
     if (!vaultTOTPCode) return;
-    const success = await unlockVaultWithTOTP(vaultTOTPCode);
+    const success = await unlockVaultWithTOTP(vaultTOTPCode, profile, updateProfile, boundLoadData);
     if (success) {
       setShowUnlockModal(false);
       setVaultTOTPCode("");
@@ -87,7 +86,7 @@ const AccountForm: React.FC<Props> = ({
   };
 
   const handleBiometricUnlock = async () => {
-    const success = await unlockVaultWithBiometrics();
+    const success = await unlockVaultWithBiometrics(profile, updateProfile, boundLoadData);
     if (success) {
       setShowUnlockModal(false);
       setUnlockError("");

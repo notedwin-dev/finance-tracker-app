@@ -36,6 +36,25 @@ export async function submitTransaction(
   const userId = profileId || "local";
   const isEdit = !!existingTx;
 
+  const txAccount = accounts.find((a) => a.id === tx.accountId);
+  const toAccount = tx.toAccountId
+    ? accounts.find((a) => a.id === tx.toAccountId)
+    : undefined;
+
+  const isCrossCurrency = (acc: Account | undefined) =>
+    !!acc &&
+    acc.currency !== tx.currency &&
+    (tx.currency === "USD" || tx.currency === "MYR") &&
+    (acc.currency === "USD" || acc.currency === "MYR");
+
+  if (usdRate <= 0 && (isCrossCurrency(txAccount) || isCrossCurrency(toAccount))) {
+    showToast(
+      "Exchange rate not loaded. Please wait a moment and try again.",
+      "alert",
+    );
+    return;
+  }
+
   const accountUpdates = new Map<string, number>();
   const potUpdates = new Map<string, number>();
   const pocketUpdates = new Map<string, number>();

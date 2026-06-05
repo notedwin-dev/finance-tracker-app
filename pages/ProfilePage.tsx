@@ -45,9 +45,9 @@ const ProfilePage: React.FC = () => {
       if (Array.isArray(obj)) return obj.map(stripSensitive);
       if (obj && typeof obj === "object") {
         return Object.fromEntries(
-          Object.entries(obj as Record<string, unknown>).filter(
-            ([k]) => !SENSITIVE_KEYS.test(k),
-          ),
+          Object.entries(obj as Record<string, unknown>)
+            .filter(([k]) => !SENSITIVE_KEYS.test(k))
+            .map(([k, v]) => [k, stripSensitive(v)]),
         );
       }
       return obj;

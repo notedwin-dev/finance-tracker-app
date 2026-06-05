@@ -165,9 +165,7 @@ const History: React.FC<Props> = ({
 				try {
 					await onDeleteTransaction(t.id);
 					swipe.setSwipedId(null);
-				} catch {
-					// Keep swipe open on failure so user can retry
-				}
+				} catch {}
 			}
 		},
 		[onDeleteTransaction, swipe.setSwipedId],

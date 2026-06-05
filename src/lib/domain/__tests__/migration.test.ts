@@ -174,16 +174,17 @@ describe("stripVaultFromProfile", () => {
   });
 });
 
+const FIXED_TS = "2026-06-04T00:00:00.000Z";
+
 describe("migrateSchemaV1toV2", () => {
   it("sets schemaVersion to current", () => {
-    const { profile } = migrateSchemaV1toV2([], baseProfile);
+    const { profile } = migrateSchemaV1toV2([], baseProfile, FIXED_TS);
     expect(profile.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
   });
 
   it("sets profile.updatedAt to the provided timestamp", () => {
-    const fixed = "2026-06-04T00:00:00.000Z";
-    const { profile } = migrateSchemaV1toV2([], baseProfile, fixed);
-    expect(profile.updatedAt).toBe(fixed);
+    const { profile } = migrateSchemaV1toV2([], baseProfile, FIXED_TS);
+    expect(profile.updatedAt).toBe(FIXED_TS);
   });
 
   it("cleans accounts and profile in one pass", () => {
@@ -192,6 +193,7 @@ describe("migrateSchemaV1toV2", () => {
     const { accounts: cleanedAccs, profile: cleanedProf } = migrateSchemaV1toV2(
       accounts,
       profile,
+      FIXED_TS,
     );
     const accBag = cleanedAccs[0] as unknown as Record<string, unknown>;
     const profBag = cleanedProf as unknown as Record<string, unknown>;
@@ -207,13 +209,13 @@ describe("migrateSchemaV1toV2", () => {
     const { profile, accounts } = migrateSchemaV1toV2([], {
       ...baseProfile,
       schemaVersion: 2,
-    });
+    }, FIXED_TS);
     expect(profile.schemaVersion).toBe(2);
     expect(accounts).toEqual([]);
   });
 
   it("preserves unmigrated account shape", () => {
-    const { accounts } = migrateSchemaV1toV2([baseAccount], baseProfile);
+    const { accounts } = migrateSchemaV1toV2([baseAccount], baseProfile, FIXED_TS);
     expect(accounts[0]).toEqual(baseAccount);
   });
 });

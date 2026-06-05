@@ -55,7 +55,7 @@ export function stripVaultFromProfile(profile: UserProfile): UserProfile {
 export function migrateSchemaV1toV2(
   accounts: Account[],
   profile: UserProfile,
-  updatedAt: string = new Date().toISOString(),
+  updatedAt: string,
 ): { accounts: Account[]; profile: UserProfile } {
   const cleanedAccounts = accounts.map(stripVaultFromAccount);
   const cleanedProfile = stripVaultFromProfile(profile);

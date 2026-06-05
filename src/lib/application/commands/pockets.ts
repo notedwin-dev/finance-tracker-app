@@ -20,8 +20,8 @@ export async function saveSavingPocket(
   const updated = isEdit
     ? existingPockets.map((p) => (p.id === pocket.id ? pocketWithUser : p))
     : [...existingPockets, pocketWithUser];
-  store.setPockets(updated);
   await StorageService.savePockets(updated);
+  store.setPockets(updated);
   showToast(isEdit ? "Saving pocket updated" : "Saving pocket saved", "success");
 }
 
@@ -38,13 +38,10 @@ export async function deleteSavingPocket(
   store.setPockets(updatedPockets);
 
   const updatedTransactions = existingTransactions.map((t) => {
-    if (t.savingPocketId === id) {
-      return { ...t, savingPocketId: null as string | null };
-    }
-    if (t.toSavingPocketId === id) {
-      return { ...t, toSavingPocketId: null as string | null };
-    }
-    return t;
+    const newT = { ...t };
+    if (newT.savingPocketId === id) newT.savingPocketId = null as string | null;
+    if (newT.toSavingPocketId === id) newT.toSavingPocketId = null as string | null;
+    return newT;
   });
   await StorageService.saveTransactions(updatedTransactions);
   store.setTransactions(updatedTransactions);

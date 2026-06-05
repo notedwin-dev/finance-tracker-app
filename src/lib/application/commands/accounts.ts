@@ -62,10 +62,15 @@ export async function saveAccount(
 
   if (newTxs.length > 0) {
     const updatedTxs = [...newTxs, ...existingTransactions];
-    await StorageService.saveTransactions(updatedTxs);
     await StorageService.saveAccounts(updated);
-    store.setTransactions(updatedTxs);
-    store.setAccounts(updated);
+    try {
+      await StorageService.saveTransactions(updatedTxs);
+      store.setTransactions(updatedTxs);
+      store.setAccounts(updated);
+    } catch (error) {
+      await StorageService.saveAccounts(existingAccounts);
+      throw error;
+    }
   } else {
     await StorageService.saveAccounts(updated);
     store.setAccounts(updated);

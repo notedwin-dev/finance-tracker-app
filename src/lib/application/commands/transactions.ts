@@ -518,6 +518,8 @@ export async function batchEditTransactions(
     (k) => updates[k as keyof Transaction] === undefined,
   );
 
+  const sharedTransferFields = ["amount", "currency", "date", "fee", "feeType", "note", "shopName"] as const;
+
   ids.forEach((id) => {
     const originalTx = txMap.get(id);
     if (!originalTx) return;
@@ -541,7 +543,9 @@ export async function batchEditTransactions(
         cleanUpdates.accountId !== undefined ||
         cleanUpdates.toAccountId !== undefined ||
         cleanUpdates.savingPocketId !== undefined ||
-        cleanUpdates.toSavingPocketId !== undefined)
+        cleanUpdates.toSavingPocketId !== undefined ||
+        nullifiedFields.some((f) => (sharedTransferFields as readonly string[]).includes(f)) ||
+        Object.keys(cleanUpdates).some((k) => (sharedTransferFields as readonly string[]).includes(k)))
     ) {
       const partner = transactions.find((t) => t.id === originalTx.linkedTransactionId);
       if (partner) {
@@ -558,7 +562,7 @@ export async function batchEditTransactions(
         if (cleanUpdates.toSavingPocketId !== undefined) {
           partnerUpdates.savingPocketId = cleanUpdates.toSavingPocketId;
         }
-        const sharedFields = ["amount", "currency", "date", "fee", "feeType", "note", "shopName"] as const;
+        const sharedFields = sharedTransferFields;
         for (const field of sharedFields) {
           if (cleanUpdates[field as keyof typeof cleanUpdates] !== undefined) {
             partnerUpdates[field] = cleanUpdates[field as keyof typeof cleanUpdates];

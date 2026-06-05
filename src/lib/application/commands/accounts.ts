@@ -62,15 +62,15 @@ export async function saveAccount(
 
   if (newTxs.length > 0) {
     const updatedTxs = [...newTxs, ...existingTransactions];
-    await StorageService.saveAccounts(updated);
     try {
       await StorageService.saveTransactions(updatedTxs);
-      store.setTransactions(updatedTxs);
-      store.setAccounts(updated);
-    } catch (error) {
+      await StorageService.saveAccounts(updated);
+    } catch (err) {
       await StorageService.saveAccounts(existingAccounts);
-      throw error;
+      throw err;
     }
+    store.setTransactions(updatedTxs);
+    store.setAccounts(updated);
   } else {
     await StorageService.saveAccounts(updated);
     store.setAccounts(updated);
@@ -87,7 +87,9 @@ export async function deleteAccount(
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
 
-  const referencing = existingTransactions.filter((t) => t.accountId === accountId);
+  const referencing = existingTransactions.filter(
+    (t) => t.accountId === accountId || t.toAccountId === accountId,
+  );
   if (referencing.length > 0) {
     showToast(`Cannot delete: ${referencing.length} transaction(s) reference this account`, "alert");
     return;

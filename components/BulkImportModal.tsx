@@ -15,6 +15,7 @@ import {
 import { parseBankStatement } from "../services/gemini.services";
 import { Transaction, TransactionType } from "../types";
 import { useAuth } from "../services/auth.services";
+import { logger } from "../src/lib/application/logger";
 
 interface Props {
   isOpen: boolean;
@@ -102,7 +103,7 @@ const BulkImportModal: React.FC<Props> = ({
       );
       setParsedTransactions(results);
     } catch (err: any) {
-      console.error(err);
+      logger.error(err);
       setError(
         err.message ||
           "Failed to parse the bank statement. Please try a different file.",

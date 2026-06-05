@@ -3,6 +3,7 @@ import {
   DrivePicker,
   DrivePickerDocsView,
 } from "@googleworkspace/drive-picker-react";
+import { logger } from "../src/lib/application/logger";
 
 interface GoogleDrivePickerProps {
   onPicked: (fileId: string) => void;
@@ -30,34 +31,38 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
   const appId = import.meta.env.VITE_GOOGLE_APP_ID;
 
   if (!clientId || !apiKey) {
-    console.error(
+    logger.error(
       "GoogleDrivePicker: Missing VITE_GOOGLE_CLIENT_ID or VITE_GOOGLE_API_KEY",
     );
   }
   if (!appId) {
-    console.warn(
+    logger.warn(
       "GoogleDrivePicker: Missing VITE_GOOGLE_APP_ID - this may cause integration issues",
     );
   }
+
+  const maskFileId = (fileId: string): string => {
+    return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
+  };
 
   const handlePicked = (e: CustomEvent) => {
     const data = e.detail;
     if (data.docs && data.docs.length > 0) {
       const fileId = data.docs[0].id;
-      console.log("User selected spreadsheet via picker:", fileId);
+      logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
       onPicked(fileId);
     }
     setIsPickerOpen(false);
   };
 
   const handleCanceled = () => {
-    console.log("Drive picker canceled");
+    logger.log("Drive picker canceled");
     onCancel?.();
     setIsPickerOpen(false);
   };
 
   const handleOauthError = (e: CustomEvent) => {
-    console.error("OAuth error in Drive Picker:", e.detail);
+    logger.error("OAuth error in Drive Picker:", e.detail);
     setIsPickerOpen(false);
   };
 
@@ -65,7 +70,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
     if (!disabled && clientId && apiKey) {
       setIsPickerOpen(true);
     } else {
-      console.error("Drive Picker: Missing clientId or apiKey");
+      logger.error("Drive Picker: Missing clientId or apiKey");
     }
   };
 
@@ -119,11 +124,15 @@ export const useGoogleDrivePicker = () => {
     });
   };
 
+  const maskFileId = (fileId: string): string => {
+    return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
+  };
+
   const handlePicked = (e: CustomEvent) => {
     const data = e.detail;
     if (data.docs && data.docs.length > 0) {
       const fileId = data.docs[0].id;
-      console.log("User selected spreadsheet via picker:", fileId);
+      logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
       pickerCallback?.(fileId);
     } else {
       pickerCallback?.(null);
@@ -133,7 +142,7 @@ export const useGoogleDrivePicker = () => {
   };
 
   const handleCanceled = () => {
-    console.log("Drive picker canceled");
+    logger.log("Drive picker canceled");
     pickerCallback?.(null);
     setIsPickerOpen(false);
     setPickerCallback(null);
@@ -148,7 +157,7 @@ export const useGoogleDrivePicker = () => {
         onPicked={handlePicked}
         onCanceled={handleCanceled}
         onOauthError={(e) => {
-          console.error("OAuth error:", e.detail);
+          logger.error("OAuth error:", e.detail);
           pickerCallback?.(null);
           setIsPickerOpen(false);
           setPickerCallback(null);

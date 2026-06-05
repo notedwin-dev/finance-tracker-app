@@ -5,6 +5,7 @@ import * as StorageService from "../../../../services/storage.services";
 import * as SheetService from "../../../../services/sheets.services";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { migrateSchemaV1toV2, needsV1Migration } from "../../domain/migration";
+import { logger } from "../logger";
 
 export async function runVaultSchemaMigration(): Promise<void> {
   const profile = StorageService.getStoredProfile();
@@ -35,7 +36,7 @@ export async function runVaultSchemaMigration(): Promise<void> {
       cleanedProfile,
     );
   } catch (e) {
-    console.warn(
+    logger.warn(
       "Vault migration cloud push failed; will retry on next sync:",
       e,
     );

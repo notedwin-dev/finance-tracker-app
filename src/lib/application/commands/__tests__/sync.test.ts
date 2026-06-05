@@ -85,6 +85,7 @@ describe("resetAndSync 401 handling", () => {
     testTime += 10_000;
     vi.setSystemTime(new Date(testTime));
     vi.clearAllMocks();
+    vi.stubGlobal("confirm", () => true);
     useSyncStore.getState().reset();
     vi.mocked(StorageService.getStoredProfile).mockReturnValue({
       ...baseProfile,

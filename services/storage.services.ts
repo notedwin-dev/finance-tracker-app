@@ -11,6 +11,7 @@ import {
 } from "../types";
 import * as SheetService from "./sheets.services";
 import { getKey as getBaseKey } from "../helpers/storage.helper";
+import { logger } from "../src/lib/application/logger";
 
 export const KEYS = {
   ACCOUNTS: "zenfinance_accounts_v2",
@@ -78,7 +79,7 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
         targetData = [...targetData, ...itemsToMigrate];
         localStorage.setItem(targetKey, JSON.stringify(targetData));
         hasChanges = true;
-        console.log(
+        logger.log(
           `Migrated ${itemsToMigrate.length} items from guest into account`,
         );
       }
@@ -86,7 +87,7 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
       // Clear legacy key ONLY if migration succeeded or it was effectively merged
       localStorage.removeItem(key);
     } catch (e) {
-      console.error(`Error migrating ${sheetName}`, e);
+      logger.error(`Error migrating ${sheetName}`, e);
     }
   };
 
@@ -159,11 +160,11 @@ export const importFromKey = (sourceKey: string, targetBaseKey: string) => {
     if (toImport.length > 0) {
       const merged = [...targetData, ...toImport];
       localStorage.setItem(targetKey, JSON.stringify(merged));
-      console.log(`Rescued ${toImport.length} items from ${sourceKey}`);
+      logger.log(`Rescued ${toImport.length} items from ${sourceKey}`);
       return true;
     }
   } catch (e) {
-    console.error("Rescue failed for key", sourceKey, e);
+    logger.error("Rescue failed for key", sourceKey, e);
   }
   return false;
 };

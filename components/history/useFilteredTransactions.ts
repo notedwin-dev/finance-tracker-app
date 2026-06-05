@@ -6,6 +6,7 @@ import {
   normalizeDate,
 } from "../../helpers/transactions.helper";
 import { PAGE_SIZE } from "./constants";
+import { logger } from "../../src/lib/application/logger";
 
 interface UseFilteredTransactionsResult {
   filteredTransactions: Transaction[];
@@ -64,7 +65,7 @@ export function useFilteredTransactions(
     try {
       return groupTransactions(filteredTransactions);
     } catch (e) {
-      console.warn("Failed to group transactions", e);
+      logger.warn("Failed to group transactions", e);
       return [];
     }
   }, [filteredTransactions]);

@@ -1,4 +1,5 @@
 import { ExchangeRateData } from "../types";
+import { logger } from "../src/lib/application/logger";
 
 const BASE_URL = "https://api.data.gov.my/data-catalogue/";
 const CACHE_KEY = "zenfinance_usd_myr_rate";
@@ -43,7 +44,7 @@ const getHistoricalRates = async (
       }));
     }
   } catch (err) {
-    console.error("Failed to fetch historical rates:", err);
+    logger.error("Failed to fetch historical rates:", err);
   }
   return [];
 };
@@ -147,7 +148,7 @@ export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
       return result;
     }
   } catch (error) {
-    console.error("Failed to fetch exchange rate:", error);
+    logger.error("Failed to fetch exchange rate:", error);
   }
 
   // 4. Final Fallback

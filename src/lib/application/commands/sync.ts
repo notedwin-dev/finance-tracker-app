@@ -6,6 +6,7 @@ import type { UserProfile, Account, Transaction, Subscription } from "../../../.
 import { TransactionType } from "../../../../types";
 import { normalizeDate, parseDateSafe } from "../../../../helpers/transactions.helper";
 import { stripVaultFromAccount } from "../../domain/migration";
+import { logger } from "../logger";
 
 export async function migrateData(): Promise<void> {
   const { showToast } = useSyncStore.getState();
@@ -38,26 +39,26 @@ export async function resetAndSync(
 
   setIsSyncing(true);
 
+  const keysToKeep = [
+    "google_access_token",
+    "google_token_expiry",
+    "google_refresh_token",
+    "encrypted_vault_key",
+    "device_id",
+    "zenfinance_selected_sheet_id",
+    StorageService.KEYS.PROFILE,
+  ];
+  const saved: Record<string, string | null> = {};
+  keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
+  localStorage.clear();
+  keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
+
   try {
     const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
     if (!cloudData || !cloudData.accounts) {
       showToast("No cloud data found. Cannot reset.", "alert");
       return;
     }
-
-    const keysToKeep = [
-      "google_access_token",
-      "google_token_expiry",
-      "google_refresh_token",
-      "encrypted_vault_key",
-      "device_id",
-      "zenfinance_selected_sheet_id",
-      StorageService.KEYS.PROFILE,
-    ];
-    const saved: Record<string, string | null> = {};
-    keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-    localStorage.clear();
-    keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 
     if (cloudData.profile) {
       const mergedProfile = { ...profile, ...cloudData.profile };
@@ -103,7 +104,7 @@ export async function selectExistingSheet(
       if (onSync) await onSync();
     }
   } catch (e) {
-    console.error("Failed to select sheet", e);
+    logger.error("Failed to select sheet", e);
     showToast("Could not link spreadsheet.", "alert");
   }
 }
@@ -158,7 +159,7 @@ export function processSubscriptions(
 
   const rateValid = usdRate > 0 && isFinite(usdRate);
   if (!rateValid) {
-    console.warn(
+    logger.warn(
       "processSubscriptions: usdRate invalid, cross-currency subs will be skipped to avoid silent balance corruption",
     );
   }
@@ -167,7 +168,7 @@ export function processSubscriptions(
     if (!sub.active) return sub;
     let nextDateStr = normalizeDate(sub.nextPaymentDate);
     if (!nextDateStr) {
-      console.warn(`processSubscriptions: invalid nextPaymentDate for sub ${sub.id}, skipping`);
+      logger.warn(`processSubscriptions: invalid nextPaymentDate for sub ${sub.id}, skipping`);
       return sub;
     }
     let hasProcessed = false;
@@ -199,7 +200,7 @@ export function processSubscriptions(
       nextDateStr = d.toLocaleDateString("en-CA");
     }
     if (iterations >= MAX_ITERATIONS) {
-      console.warn(
+      logger.warn(
         `processSubscriptions: sub ${sub.id} hit iteration cap; nextPaymentDate may be corrupted`,
         sub.nextPaymentDate,
       );
@@ -236,7 +237,7 @@ export function processSubscriptions(
     const acc = accounts.find((a) => a.id === t.accountId);
     if (!acc) return;
     if (t.currency !== acc.currency && !rateValid) {
-      console.warn(
+      logger.warn(
         `processSubscriptions: skipping cross-currency sub for ${t.id} due to invalid usdRate`,
       );
       return;
@@ -286,7 +287,7 @@ export async function syncData(
   const now = Date.now();
   const MIN_SYNC_INTERVAL = 5000;
   if (now - lastSyncTime < MIN_SYNC_INTERVAL) {
-    console.log(
+    logger.log(
       `⏱️ Sync throttled (last sync ${Math.round((now - lastSyncTime) / 1000)}s ago)`,
     );
     return;
@@ -305,7 +306,7 @@ export async function syncData(
       try {
         await SheetService.initGapiClient();
       } catch (e) {
-        console.warn("GAPI init failed, likely offline.");
+        logger.warn("GAPI init failed, likely offline.");
         syncInProgress = false;
         useSyncStore.getState().setIsSyncing(false);
         return;
@@ -360,10 +361,10 @@ export async function syncData(
         const localLastSynced = toTimestamp(profile.lastSyncAt);
 
         if (localLastSynced > cloudLastUpdated) {
-          console.log("Re-linking: Local data is newer than cloud. Local will update cloud.");
+          logger.log("Re-linking: Local data is newer than cloud. Local will update cloud.");
           useCloudAsAuthority = false;
         } else {
-          console.log("Re-linking: Cloud data is newer or equal. Cloud is authoritative.");
+          logger.log("Re-linking: Cloud data is newer or equal. Cloud is authoritative.");
           useCloudAsAuthority = true;
         }
       }
@@ -398,7 +399,7 @@ export async function syncData(
         }
 
         if (Object.keys(updates).length > 0) {
-          console.log("Updating local profile from cloud merge", updates);
+          logger.log("Updating local profile from cloud merge", updates);
           activeProfile = { ...activeProfile, ...updates };
         }
       }
@@ -565,7 +566,7 @@ export async function syncData(
       useSyncStore.getState().dismissToast();
     }
   } catch (e: any) {
-    console.error("Sync failed", e);
+    logger.error("Sync failed", e);
     if (e?.status === 401) {
       useSyncStore.getState().showToast("Session expired. Please sign in again.", "info");
       loginWithGoogle();

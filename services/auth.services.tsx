@@ -6,7 +6,8 @@ import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useSyncStore } from "../src/stores/sync.store";
 import { UserProfile } from "../types";
-import { hashPassword, verifyPassword } from "./crypto.services";
+import { hashPassword, verifyPassword, isLegacyHash } from "./crypto.services";
+import { logger } from "../src/lib/application/logger";
 
 interface AuthContextType {
 	profile: UserProfile;
@@ -56,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				return data.access_token;
 			}
 		} catch (e) {
-			console.error("Token refresh failed", e);
+			logger.error("Token refresh failed", e);
 		}
 		return null;
 	};
@@ -159,12 +160,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				window.location.reload();
 				return;
 			} catch (e) {
-				console.error("Migration failed", e);
-			}
+			logger.error("Migration failed", e);
+		}
 
-			setProfile(newProfile);
-		} catch (error) {
-			console.error("Authentication failed", error);
+		setProfile(newProfile);
+	} catch (error) {
+		logger.error("Authentication failed", error);
 		} finally {
 			setIsAuthLoading(false);
 			setAuthStatus(null);
@@ -188,6 +189,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
 		const isValid = await verifyPassword(pass, user.password);
 		if (!isValid) throw new Error("Invalid password.");
+
+		if (isLegacyHash(user.password)) {
+			try {
+				const upgraded = await hashPassword(pass);
+				await SheetService.updateUser(user.email, { password: upgraded });
+			} catch (err) {
+				logger.warn("Password hash upgrade failed; will retry on next login", err);
+			}
+		}
 
 		const newProfile: UserProfile = {
 			...profile,
@@ -286,10 +296,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 						try {
 							const success = await SheetService.updateUser(updatedP!.email, u);
 							if (!success) {
-								console.warn("Failed to sync profile update to sheets: updateUser returned false");
+								logger.warn("Failed to sync profile update to sheets: updateUser returned false");
 							}
 						} catch (err) {
-							console.warn("Failed to sync profile update to sheets", err);
+							logger.warn("Failed to sync profile update to sheets", err);
 						}
 					}
 				},

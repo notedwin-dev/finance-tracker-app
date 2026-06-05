@@ -20,8 +20,8 @@ export async function saveGoal(
   const updated = isEdit
     ? existingGoals.map((g) => (g.id === goal.id ? goalWithUser : g))
     : [...existingGoals, goalWithUser];
-  store.setGoals(updated);
   await StorageService.saveGoals(updated);
+  store.setGoals(updated);
   showToast(isEdit ? "Goal updated" : "Goal created", "success");
 }
 
@@ -33,7 +33,7 @@ export async function deleteGoal(
   const { showToast } = useSyncStore.getState();
 
   const updated = existingGoals.filter((g) => g.id !== goalId);
-  store.setGoals(updated);
   await StorageService.saveGoals(updated);
+  store.setGoals(updated);
   showToast("Goal deleted", "success");
 }

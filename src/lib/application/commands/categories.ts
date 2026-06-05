@@ -21,8 +21,8 @@ export async function saveCategory(
     ? existingCategories.map((c) => (c.id === cat.id ? catWithUser : c))
     : [...existingCategories, catWithUser];
 
-  store.setCategories(updated);
   await StorageService.saveCategories(updated);
+  store.setCategories(updated);
   showToast("Category saved", "success");
 }
 
@@ -34,7 +34,7 @@ export async function deleteCategory(
   const { showToast } = useSyncStore.getState();
 
   const updated = existingCategories.filter((c) => c.id !== categoryId);
-  store.setCategories(updated);
   await StorageService.saveCategories(updated);
+  store.setCategories(updated);
   showToast("Category deleted", "success");
 }

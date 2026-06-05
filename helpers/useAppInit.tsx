@@ -29,6 +29,7 @@ export function useAppInit() {
     setHasSynced(false);
     loadData(profile)
       .then(() => runVaultSchemaMigration())
+      .then(() => setHasSynced(true))
       .catch((e) => {
         logger.error("loadData failed during init:", e);
         useSyncStore.getState().showToast(

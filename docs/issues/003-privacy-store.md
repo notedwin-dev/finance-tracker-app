@@ -5,7 +5,7 @@
 
 ## Summary
 
-Move mask UI state (`maskAmount`, `maskText`, `privacyMode`) from DataProvider into `mask.store.ts` (renamed from `privacy.store.ts` after the vault was dropped — see ADR-002).
+Move mask UI state (`maskAmount`, `maskText`, `maskMode`) from DataProvider into `mask.store.ts` (renamed from `privacy.store.ts` after the vault was dropped — see ADR-002).
 
 ## Rationale
 
@@ -13,7 +13,7 @@ Masking is a UI-only concern; once the vault was dropped, the privacy store no l
 
 ## Sub-tasks
 
-- [x] **A.1 — Add mask UI state** — `maskAmount`, `maskText`, `privacyMode`, `setPrivacyMode` in `mask.store.ts`
+- [x] **A.1 — Add mask UI state** — `maskAmount`, `maskText`, `maskMode`, `setMaskMode` in `mask.store.ts`
 - [x] **A.2 — Update mask consumers** — Switched `DashboardPage`, `History`, `AccountPage`, `AccountCard`, `Goals`, `Charts`, `SubscriptionManager`, `Profile`, `MainLayout` to read from `useMaskStore`
 - [x] **A.3 — Cleanup** — Removed mask state and handlers from DataProvider context and `DataContextType`
 - Vault subtasks (A.2, A.3, A.5 in the original issue) were dropped per ADR-002.

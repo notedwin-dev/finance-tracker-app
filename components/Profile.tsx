@@ -426,6 +426,7 @@ const Profile: React.FC<Props> = ({
 							onClick={() => setShowExportModal(true)}
 							color="text-gray-400"
 						/>
+					{onRecalculateBalances && (
 						<SettingItem
 							icon={CalculatorIcon}
 							label="Recalculate Balances"
@@ -433,6 +434,7 @@ const Profile: React.FC<Props> = ({
 							onClick={handleRecalculateBalances}
 							color="text-emerald-400"
 						/>
+					)}
 						{showV1Migration && (
 							<SettingItem
 								icon={ArrowPathIcon}

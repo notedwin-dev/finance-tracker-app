@@ -33,10 +33,6 @@ export async function deleteSavingPocket(
   const store = useFinanceStore.getState();
   const { showToast } = useSyncStore.getState();
 
-  const updatedPockets = existingPockets.filter((p) => p.id !== id);
-  await StorageService.savePockets(updatedPockets);
-  store.setPockets(updatedPockets);
-
   const updatedTransactions = existingTransactions.map((t) => {
     const newT = { ...t };
     if (newT.savingPocketId === id) newT.savingPocketId = null as string | null;
@@ -45,6 +41,10 @@ export async function deleteSavingPocket(
   });
   await StorageService.saveTransactions(updatedTransactions);
   store.setTransactions(updatedTransactions);
+
+  const updatedPockets = existingPockets.filter((p) => p.id !== id);
+  await StorageService.savePockets(updatedPockets);
+  store.setPockets(updatedPockets);
 
   showToast("Saving pocket deleted", "success");
 }

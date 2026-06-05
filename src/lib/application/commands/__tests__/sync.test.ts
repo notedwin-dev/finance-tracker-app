@@ -101,7 +101,6 @@ describe("resetAndSync 401 handling", () => {
     const err401 = Object.assign(new Error("Unauthorized"), { status: 401 });
     vi.mocked(SheetService.loadFromGoogleSheets).mockRejectedValue(err401);
 
-    // Set up localStorage with both keys to keep and keys to clear
     localStorage.setItem("google_access_token", "test_token");
     localStorage.setItem("google_token_expiry", "123456789");
     localStorage.setItem("google_refresh_token", "test_refresh");
@@ -122,7 +121,6 @@ describe("resetAndSync 401 handling", () => {
     expect(state.toast?.message).toBe("Session expired. Please sign in again.");
     expect(loginWithGoogle).toHaveBeenCalledTimes(1);
 
-    // Verify keep-list keys are preserved
     expect(localStorage.getItem("google_access_token")).toBe("test_token");
     expect(localStorage.getItem("google_token_expiry")).toBe("123456789");
     expect(localStorage.getItem("google_refresh_token")).toBe("test_refresh");
@@ -131,7 +129,6 @@ describe("resetAndSync 401 handling", () => {
     expect(localStorage.getItem("zenfinance_selected_sheet_id")).toBe("test_sheet_id");
     expect(localStorage.getItem(StorageService.KEYS.PROFILE)).toBe(JSON.stringify(baseProfile));
 
-    // Verify non-kept keys were removed
     expect(localStorage.getItem("some_random_key")).toBeNull();
     expect(localStorage.getItem("another_key")).toBeNull();
   });

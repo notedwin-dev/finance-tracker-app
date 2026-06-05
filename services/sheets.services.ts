@@ -26,10 +26,7 @@ const DISCOVERY_DOCS = [
 const getApiKey = () =>
 	import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
 
-/**
- * Masks a file ID for logging purposes
- */
-const maskFileId = (fileId: string): string => {
+const maskFileIdForLogging = (fileId: string): string => {
 	if (!fileId || fileId.length < 8) return "***";
 	return `${fileId.substring(0, 4)}...${fileId.substring(fileId.length - 4)}`;
 };
@@ -92,32 +89,32 @@ export const initGapiClient = async (): Promise<void> => {
 	}
 
 	gapiInitializing = true;
-	const apiKey = getApiKey();
-	if (!apiKey) {
-		logger.warn("Google API Key not found.");
-		return;
-	}
-
-	// Ensure window.gapi is available
-	const waitForGapi = (): Promise<void> => {
-		return new Promise((resolve) => {
-			if (window.gapi) {
-				resolve();
-			} else {
-				const interval = setInterval(() => {
-					if (window.gapi) {
+	try {
+		const apiKey = getApiKey();
+		if (!apiKey) {
+			logger.warn("Google API Key not found.");
+			return;
+		}
+		// Ensure window.gapi is available
+		const waitForGapi = (): Promise<void> => {
+			return new Promise((resolve) => {
+				if (window.gapi) {
+					resolve();
+				} else {
+					const interval = setInterval(() => {
+						if (window.gapi) {
+							clearInterval(interval);
+							resolve();
+						}
+					}, 100);
+					setTimeout(() => {
 						clearInterval(interval);
 						resolve();
-					}
-				}, 100);
-				setTimeout(() => {
-					clearInterval(interval);
-					resolve();
-				}, 10000); // 10s timeout
-			}
-		});
-	};
-
+					}, 10000); // 10s timeout
+				}
+			});
+		};
+	
 	await waitForGapi();
 
 	if (!window.gapi) {
@@ -135,32 +132,35 @@ export const initGapiClient = async (): Promise<void> => {
 		}
 	}
 
-	return new Promise<void>((resolve) => {
-		window.gapi.load("client:picker", async () => {
-			try {
-				await window.gapi.client.init({
-					apiKey,
-					discoveryDocs: DISCOVERY_DOCS,
-				});
-
-				// Final verification that we have the expected services
-				if (window.gapi.client.sheets && window.gapi.client.drive) {
-					gapiInited = true;
-					logger.log(
-						"GAPI Client successfully initialized with Sheets, Drive and Picker",
-					);
-				} else {
-					logger.error("GAPI Client init finished but services missing", {
-						sheets: !!window.gapi.client.sheets,
-						drive: !!window.gapi.client.drive,
+		return new Promise<void>((resolve) => {
+			window.gapi.load("client:picker", async () => {
+				try {
+					await window.gapi.client.init({
+						apiKey,
+						discoveryDocs: DISCOVERY_DOCS,
 					});
+
+					// Final verification that we have the expected services
+					if (window.gapi.client.sheets && window.gapi.client.drive) {
+						gapiInited = true;
+						logger.log(
+							"GAPI Client successfully initialized with Sheets, Drive and Picker",
+						);
+					} else {
+						logger.error("GAPI Client init finished but services missing", {
+							sheets: !!window.gapi.client.sheets,
+							drive: !!window.gapi.client.drive,
+						});
+					}
+				} catch (err) {
+					logger.error("GAPI Client init error", err);
 				}
-			} catch (err) {
-				logger.error("GAPI Client init error", err);
-			}
-			resolve();
+				resolve();
+			});
 		});
-	});
+	} finally {
+		gapiInitializing = false;
+	}
 };
 
 export const setGapiAccessToken = (accessToken: string, expiresIn?: number) => {
@@ -1399,7 +1399,7 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 				) {
 					const doc = data[window.google.picker.Response.DOCUMENTS][0];
 					const fileId = doc[window.google.picker.Document.ID];
-					logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
+					logger.log("User selected spreadsheet via picker:", maskFileIdForLogging(fileId));
 					// Store selected file ID to skip search next time
 					localStorage.setItem("zenfinance_selected_sheet_id", fileId);
 					cachedSheetName = null; // Clear cache when switching spreadsheets

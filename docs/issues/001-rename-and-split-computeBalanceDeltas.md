@@ -42,8 +42,8 @@ Each function takes only its required parameters — `computeBudgetConsumption` 
 
 ### Commit 4 — Remove combined function, inline calls
 
-- Delete `computeAccountTransactionAmount` (the old wrapped function)
-- Delete `AccountTransactionMap` interface
+- Delete `computeBalanceDeltas` (the original combined function)
+- Delete `BalanceDeltas` interface
 - Update 6 call sites across `commands.ts` and `DataProvider.tsx` to call all three functions individually and apply results separately
 
 ### Commit 5 — Reorganize tests

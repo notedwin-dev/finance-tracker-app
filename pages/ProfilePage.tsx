@@ -3,9 +3,17 @@ import { useOutletContext } from "react-router-dom";
 import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
 import { useFinanceStore } from "../src/stores/finance.store";
+import {
+  recalculateBalances,
+  migrateData,
+} from "../src/lib/application/commands";
 import { useSyncStore } from "../src/stores/sync.store";
-import { recalculateBalances, migrateData, resetAndSync, selectExistingSheet, syncData } from "../src/lib/application/commands";
-import * as SheetService from "../services/sheets.services";
+import {
+  selectExistingSheet,
+  syncData,
+  resetAndSync,
+} from "../src/lib/application/commands/sync";
+import { checkSheetClientReady } from "../src/lib/application/commands/sheet";
 import { logger } from "../src/lib/application/logger";
 
 const ProfilePage: React.FC = () => {
@@ -84,7 +92,7 @@ const ProfilePage: React.FC = () => {
 
   const handleRecalculateBalances = async () => {
     try {
-      const isCloud = !(profile as any).offlineMode && SheetService.isClientReady();
+      const isCloud = !(profile as any).offlineMode && checkSheetClientReady();
       await recalculateBalances(
         accounts,
         pots,

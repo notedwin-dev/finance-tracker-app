@@ -26,6 +26,14 @@ const DISCOVERY_DOCS = [
 const getApiKey = () =>
 	import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
 
+/**
+ * Masks a file ID for logging purposes
+ */
+const maskFileId = (fileId: string): string => {
+	if (!fileId || fileId.length < 8) return "***";
+	return `${fileId.substring(0, 4)}...${fileId.substring(fileId.length - 4)}`;
+};
+
 let gapiInited = false;
 let gapiInitializing = false;
 let hasAccessToken = false;
@@ -215,7 +223,11 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 				fields: "id",
 			});
 			return savedId;
-		} catch (e) {
+		} catch (e: any) {
+			if (e?.status === 401) {
+				clearGapiAccessToken();
+				throw e;
+			}
 			logger.warn("Saved spreadsheet ID is no longer accessible", e);
 			localStorage.removeItem("zenfinance_selected_sheet_id");
 		}
@@ -235,6 +247,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		if (err?.status === 401) {
 			logger.warn("Unauthorized in getSpreadsheetId, clearing token");
 			clearGapiAccessToken();
+			throw err;
 		}
 		logger.error("Error finding sheet", err);
 		return null;
@@ -250,6 +263,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		if (err?.status === 401) {
 			logger.warn("Unauthorized in creating sheet, clearing token");
 			clearGapiAccessToken();
+			throw err;
 		}
 		logger.error("Error creating sheet", err);
 		return null;
@@ -318,7 +332,13 @@ export const findUser = async (email: string) => {
 		if (!userRow) return null;
 
 		return parseUserRow(headers, userRow);
-	} catch (e) {
+	} catch (e: any) {
+		if (e?.status === 401) {
+			hasAccessToken = false;
+			localStorage.removeItem("google_access_token");
+			localStorage.removeItem("google_token_expiry");
+			throw e;
+		}
 		return null;
 	}
 };
@@ -447,8 +467,15 @@ export const createUser = async (userData: any) => {
 export const updateUser = async (email: string, updates: any) => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
+		const maskEmail = (email: string): string => {
+			if (!email || email.length < 3) return "***";
+			const atIndex = email.indexOf("@");
+			if (atIndex === -1) return "***";
+			return `${email.charAt(0)}***${email.charAt(atIndex - 1)}${email.substring(atIndex)}`;
+		};
+
 		logger.log("📝 updateUser called with:", {
-			email,
+			maskedEmail: maskEmail(email),
 			updatedFields: Object.keys(updates || {}),
 		});
 
@@ -1282,7 +1309,10 @@ export const loadFromGoogleSheets = async (
 				);
 		});
 	} catch (err: any) {
-		if (err?.status === 401) clearGapiAccessToken();
+		if (err?.status === 401) {
+			clearGapiAccessToken();
+			throw err;
+		}
 		logger.warn("Batch load failed", err);
 	}
 
@@ -1369,7 +1399,7 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 				) {
 					const doc = data[window.google.picker.Response.DOCUMENTS][0];
 					const fileId = doc[window.google.picker.Document.ID];
-					logger.log("User selected spreadsheet via picker:", fileId);
+					logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
 					// Store selected file ID to skip search next time
 					localStorage.setItem("zenfinance_selected_sheet_id", fileId);
 					cachedSheetName = null; // Clear cache when switching spreadsheets

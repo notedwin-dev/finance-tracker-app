@@ -41,11 +41,15 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
     );
   }
 
+  const maskFileId = (fileId: string): string => {
+    return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
+  };
+
   const handlePicked = (e: CustomEvent) => {
     const data = e.detail;
     if (data.docs && data.docs.length > 0) {
       const fileId = data.docs[0].id;
-      logger.log("User selected spreadsheet via picker:", fileId);
+      logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
       onPicked(fileId);
     }
     setIsPickerOpen(false);
@@ -120,11 +124,15 @@ export const useGoogleDrivePicker = () => {
     });
   };
 
+  const maskFileId = (fileId: string): string => {
+    return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
+  };
+
   const handlePicked = (e: CustomEvent) => {
     const data = e.detail;
     if (data.docs && data.docs.length > 0) {
       const fileId = data.docs[0].id;
-      logger.log("User selected spreadsheet via picker:", fileId);
+      logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
       pickerCallback?.(fileId);
     } else {
       pickerCallback?.(null);

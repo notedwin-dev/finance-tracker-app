@@ -56,21 +56,25 @@ describe("logger redact", () => {
 });
 
 describe("logger proxies", () => {
-	let spy: ReturnType<typeof vi.spyOn>;
+	let logSpy: ReturnType<typeof vi.spyOn>;
+	let warnSpy: ReturnType<typeof vi.spyOn>;
+	let errorSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
-		spy = vi.spyOn(console, "log").mockImplementation(() => {});
-		vi.spyOn(console, "warn").mockImplementation(() => {});
-		vi.spyOn(console, "error").mockImplementation(() => {});
+		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
-		spy.mockRestore();
+		logSpy.mockRestore();
+		warnSpy.mockRestore();
+		errorSpy.mockRestore();
 	});
 
 	it("redacts objects when forwarded to console.log", () => {
 		logger.log({ geminiApiKey: "AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" });
-		expect(spy).toHaveBeenCalledWith({ geminiApiKey: "[REDACTED]" });
+		expect(logSpy).toHaveBeenCalledWith({ geminiApiKey: "[REDACTED]" });
 	});
 
 	it("redacts inline API-key strings", () => {
@@ -81,6 +85,24 @@ describe("logger proxies", () => {
 
 	it("leaves non-sensitive messages alone", () => {
 		logger.log("hello", 42, true);
-		expect(spy).toHaveBeenCalledWith("hello", 42, true);
+		expect(logSpy).toHaveBeenCalledWith("hello", 42, true);
+	});
+
+	it("redacts Error.message and Error.stack but keeps name", () => {
+		const err = new Error("leaked AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+		logger.error(err);
+		const arg = (console.error as any).mock.calls[0][0];
+		expect(arg.name).toBe("Error");
+		expect(arg.message).toBe("[REDACTED]");
+		expect(arg.stack).toBe("[REDACTED]");
+	});
+
+	it("passes non-sensitive Error messages through errorOut", () => {
+		const err = new Error("plain network error");
+		const out = redact(err) as any;
+		expect(out.name).toBe("Error");
+		expect(out.message).toBe("plain network error");
+		expect(typeof out.stack).toBe("string");
+		expect(out.stack).not.toContain("[REDACTED]");
 	});
 });

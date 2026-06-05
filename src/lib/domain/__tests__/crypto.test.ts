@@ -59,10 +59,17 @@ describe("crypto.services", () => {
 		it("rejects pbkdf2 with tampered hash", async () => {
 			const h = await hashPassword("hunter2");
 			const parts = h.split("$");
-			const tamperedHash = btoa(
-				String.fromCharCode(...parts[3].split("").map((c, i) => (i === 0 ? "X" : c).charCodeAt(0))),
-			);
+
+			// Decode the hash to bytes
+			const hashBytes = Uint8Array.from(atob(parts[3]), (c) => c.charCodeAt(0));
+
+			// Flip one byte
+			hashBytes[0] = hashBytes[0] ^ 0xFF;
+
+			// Re-encode to base64
+			const tamperedHash = btoa(String.fromCharCode(...hashBytes));
 			const tampered = `${parts[0]}$${parts[1]}$${parts[2]}$${tamperedHash}`;
+
 			expect(await verifyPassword("hunter2", tampered)).toBe(false);
 		});
 	});

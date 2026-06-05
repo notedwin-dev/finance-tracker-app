@@ -32,6 +32,14 @@ const SENSITIVE_KEYS = new Set([
 
 const REDACTED = "[REDACTED]";
 
+const normalizedSensitiveSet = new Set(
+	Array.from(SENSITIVE_KEYS).map(k => k.toLowerCase().replace(/[^a-z0-9]/g, ""))
+);
+
+const normalizeKey = (key: string): string => {
+	return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+};
+
 const redact = (value: unknown, depth = 0): unknown => {
 	if (depth > 5) return "[depth-limit]";
 	if (value === null || value === undefined) return value;
@@ -52,9 +60,25 @@ const redact = (value: unknown, depth = 0): unknown => {
 	}
 
 	if (typeof value === "object") {
+		if (value instanceof Error) {
+			const errorOut: Record<string, unknown> = {
+				name: value.name,
+				message: redact(value.message, depth + 1),
+				stack: redact(value.stack ?? "", depth + 1),
+			};
+			for (const [k, v] of Object.entries(value as unknown as Record<string, unknown>)) {
+				if (k !== "name" && k !== "message" && k !== "stack") {
+					const normalizedKey = normalizeKey(k);
+					errorOut[k] = normalizedSensitiveSet.has(normalizedKey) ? REDACTED : redact(v, depth + 1);
+				}
+			}
+			return errorOut;
+		}
+
 		const out: Record<string, unknown> = {};
 		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-			out[k] = SENSITIVE_KEYS.has(k) ? REDACTED : redact(v, depth + 1);
+			const normalizedKey = normalizeKey(k);
+			out[k] = normalizedSensitiveSet.has(normalizedKey) ? REDACTED : redact(v, depth + 1);
 		}
 		return out;
 	}

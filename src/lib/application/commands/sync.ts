@@ -6,6 +6,12 @@ import type { UserProfile, Account, Transaction, Subscription } from "../../../.
 import { TransactionType } from "../../../../types";
 import { normalizeDate, parseDateSafe } from "../../../../helpers/transactions.helper";
 import { stripVaultFromAccount } from "../../domain/migration";
+import {
+  computeNextOccurrences,
+  buildSubscriptionTransaction,
+  convertTransactionAmountForAccount,
+  dedupeTransactions,
+} from "../../domain/subscriptions";
 import { logger } from "../logger";
 
 export async function migrateData(): Promise<void> {
@@ -109,7 +115,6 @@ export async function selectExistingSheet(
   }
 }
 
-// Module-level refs for sync debouncing (replaces React useRef)
 let syncInProgress = false;
 let lastSyncTime = 0;
 let loadDataToken = 0;
@@ -166,40 +171,14 @@ export function processSubscriptions(
 
   updatedSubs = updatedSubs.map((sub) => {
     if (!sub.active) return sub;
-    let nextDateStr = normalizeDate(sub.nextPaymentDate);
+    const { nextDateStr, generatedTxDates, bailed } = computeNextOccurrences(sub, today);
     if (!nextDateStr) {
       logger.warn(`processSubscriptions: invalid nextPaymentDate for sub ${sub.id}, skipping`);
       return sub;
     }
-    let hasProcessed = false;
-    let iterations = 0;
-    const MAX_ITERATIONS = 365;
-    while (nextDateStr <= today && iterations < MAX_ITERATIONS) {
-      iterations++;
-      hasProcessed = true;
-      const newTx: Transaction = {
-        id: `sub-${sub.id}-${nextDateStr}`,
-        userId: currentUserId,
-        accountId: sub.accountId,
-        amount: sub.amount,
-        currency: sub.currency,
-        type: TransactionType.EXPENSE,
-        categoryId: sub.categoryId,
-        shopName: sub.name + " (Subscription)",
-        date: nextDateStr,
-        subscriptionId: sub.id,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      newTxs.push(newTx);
-      const d = parseDateSafe(nextDateStr);
-      if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
-      else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
-      else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
-      else d.setDate(d.getDate() + 1);
-      nextDateStr = d.toLocaleDateString("en-CA");
-    }
-    if (iterations >= MAX_ITERATIONS) {
+    const newSubTxs = generatedTxDates.map((d) => buildSubscriptionTransaction(sub, d, currentUserId));
+    newTxs.push(...newSubTxs);
+    if (bailed) {
       logger.warn(
         `processSubscriptions: sub ${sub.id} hit iteration cap; nextPaymentDate may be corrupted`,
         sub.nextPaymentDate,
@@ -207,7 +186,7 @@ export function processSubscriptions(
       bailedSubIds.add(sub.id);
       return { ...sub, nextPaymentDate: nextDateStr };
     }
-    if (hasProcessed) {
+    if (newSubTxs.length > 0) {
       processedCount++;
       return {
         ...sub,
@@ -220,10 +199,12 @@ export function processSubscriptions(
 
   if (newTxs.length === 0) return;
 
-  const dedupedNewTxs = newTxs.filter(
-    (t) => !currentTxs.some((existing) => existing.id === t.id),
-  );
+  const dedupedNewTxs = dedupeTransactions(currentTxs, newTxs);
   if (dedupedNewTxs.length === 0) {
+    if (persist) {
+      StorageService.saveSubscriptions(updatedSubs);
+    }
+    useFinanceStore.getState().setSubscriptions(updatedSubs);
     useSyncStore.getState().showToast(
       "No new subscription payments to apply.",
       "info",
@@ -242,11 +223,7 @@ export function processSubscriptions(
       );
       return;
     }
-    let amount = t.amount;
-    if (acc && t.currency !== acc.currency) {
-      if (t.currency === "USD") amount *= usdRate;
-      else if (t.currency === "MYR") amount /= usdRate;
-    }
+    const amount = convertTransactionAmountForAccount(t, acc, usdRate, rateValid);
     accUpdates.set(t.accountId, (accUpdates.get(t.accountId) || 0) + amount);
   });
 

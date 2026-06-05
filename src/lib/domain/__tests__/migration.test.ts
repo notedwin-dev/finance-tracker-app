@@ -180,10 +180,10 @@ describe("migrateSchemaV1toV2", () => {
     expect(profile.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
   });
 
-  it("updates profile.updatedAt", () => {
-    const { profile } = migrateSchemaV1toV2([], baseProfile);
-    expect(profile.updatedAt).toBeDefined();
-    expect(typeof profile.updatedAt).toBe("string");
+  it("sets profile.updatedAt to the provided timestamp", () => {
+    const fixed = "2026-06-04T00:00:00.000Z";
+    const { profile } = migrateSchemaV1toV2([], baseProfile, fixed);
+    expect(profile.updatedAt).toBe(fixed);
   });
 
   it("cleans accounts and profile in one pass", () => {

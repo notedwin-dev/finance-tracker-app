@@ -110,7 +110,7 @@ Split the single `DataContext` into focused stores:
 | `finance.store.ts` | accounts, transactions, categories, pots, pockets, goals, subscriptions, chatSessions | CRUD handlers for each entity |
 | `privacy.store.ts` | privacyMode, vault state (isVaultEnabled, isVaultCreated, isVaultUnlocked) | lockVault, unlockVault*, maskAmount, maskText |
 | `sync.store.ts` | isSyncing, toast, hasSynced, isCloudEnabled | syncData, loadData, showToast |
-| `ui.store.ts` | displayCurrency, setDisplayCurrency |
+| `ui.store.ts` | displayCurrency | setDisplayCurrency |
 
 Each store uses Zustand with `persist` middleware (or delegates persistence to infrastructure layer). Stores remain independent — a transaction save in `finance.store` does not directly call Google Sheets. That happens in the application layer.
 

@@ -70,13 +70,14 @@ export async function recalculateBalances(
   }));
 
   if (!startDate && !endDate) {
+    await Promise.all([
+      StorageService.saveAccounts(updatedAccounts),
+      StorageService.savePots(updatedPots),
+      StorageService.savePockets(updatedPockets),
+    ]);
     store.setAccounts(updatedAccounts);
     store.setPots(updatedPots);
     store.setPockets(updatedPockets);
-
-    StorageService.saveAccounts(updatedAccounts);
-    StorageService.savePots(updatedPots);
-    StorageService.savePockets(updatedPockets);
   }
 
   if (isCloudEnabled && !startDate && !endDate) {

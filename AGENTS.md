@@ -5,7 +5,6 @@
 finance-tracker-app/
 ├── components/         # React components (feature folders)
 │   └── history/        #   History/search/filter components
-├── context/            # React Context (DataProvider, DataContext)
 ├── pages/              # Page-level components
 ├── services/           # External service integrations (sheets, auth, gemini, etc.)
 ├── src/
@@ -77,7 +76,7 @@ Read the latest ADR before making architectural changes to understand current de
 
 ## Domain Layer Rules
 
-- Pure functions only — no React, no side effects, no imports from `context/`, `services/`, or `stores/`
+- Pure functions only — no React, no side effects, no imports from `services/` or `stores/`. State lives in Zustand stores under `src/stores/`; React components never call storage or sheet services directly — they go through command handlers in `src/lib/application/commands/`.
 - All dependencies must be explicit parameters
 - One module per file, co-located tests in `__tests__/`
 - Use `TransactionType` enum from types for type discrimination
@@ -95,7 +94,7 @@ Read the latest ADR before making architectural changes to understand current de
 | `src/lib/domain/balance.engine.ts` | `computeAccountTransactionAmount()` | Account balance impact per transaction |
 | `src/lib/domain/balance.engine.ts` | `computeBudgetConsumption()` | Budget consumed/replenished per transaction |
 | `src/lib/domain/balance.engine.ts` | `computeSavingsMovement()` | Savings added/withdrawn per transaction |
-| `components/history/useFilteredTransactions.ts` | `matchesSearch()` | Transaction text matching |
+| `src/lib/domain/search.ts` | `matchesSearch()` | Transaction text matching |
 
 ## Environment Variables (`.env`)
 

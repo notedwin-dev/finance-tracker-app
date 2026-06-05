@@ -13,17 +13,17 @@ Depends on Issue #3 (privacy store) and Issue #4 (commands extraction) being com
 
 ## Sub-tasks
 
-- [ ] **C.1 — Switch ProfilePage data reads** — `ProfilePage` destructures `transactions`, `categories`, `pots`, `pockets` from `useData()` but they are already in `useFinanceStore`; trivial one-file switch
-- [ ] **C.2 — Verify no `useData()` consumers remain** — Run `grep` for `useData()` across all `.tsx` files; confirm 0 matches
-- [ ] **C.3 — Delete DataProvider, DataContext, types** — Remove `context/DataProvider.tsx`, `context/DataContext.tsx`, `context/types.ts`; remove `<DataProvider>` wrapper from App
-- [ ] **C.4 — Run tests and typecheck** — Confirm 82+ tests pass and `npx tsc --noEmit` is clean
+- [x] **C.1 — Switch ProfilePage data reads** — `ProfilePage` destructures `transactions`, `categories`, `pots`, `pockets` from `useData()` but they are already in `useFinanceStore`; trivial one-file switch
+- [x] **C.2 — Verify no `useData()` consumers remain** — Run `grep` for `useData()` across all `.tsx` files; confirm 0 matches
+- [x] **C.3 — Delete DataProvider, DataContext, types** — Remove `context/DataProvider.tsx`, `context/DataContext.tsx`, `context/types.ts`; remove `<DataProvider>` wrapper from App
+- [x] **C.4 — Run tests and typecheck** — Confirm 147 tests pass (13 files) and `npx tsc --noEmit` is clean
 
 ## Verification
 
 - App boots without DataProvider wrapper
 - No `useData()` imports anywhere
 - All existing functionality preserved
-- 82+ tests pass, 0 type errors
+- 147 tests pass (13 files), 0 type errors
 
 ## Assignee
 

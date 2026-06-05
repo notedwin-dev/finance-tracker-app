@@ -18,8 +18,8 @@ export async function addSubscription(
     createdAt: new Date().toISOString(),
   };
   const updated = [...existingSubs, newSub];
-  store.setSubscriptions(updated);
   await StorageService.saveSubscriptions(updated);
+  store.setSubscriptions(updated);
   showToast("Subscription added", "success");
 }
 
@@ -31,7 +31,7 @@ export async function deleteSubscription(
   const { showToast } = useSyncStore.getState();
 
   const updated = existingSubs.filter((s) => s.id !== subId);
-  store.setSubscriptions(updated);
   await StorageService.saveSubscriptions(updated);
+  store.setSubscriptions(updated);
   showToast("Subscription deleted", "success");
 }

@@ -26,7 +26,7 @@ After the prior migration, 3 handlers remain in DataProvider: `handleMigrateData
 - Bulk import works on AccountPage
 - Data export/migrate/sync works from Profile
 - Recalculate balances works from Profile
-- 82+ tests pass
+- 147 tests pass (13 files)
 
 ## Assignee
 

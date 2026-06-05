@@ -39,18 +39,22 @@ const ProfilePage: React.FC = () => {
       );
     }
 
-    const sanitizedAccounts = accounts.map((a) => {
-      const bag = a as unknown as Record<string, unknown>;
-      const { details, isEncrypted, ...rest } = bag;
-      return rest;
-    });
-
-    const { geminiApiKey: _geminiKey, ...sanitizedProfile } =
-      profile as unknown as Record<string, unknown>;
+    const SENSITIVE_KEYS = /^(?:apiKey|api_key|secret|token|password|passphrase|geminiApiKey|googleApiKey|details|isEncrypted|encryptedDetails)$/i;
+    const stripSensitive = (obj: unknown): unknown => {
+      if (Array.isArray(obj)) return obj.map(stripSensitive);
+      if (obj && typeof obj === "object") {
+        return Object.fromEntries(
+          Object.entries(obj as Record<string, unknown>).filter(
+            ([k]) => !SENSITIVE_KEYS.test(k),
+          ),
+        );
+      }
+      return obj;
+    };
 
     const data = {
-      profile: sanitizedProfile,
-      accounts: sanitizedAccounts,
+      profile: stripSensitive(profile),
+      accounts: accounts.map((a) => stripSensitive(a)),
       transactions: filteredTransactions,
       categories,
       goals,

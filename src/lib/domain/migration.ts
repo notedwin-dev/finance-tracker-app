@@ -55,11 +55,12 @@ export function stripVaultFromProfile(profile: UserProfile): UserProfile {
 export function migrateSchemaV1toV2(
   accounts: Account[],
   profile: UserProfile,
+  updatedAt: string = new Date().toISOString(),
 ): { accounts: Account[]; profile: UserProfile } {
   const cleanedAccounts = accounts.map(stripVaultFromAccount);
   const cleanedProfile = stripVaultFromProfile(profile);
   cleanedProfile.schemaVersion = CURRENT_SCHEMA_VERSION;
-  cleanedProfile.updatedAt = new Date().toISOString();
+  cleanedProfile.updatedAt = updatedAt;
   return { accounts: cleanedAccounts, profile: cleanedProfile };
 }
 

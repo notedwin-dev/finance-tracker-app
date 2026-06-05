@@ -245,6 +245,7 @@ const MainLayout: React.FC = () => {
 
           <button
             onClick={() => setMaskMode(!maskMode)}
+            aria-pressed={maskMode}
             className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/50 hover:bg-gray-800/50 border border-gray-800/50 transition-all group"
           >
             <div className="flex items-center gap-3">

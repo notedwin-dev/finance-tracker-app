@@ -37,9 +37,15 @@ export async function deleteSavingPocket(
   await StorageService.savePockets(updatedPockets);
   store.setPockets(updatedPockets);
 
-  const updatedTransactions = existingTransactions.map((t) =>
-    t.savingPocketId === id ? { ...t, savingPocketId: null as string | null } : t,
-  );
+  const updatedTransactions = existingTransactions.map((t) => {
+    if (t.savingPocketId === id) {
+      return { ...t, savingPocketId: null as string | null };
+    }
+    if (t.toSavingPocketId === id) {
+      return { ...t, toSavingPocketId: null as string | null };
+    }
+    return t;
+  });
   await StorageService.saveTransactions(updatedTransactions);
   store.setTransactions(updatedTransactions);
 

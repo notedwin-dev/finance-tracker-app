@@ -14,8 +14,8 @@ export async function saveChatSession(
   const updated = isEdit
     ? existingSessions.map((s) => (s.id === session.id ? session : s))
     : [...existingSessions, session];
+  await StorageService.saveChatSessions(updated);
   store.setChatSessions(updated);
-  StorageService.saveChatSessions(updated);
   showToast(isEdit ? "Chat session updated" : "Chat session saved", "success");
 }
 
@@ -27,7 +27,7 @@ export async function deleteChatSession(
   const { showToast } = useSyncStore.getState();
 
   const updated = existingSessions.filter((s) => s.id !== sessionId);
+  await StorageService.saveChatSessions(updated);
   store.setChatSessions(updated);
-  StorageService.saveChatSessions(updated);
   showToast("Chat session deleted", "success");
 }

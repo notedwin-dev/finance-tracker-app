@@ -66,6 +66,7 @@ export async function saveAccount(
       await StorageService.saveTransactions(updatedTxs);
       await StorageService.saveAccounts(updated);
     } catch (err) {
+      await StorageService.saveTransactions(existingTransactions);
       await StorageService.saveAccounts(existingAccounts);
       throw err;
     }

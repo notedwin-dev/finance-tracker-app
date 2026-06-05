@@ -34,11 +34,13 @@ The only sensitive data the app will hold after this change is whatever the user
 - Accounts that can't be decrypted during migration (legacy `ENC:` blobs without a recoverable key) lose their sensitive fields. **Mitigation:** the user re-adds them. Acceptable for solo use.
 
 ### Migration shape
+
 - On first successful `loadData` of v2, if `profile.schemaVersion !== 2`, run `migrateSchemaV1toV2(accounts, profile)`: blank sensitive fields on every account, drop vault fields from the profile, set `schemaVersion: 2`, save to localStorage first, then push to Sheets.
 - New accounts never have the sensitive fields; `saveAccount` doesn't read or write them.
 - The export function (`ProfilePage.handleExportData`) drops the `_note` warning added in M18 — there's nothing secret in the export anymore.
 
 ### References
+
 - `src/lib/application/commands/privacy.ts` — entire file deleted
 - `src/stores/privacy.store.ts` — `isVaultEnabled`, `isVaultCreated`, `isVaultUnlocked`, `securityUnlocked`, `masterKey` fields deleted; `privacyMode` → `maskMode` kept
 - `services/twofa.services.ts` — file deleted

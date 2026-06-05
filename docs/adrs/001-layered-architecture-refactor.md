@@ -1,6 +1,5 @@
 # ADR-001: Layered Architecture Refactor
 
-**Status:** Accepted (in progress)  
 **Date:** 2026-06-01  
 **Deciders:** Edwin  
 
@@ -266,3 +265,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 - `src/lib/domain/balance.engine.ts` — extracted balance computation
 - `src/lib/domain/currency.ts` — extracted currency conversion
 - `src/lib/domain/__tests__/` — 22 tests for domain functions
+
+---
+
+**Status:** Accepted (in progress)

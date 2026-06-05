@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as StorageService from "../../../../../services/storage.services";
 import * as SheetService from "../../../../../services/sheets.services";
 import { useSyncStore } from "../../../../stores/sync.store";
-import { syncData } from "../sync";
+import { syncData, resetAndSync } from "../sync";
 
 vi.mock("../../../../../services/storage.services");
 vi.mock("../../../../../services/sheets.services");
@@ -94,6 +94,7 @@ describe("resetAndSync 401 handling", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("cleans up isSyncing and preserves keep-list on 401 from loadFromGoogleSheets", async () => {
@@ -114,7 +115,6 @@ describe("resetAndSync 401 handling", () => {
     const updateProfile = vi.fn();
     const loginWithGoogle = vi.fn();
 
-    const { resetAndSync } = await import("../sync");
     await resetAndSync({ ...baseProfile } as any, updateProfile, loginWithGoogle);
 
     const state = useSyncStore.getState();

@@ -1,6 +1,5 @@
 # Drop the vault: data minimization for a personal finance tracker
 
-**Status:** Accepted
 **Date:** 2026-06-04
 **Deciders:** Edwin
 
@@ -49,3 +48,7 @@ The only sensitive data the app will hold after this change is whatever the user
 - `pages/ProfilePage.tsx` — vault UI deleted; export `_note` warning removed
 - `layouts/MainLayout.tsx` — vault unlock modal deleted
 - `helpers/useAppInit.tsx` — vault-specific init paths deleted
+
+---
+
+**Status:** Accepted

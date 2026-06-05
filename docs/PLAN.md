@@ -4,7 +4,7 @@
 
 Replace the 2,879-line `DataProvider.tsx` monolith with focused **Zustand stores** (state) and **application commands** (logic). Data flows in one direction:
 
-```
+```text
 Sheets ──→ DataProvider ──→ Stores ──→ Components
                 │               │
                 ↓               ↓
@@ -33,7 +33,7 @@ Sheets ──→ DataProvider ──→ Stores ──→ Components
 
 ## Architecture
 
-```
+```text
 src/
 ├── lib/
 │   ├── domain/            ← Pure functions (balance.engine, currency)
@@ -50,7 +50,7 @@ src/
 
 ### Data flow after full migration
 
-```
+```text
 User action (click "Save")
   → Command (submitTransaction in commands.ts)
     → Domain logic (computeAccountTransactionAmount / computeBudgetConsumption / computeSavingsMovement)
@@ -79,7 +79,7 @@ Each domain follows the same pattern:
 | 6 | Pockets | Medium | — | savePocket, deletePocket | AssetsPage |
 | 7 | Accounts | Medium | — | saveAccount, deleteAccount | AccountCard, AccountForm, AccountPage |
 | 8 | Transactions | Very High | submit, delete, batchDelete | batchEdit (309 lines), bulkImport (120 lines) | History, Dashboard, Charts |
-| 9 | Privacy | Medium | — | vault commands (6 handlers) | Auth, Profile |
+| 9 | Mask Mode | Medium | — | mask-mode toggles (replaces vault handlers) | Auth, Profile |
 | 10 | Sync | Very High | — | syncData (464 lines) | DataProvider itself |
 | 11 | Cleanup | — | — | — | Remove DataProvider, DataContext, dead code |
 
@@ -87,7 +87,7 @@ Each domain follows the same pattern:
 
 ### Phase 1: Foundation (1 commit)
 
-```
+```text
 Commit 1: DataProvider pipes loaded data into Zustand stores
   - After loadData completes, call:
     useFinanceStore.getState().setAccounts(data.accounts)
@@ -99,7 +99,7 @@ Commit 1: DataProvider pipes loaded data into Zustand stores
 
 ### Phase 2: Simple Domains (8 small commits)
 
-```
+```text
 Commit 2: Extract Category commands + store wiring
   - Create saveCategory, deleteCategory in commands.ts
   - Switch CategoryManager from useData() to useFinanceStore()
@@ -131,7 +131,7 @@ Commit 9: Verify all simple domains migrated
 
 ### Phase 3: Transactions Domain (3-4 commits, split into sub-tasks)
 
-```
+```text
 Commit 10: Extract batchEditTransaction to command
   - 309-line handler in DataProvider → commands.ts
   - Split into smaller sub-tasks
@@ -144,10 +144,10 @@ Commit 12: Switch History page components to useFinanceStore()
 Commit 13: Switch Dashboard + Charts to useFinanceStore()
 ```
 
-### Phase 4: Privacy + Sync (2-3 commits)
+### Phase 4: Mask Mode + Sync (2-3 commits)
 
-```
-Commit 14: Create privacy commands (vault enable/disable/lock/unlock)
+```text
+Commit 14: Create mask-mode commands (toggle setMaskMode, mask helpers)
   - Switch Auth and Profile components
 
 Commit 15: Extract syncData to sync command
@@ -159,7 +159,7 @@ Commit 16: Final sync — DataProvider becomes thin
 
 ### Phase 5: Cleanup (1-2 commits)
 
-```
+```text
 Commit 17: Remove DataContext
   - All components now use stores directly
   - Delete context/DataContext.tsx

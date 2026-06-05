@@ -1,6 +1,3 @@
-// TEMPORARY: One-time v1 -> v2 schema cleanup orchestrator. See CONTEXT.md and
-// docs/adrs/002-drop-vault-data-minimization.md for removal criterion.
-
 import * as StorageService from "../../../../services/storage.services";
 import * as SheetService from "../../../../services/sheets.services";
 import { useFinanceStore } from "../../../stores/finance.store";

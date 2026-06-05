@@ -287,17 +287,14 @@ export const findUser = async (email: string) => {
 
 		const headers = rows[0];
 
-		// Migration: ensure all required headers exist (removed legacy biometricCredId)
+		// Migration: ensure all required headers exist
 		const requiredHeaders = [
-			"isSecurityEnabled",
-			"isVaultLocked",
-			"biometricCredIds",
-			"devices",
-			"privacyMode",
-			"totpSecret",
+			"maskMode",
+			"schemaVersion",
 			"showAIAssistant",
 			"syncChatToSheets",
 			"lastUpdatedAt",
+			"lastSyncAt",
 		];
 		const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
 		if (missingHeaders.length > 0) {
@@ -388,10 +385,10 @@ export const createUser = async (userData: any) => {
 					requests: [{ addSheet: { properties: { title: sheetName } } }],
 				},
 			});
-			// Add headers - Updated to include security and settings
+			// Add headers - profile + cloud settings
 			await window.gapi.client.sheets.spreadsheets.values.update({
 				spreadsheetId: fileId,
-				range: `'${sheetName}'!A1:L1`,
+				range: `'${sheetName}'!A1:J1`,
 				valueInputOption: "RAW",
 				resource: {
 					values: [
@@ -400,15 +397,12 @@ export const createUser = async (userData: any) => {
 							"password",
 							"name",
 							"createdAt",
-							"isSecurityEnabled",
-							"isVaultLocked",
-							"totpSecret",
-							"privacyMode",
-							"biometricCredIds",
-							"devices",
+							"maskMode",
+							"schemaVersion",
 							"showAIAssistant",
 							"syncChatToSheets",
 							"lastUpdatedAt",
+							"lastSyncAt",
 						],
 					],
 				},
@@ -426,19 +420,11 @@ export const createUser = async (userData: any) => {
 			if (h === "password") return userData.password;
 			if (h === "name") return userData.name;
 			if (h === "createdAt") return new Date().toISOString();
-			if (h === "isSecurityEnabled") return userData.isSecurityEnabled || false;
-			if (h === "isVaultLocked") return userData.isVaultLocked || true;
-			if (h === "totpSecret") return userData.totpSecret || "";
-			if (h === "privacyMode") return userData.privacyMode || false;
+			if (h === "maskMode") return userData.maskMode || false;
+			if (h === "schemaVersion") return userData.schemaVersion ?? 2;
 			if (h === "showAIAssistant") return userData.showAIAssistant !== false;
 			if (h === "syncChatToSheets") return userData.syncChatToSheets !== false;
-			if (h === "biometricCredIds")
-				return JSON.stringify(userData.biometricCredIds || []);
-			if (h === "devices") return JSON.stringify(userData.devices || []);
-			// Legacy fields - map to new fields for backward compatibility
-			if (h === "isVaultEnabled") return userData.isSecurityEnabled || false;
-			if (h === "isVaultCreated") return userData.isSecurityEnabled || false;
-			if (h === "vaultSalt") return ""; // No longer used
+			if (h === "lastUpdatedAt") return new Date().toISOString();
 			return "";
 		});
 
@@ -503,61 +489,7 @@ export const updateUser = async (email: string, updates: any) => {
 		// 2. Prepare updated row based on headers
 		const currentRow = rows[rowIndex];
 		const updatedRow = headers.map((header, i) => {
-			// Smart Merging for Array fields to prevent overwrites from stale clients
-			if (
-				(header === "biometricCredIds" || header === "devices") &&
-				updates[header] !== undefined
-			) {
-				let currentVal = currentRow[i];
-				let currentArr: any[] = [];
-
-				// Parse current value
-				try {
-					if (currentVal && typeof currentVal === "string") {
-						if (currentVal.startsWith("[") && currentVal.endsWith("]")) {
-							currentArr = JSON.parse(currentVal);
-						}
-					}
-				} catch (e) {
-					console.warn(`Failed to parse existing ${header}`, e);
-				}
-
-				const updatesVal = updates[header];
-				let newArr: any[] = [];
-
-				if (Array.isArray(updatesVal)) {
-					newArr = updatesVal;
-				} else if (updatesVal) {
-					newArr = [updatesVal];
-				}
-
-				// --- RECURSIVE FLATTEN HELPER ---
-				const flattenIds = (arr: any[]): string[] => {
-					let result: string[] = [];
-					if (!Array.isArray(arr)) return typeof arr === "string" ? [arr] : [];
-					arr.forEach((item) => {
-						if (Array.isArray(item)) result = result.concat(flattenIds(item));
-						else if (typeof item === "string" && item) result.push(item);
-					});
-					return result;
-				};
-
-				// Merge and Dedupe
-				if (newArr.length > 0) {
-					const flatCurrent = flattenIds(currentArr);
-					const flatNew = flattenIds(newArr);
-					const merged = Array.from(
-						new Set([...flatCurrent, ...flatNew]),
-					).filter(Boolean);
-					return JSON.stringify(merged);
-				}
-
-				// If empty array passed, it's likely a clear operation (Unlink All)
-				return JSON.stringify([]);
-			}
-
 			if (updates[header] !== undefined) {
-				// Basic check: stringify boolean/objects
 				const val = updates[header];
 				if (typeof val === "boolean") return val.toString();
 				if (typeof val === "object" && val !== null) return JSON.stringify(val);
@@ -727,31 +659,38 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 			return;
 		}
 
+		// Strip legacy v1 sensitive fields before building headers/rows so removed columns are not reintroduced
+		const sensitiveFields = new Set([
+			"details",
+			"isEncrypted",
+			"accountNumber",
+			"cardNumber",
+			"holderName",
+			"expiry",
+			"cvv",
+		]);
+		const sanitizedItems = combinedData.map((item) => {
+			const sanitized: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(item)) {
+				if (!sensitiveFields.has(key)) sanitized[key] = value;
+			}
+			return sanitized;
+		});
+
 		// Generate headers from all items to ensure no fields are lost (migration support)
 		const headerSet = new Set<string>();
 		// Force 'id' to be the first column if it exists in any item
-		const hasId = combinedData.some((item) => item.id !== undefined);
+		const hasId = sanitizedItems.some((item) => item.id !== undefined);
 		if (hasId) headerSet.add("id");
 
-		combinedData.forEach((item) => {
+		sanitizedItems.forEach((item) => {
 			Object.keys(item).forEach((key) => {
-				// Security check: Never allow sensitive account details to become top-level columns
-				const sensitiveFields = [
-					"accountNumber",
-					"cardNumber",
-					"cvv",
-					"expiry",
-					"holderName",
-				];
-				if (sheetName === "Accounts" && sensitiveFields.includes(key)) {
-					return;
-				}
 				headerSet.add(key);
 			});
 		});
 		const headers = Array.from(headerSet);
 
-		const rowsToUpdate = combinedData.map((item) => {
+		const rowsToUpdate = sanitizedItems.map((item) => {
 			return headers.map((header) => {
 				const val = item[header];
 				if (typeof val === "object" && val !== null) {

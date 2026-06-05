@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useSyncStore } from "../sync.store";
 
 describe("sync.store", () => {
@@ -41,5 +41,51 @@ describe("sync.store", () => {
     const now = Date.now();
     useSyncStore.getState().setLastSyncTime(now);
     expect(useSyncStore.getState().lastSyncTime).toBe(now);
+  });
+
+  describe("showToast auto-dismiss", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("auto-dismisses after 3 seconds", () => {
+      useSyncStore.getState().showToast("Hello", "success");
+      expect(useSyncStore.getState().toast).not.toBeNull();
+      vi.advanceTimersByTime(3000);
+      expect(useSyncStore.getState().toast).toBeNull();
+    });
+
+    it("does not auto-dismiss before 3 seconds", () => {
+      useSyncStore.getState().showToast("Hello", "success");
+      vi.advanceTimersByTime(2999);
+      expect(useSyncStore.getState().toast).not.toBeNull();
+    });
+
+    it("resets the timer when a new toast is shown", () => {
+      useSyncStore.getState().showToast("First", "info");
+      vi.advanceTimersByTime(2000);
+      useSyncStore.getState().showToast("Second", "info");
+      vi.advanceTimersByTime(2000);
+      expect(useSyncStore.getState().toast).toEqual({ message: "Second", type: "info" });
+      vi.advanceTimersByTime(1000);
+      expect(useSyncStore.getState().toast).toBeNull();
+    });
+
+    it("clears the timer when dismissToast is called manually", () => {
+      useSyncStore.getState().showToast("Hello", "success");
+      useSyncStore.getState().dismissToast();
+      vi.advanceTimersByTime(3000);
+      expect(useSyncStore.getState().toast).toBeNull();
+    });
+
+    it("clears the timer when reset is called", () => {
+      useSyncStore.getState().showToast("Hello", "success");
+      useSyncStore.getState().reset();
+      vi.advanceTimersByTime(3000);
+      expect(useSyncStore.getState().toast).toBeNull();
+    });
   });
 });

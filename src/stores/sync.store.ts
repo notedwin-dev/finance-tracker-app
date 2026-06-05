@@ -30,13 +30,37 @@ const initialSyncState: SyncState = {
   lastSyncTime: 0,
 };
 
-export const useSyncStore = create<SyncState & SyncActions>((set) => ({
-  ...initialSyncState,
+const TOAST_AUTO_DISMISS_MS = 3000;
 
-  setIsSyncing: (syncing) => set({ isSyncing: syncing }),
-  setHasSynced: (synced) => set({ hasSynced: synced }),
-  showToast: (message, type) => set({ toast: { message, type } }),
-  dismissToast: () => set({ toast: null }),
-  setLastSyncTime: (time) => set({ lastSyncTime: time }),
-  reset: () => set(initialSyncState),
-}));
+export const useSyncStore = create<SyncState & SyncActions>((set) => {
+  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearDismissTimer = () => {
+    if (dismissTimer) {
+      clearTimeout(dismissTimer);
+      dismissTimer = null;
+    }
+  };
+  return {
+    ...initialSyncState,
+
+    setIsSyncing: (syncing) => set({ isSyncing: syncing }),
+    setHasSynced: (synced) => set({ hasSynced: synced }),
+    showToast: (message, type) => {
+      clearDismissTimer();
+      set({ toast: { message, type } });
+      dismissTimer = setTimeout(() => {
+        set({ toast: null });
+        dismissTimer = null;
+      }, TOAST_AUTO_DISMISS_MS);
+    },
+    dismissToast: () => {
+      clearDismissTimer();
+      set({ toast: null });
+    },
+    setLastSyncTime: (time) => set({ lastSyncTime: time }),
+    reset: () => {
+      clearDismissTimer();
+      set(initialSyncState);
+    },
+  };
+});

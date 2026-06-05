@@ -4,23 +4,18 @@ import History from "../components/History";
 import Modal from "../components/Modal";
 import BulkImportModal from "../components/BulkImportModal";
 import { useMask } from "../helpers/useMask";
+import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
-import { usePrivacyStore } from "../src/stores/privacy.store";
-import { deleteTransaction, bulkImportTransactions, unlockVaultWithTOTP, unlockVaultWithBiometrics, loadData } from "../src/lib/application/commands";
+import { deleteTransaction, bulkImportTransactions, loadData } from "../src/lib/application/commands";
 import { useAuth } from "../services/auth.services";
-import * as SecurityService from "../services/security.services";
 import * as SheetService from "../services/sheets.services";
 import {
 	ChevronLeftIcon,
-	CreditCardIcon,
-	ClipboardDocumentIcon,
 	WalletIcon,
 	PencilSquareIcon,
 	ArrowUpRightIcon,
 	BanknotesIcon,
-	LockClosedIcon,
-	FingerPrintIcon,
 	DocumentArrowUpIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -36,7 +31,7 @@ import {
 	ScriptableContext,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { AccountDetails, TransactionType } from "../types";
+import { TransactionType } from "../types";
 import {
 	normalizeDate,
 	formatDateReadable,
@@ -66,8 +61,8 @@ const AccountPage: React.FC = () => {
 	const usdRate = useFinanceStore((s) => s.usdRate);
 	const cryptoPrices = useFinanceStore((s) => s.cryptoPrices);
 	const { displayCurrency } = useUIStore();
-	const { isVaultEnabled, isVaultUnlocked } = usePrivacyStore();
 	const { maskAmount, maskText } = useMask();
+	const maskMode = useMaskStore((s) => s.maskMode);
 	const { transactions, categories, accounts, pots, pockets } =
 		useFinanceStore();
 	const {
@@ -77,10 +72,7 @@ const AccountPage: React.FC = () => {
 		setEditingAccount,
 	} = useOutletContext<any>();
 
-	const [showUnlockModal, setShowUnlockModal] = useState(false);
 	const [showImportModal, setShowImportModal] = useState(false);
-	const [vaultTOTPCode, setVaultTOTPCode] = useState("");
-	const [unlockError, setUnlockError] = useState("");
 	const [confirmationModal, setConfirmationModal] = useState<{
 		isOpen: boolean;
 		title: string;
@@ -97,28 +89,6 @@ const AccountPage: React.FC = () => {
 	});
 
 	const boundLoadData = (forceUnlock?: boolean) => loadData(profile, forceUnlock);
-
-	const handleVaultUnlock = async () => {
-		if (!vaultTOTPCode) return;
-		const success = await unlockVaultWithTOTP(vaultTOTPCode, profile, updateProfile, boundLoadData);
-		if (success) {
-			setShowUnlockModal(false);
-			setVaultTOTPCode("");
-			setUnlockError("");
-		} else {
-			setUnlockError("Invalid 2FA code.");
-		}
-	};
-
-	const handleBiometricUnlock = async () => {
-		const success = await unlockVaultWithBiometrics(profile, updateProfile, boundLoadData);
-		if (success) {
-			setShowUnlockModal(false);
-			setUnlockError("");
-		} else {
-			setUnlockError("Biometric unlock failed. Please use TOTP.");
-		}
-	};
 
 	const account = useMemo(
 		() => accounts.find((a) => a.id === id),
@@ -646,272 +616,18 @@ const AccountPage: React.FC = () => {
 						</div>
 					)}
 
-					{/* Account Identity Details */}
-					{account.details && (
-						<div className="bg-surface/40 backdrop-blur-3xl p-6 sm:p-8 rounded-4xl sm:rounded-[2.5rem] border border-white/5 shadow-2xl space-y-5 sm:space-y-6">
-							<div className="flex justify-between items-center">
-								<h4 className="font-extrabold sm:font-black text-white uppercase tracking-[0.2em] text-[10px] sm:text-xs flex items-center gap-2">
-									<CreditCardIcon className="w-5 h-5 text-indigo-400" />{" "}
-									Identity Details
-								</h4>
-
-								{isVaultEnabled && !isVaultUnlocked && (
-									<button
-										onClick={() => {
-											setVaultTOTPCode("");
-											setUnlockError("");
-											setShowUnlockModal(true);
-										}}
-										className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg text-xs font-bold transition-colors border border-indigo-500/20"
-									>
-										<LockClosedIcon className="w-3.5 h-3.5" />
-										Unlock Vault
-									</button>
-								)}
-							</div>
-
-							{isVaultEnabled && !isVaultUnlocked ? (
-								<div className="py-8 text-center space-y-3">
-									<div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto">
-										<LockClosedIcon className="w-6 h-6 text-gray-500" />
-									</div>
-									<div className="space-y-1">
-										<p className="text-sm font-bold text-gray-300">
-											Vault is Locked
-										</p>
-										<p className="text-[10px] text-gray-500 max-w-50 mx-auto leading-relaxed">
-											These details are encrypted. Click Unlock to decrypt using
-											your vault password or biometrics.
-										</p>
-									</div>
-								</div>
-							) : typeof account.details === "object" &&
-							  Object.keys(account.details as AccountDetails).length === 0 &&
-							  isVaultUnlocked ? (
-								<div className="py-8 text-center space-y-4">
-									<div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto">
-										<CreditCardIcon className="w-6 h-6 text-gray-500" />
-									</div>
-									<div className="space-y-2">
-										<p className="text-sm font-bold text-gray-300">
-											No Identity Details Added
-										</p>
-										<p className="text-[10px] text-gray-500 max-w-md mx-auto leading-relaxed">
-											Add sensitive information like account numbers, card
-											details, and more to keep them securely encrypted.
-										</p>
-									</div>
-									<button
-										onClick={() => {
-											setEditingAccount(account);
-											setShowAccountForm(true);
-										}}
-										className="mt-4 px-6 py-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-xs font-bold transition-colors border border-indigo-500/20"
-									>
-										Add Details
-									</button>
-								</div>
-							) : (
-								<div className="space-y-5 sm:space-y-6">
-									{(account.details as AccountDetails).holderName && (
-										<div className="space-y-1">
-											<label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest">
-												Account Holder
-											</label>
-											<p className="font-mono text-gray-200 text-sm sm:text-sm">
-												{maskText(
-													(account.details as AccountDetails).holderName!,
-													true,
-												)}
-											</p>
-										</div>
-									)}
-									{(account.details as AccountDetails).accountNumber && (
-										<div className="space-y-1.5">
-											<label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest block">
-												Account Number
-											</label>
-											<div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group">
-												<p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
-													{maskText(
-														(account.details as AccountDetails).accountNumber!,
-														true,
-													)}
-												</p>
-												<button
-													onClick={async () => {
-														if (isVaultEnabled) {
-															const credId = profile.biometricCredIds?.[0];
-															if (!credId) return;
-															const verified =
-																await SecurityService.verifyWithBiometrics(
-																	credId,
-																);
-															if (!verified) return;
-														}
-														copyToClipboard(
-															(account.details as AccountDetails).accountNumber,
-														);
-													}}
-													className="text-gray-500 hover:text-white transition-colors shrink-0"
-												>
-													<ClipboardDocumentIcon className="w-5 h-5" />
-												</button>
-											</div>
-										</div>
-									)}
-									{(account.details as AccountDetails).cardNumber && (
-										<div className="space-y-1.5">
-											<label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest block">
-												Card Number
-											</label>
-											<div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group">
-												<p className="font-mono text-white text-sm sm:text-base tracking-widest truncate mr-2">
-													{maskText(
-														(account.details as AccountDetails).cardNumber!,
-														true,
-													)}
-												</p>
-												<button
-													onClick={async () => {
-														if (isVaultEnabled) {
-															const credId = profile.biometricCredIds?.[0];
-															if (!credId) return;
-															const verified =
-																await SecurityService.verifyWithBiometrics(
-																	credId,
-																);
-															if (!verified) return;
-														}
-														copyToClipboard(
-															(account.details as AccountDetails).cardNumber,
-														);
-													}}
-													className="text-gray-500 hover:text-white transition-colors shrink-0"
-												>
-													<ClipboardDocumentIcon className="w-5 h-5" />
-												</button>
-											</div>
-										</div>
-									)}
-									<div className="grid grid-cols-2 gap-4">
-										{(account.details as AccountDetails).expiry && (
-											<div className="space-y-1">
-												<label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest">
-													Expiry Date
-												</label>
-												<p className="font-mono text-gray-200 text-sm sm:text-sm">
-													{maskText(
-														(account.details as AccountDetails).expiry!,
-														true,
-													)}
-												</p>
-											</div>
-										)}
-										{(account.details as AccountDetails).cvv && (
-											<div className="space-y-1">
-												<label className="text-[10px] text-gray-500 font-bold sm:font-black uppercase tracking-widest">
-													CVV Code
-												</label>
-												<p className="font-mono text-gray-200 text-sm sm:text-sm">
-													{maskText(
-														(account.details as AccountDetails).cvv!,
-														true,
-													)}
-												</p>
-											</div>
-										)}
-									</div>
-
-									{(account.details as AccountDetails).note && (
-										<div className="pt-4 border-t border-white/5">
-											<p className="text-[10px] text-gray-500 italic leading-relaxed">
-												{(account.details as AccountDetails).note}
-											</p>
-										</div>
-									)}
-								</div>
-							)}
+					{account.note && (
+						<div className="bg-surface/40 backdrop-blur-3xl p-6 sm:p-8 rounded-4xl sm:rounded-[2.5rem] border border-white/5 shadow-2xl">
+							<p className="text-[10px] text-gray-500 italic leading-relaxed whitespace-pre-wrap">
+								{maskMode
+									? "•".repeat(Math.min(account.note.length, 32))
+									: account.note}
+							</p>
 						</div>
 					)}
 				</div>
 			</div>
 
-			<Modal
-				isOpen={showUnlockModal}
-				onClose={() => setShowUnlockModal(false)}
-				title="Unlock Vault"
-				description="Enter your 6-digit 2FA code from your authenticator app to view sensitive details."
-				icon={LockClosedIcon}
-				iconColor="text-indigo-400"
-				iconBgColor="bg-indigo-500/10"
-			>
-				<div className="space-y-4">
-					{profile.biometricCredIds?.length && (
-						<button
-							onClick={() => {
-								setConfirmationModal({
-									isOpen: true,
-									title: "Biometric Unlock",
-									description:
-										"Are you sure you want to use TouchID/FaceID to unlock your private vault data?",
-									confirmLabel: "Verify Identity",
-									onConfirm: handleBiometricUnlock,
-								});
-							}}
-							className="w-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 mb-2"
-						>
-							<FingerPrintIcon className="w-5 h-5" />
-							Unlock with Biometrics
-						</button>
-					)}
-					<div className="space-y-1.5">
-						<label className="text-[10px] text-gray-500 font-black uppercase tracking-widest pl-1">
-							2FA Code (6 Digits)
-						</label>
-						<input
-							type="text"
-							inputMode="numeric"
-							pattern="[0-9]*"
-							autoFocus
-							value={vaultTOTPCode}
-							onChange={(e) => {
-								const value = e.target.value.replace(/[^0-9]/g, "");
-								setVaultTOTPCode(value);
-								setUnlockError("");
-							}}
-							onKeyDown={(e) => {
-								if (e.key === "Enter" && vaultTOTPCode.length === 6) {
-									handleVaultUnlock();
-								}
-							}}
-							placeholder="000000"
-							maxLength={6}
-							className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-gray-600 placeholder:tracking-[0.5em]"
-						/>
-						{unlockError && (
-							<p className="text-[10px] text-rose-500 font-bold pl-1">
-								{unlockError}
-							</p>
-						)}
-					</div>
-					<div className="grid grid-cols-2 gap-3">
-						<button
-							onClick={() => setShowUnlockModal(false)}
-							className="py-3 px-4 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10 text-gray-400 transition-colors"
-						>
-							Cancel
-						</button>
-						<button
-							onClick={handleVaultUnlock}
-							disabled={vaultTOTPCode.length !== 6}
-							className="py-3 px-4 rounded-xl font-bold text-sm bg-indigo-500 hover:bg-indigo-600 text-white transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-						>
-							Unlock
-						</button>
-					</div>
-				</div>
-			</Modal>
 
 			<Modal
 				isOpen={confirmationModal.isOpen}

@@ -459,8 +459,15 @@ export const createUser = async (userData: any) => {
 export const updateUser = async (email: string, updates: any) => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
+		const maskEmail = (email: string): string => {
+			if (!email || email.length < 3) return "***";
+			const atIndex = email.indexOf("@");
+			if (atIndex === -1) return "***";
+			return `${email.charAt(0)}***${email.charAt(atIndex - 1)}${email.substring(atIndex)}`;
+		};
+
 		logger.log("📝 updateUser called with:", {
-			email,
+			maskedEmail: maskEmail(email),
 			updatedFields: Object.keys(updates || {}),
 		});
 

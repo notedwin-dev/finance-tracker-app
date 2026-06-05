@@ -56,21 +56,25 @@ describe("logger redact", () => {
 });
 
 describe("logger proxies", () => {
-	let spy: ReturnType<typeof vi.spyOn>;
+	let logSpy: ReturnType<typeof vi.spyOn>;
+	let warnSpy: ReturnType<typeof vi.spyOn>;
+	let errorSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
-		spy = vi.spyOn(console, "log").mockImplementation(() => {});
-		vi.spyOn(console, "warn").mockImplementation(() => {});
-		vi.spyOn(console, "error").mockImplementation(() => {});
+		logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
-		spy.mockRestore();
+		logSpy.mockRestore();
+		warnSpy.mockRestore();
+		errorSpy.mockRestore();
 	});
 
 	it("redacts objects when forwarded to console.log", () => {
 		logger.log({ geminiApiKey: "AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" });
-		expect(spy).toHaveBeenCalledWith({ geminiApiKey: "[REDACTED]" });
+		expect(logSpy).toHaveBeenCalledWith({ geminiApiKey: "[REDACTED]" });
 	});
 
 	it("redacts inline API-key strings", () => {
@@ -81,6 +85,6 @@ describe("logger proxies", () => {
 
 	it("leaves non-sensitive messages alone", () => {
 		logger.log("hello", 42, true);
-		expect(spy).toHaveBeenCalledWith("hello", 42, true);
+		expect(logSpy).toHaveBeenCalledWith("hello", 42, true);
 	});
 });

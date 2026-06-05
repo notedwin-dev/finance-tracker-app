@@ -1,4 +1,5 @@
 const PBKDF2_ITERATIONS = 600_000;
+const MAX_PBKDF2_ITERATIONS = 2_000_000;
 const PBKDF2_HASH_ALGO = "SHA-256";
 const SALT_BYTES = 16;
 const HASH_BYTES = 32;
@@ -69,12 +70,17 @@ const parsePbkdf2 = (
 	const parts = stored.split("$");
 	if (parts.length !== 4 || parts[0] !== PREFIX) return null;
 	const iterations = parseInt(parts[1], 10);
-	if (!Number.isFinite(iterations) || iterations < 1000) return null;
-	const salt = Uint8Array.from(atob(parts[2]), (c) => c.charCodeAt(0));
-	const hash = Uint8Array.from(atob(parts[3]), (c) => c.charCodeAt(0));
-	if (salt.length !== SALT_BYTES) return null;
-	if (hash.length !== HASH_BYTES) return null;
-	return { iterations, salt, hash };
+	if (!Number.isInteger(iterations) || iterations < 1000 || iterations > MAX_PBKDF2_ITERATIONS) return null;
+
+	try {
+		const salt = Uint8Array.from(atob(parts[2]), (c) => c.charCodeAt(0));
+		const hash = Uint8Array.from(atob(parts[3]), (c) => c.charCodeAt(0));
+		if (salt.length !== SALT_BYTES) return null;
+		if (hash.length !== HASH_BYTES) return null;
+		return { iterations, salt, hash };
+	} catch {
+		return null;
+	}
 };
 
 const constantTimeEqual = (a: Uint8Array, b: Uint8Array): boolean => {

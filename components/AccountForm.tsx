@@ -38,7 +38,7 @@ const AccountForm: React.FC<Props> = ({
 
   const sanitizeNote = (value: string) =>
     value
-      .replace(/\b\d{13,19}\b/g, "[redacted]")
+      .replace(/\b(?=(?:[\s\S]*\d){13,19})(?:\d[ -]?){13,19}\b/g, "[redacted]")
       .replace(/\b(cvv|cvc)\s*:?\s*\d{3,4}\b/gi, "[redacted]");
 
   const [confirmationModal, setConfirmationModal] = useState<{

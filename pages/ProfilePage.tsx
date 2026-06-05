@@ -45,8 +45,26 @@ const ProfilePage: React.FC = () => {
       return rest;
     });
 
-    const { geminiApiKey: _geminiKey, ...sanitizedProfile } =
-      profile as unknown as Record<string, unknown>;
+    const ALLOWED_PROFILE_FIELDS = [
+      "id",
+      "email",
+      "name",
+      "createdAt",
+      "offlineMode",
+      "maskMode",
+      "schemaVersion",
+      "showAIAssistant",
+      "syncChatToSheets",
+      "lastUpdatedAt",
+      "lastSyncAt",
+    ];
+    const profileRecord = profile as unknown as Record<string, unknown>;
+    const sanitizedProfile: Record<string, unknown> = {};
+    for (const key of ALLOWED_PROFILE_FIELDS) {
+      if (profileRecord[key] !== undefined) {
+        sanitizedProfile[key] = profileRecord[key];
+      }
+    }
 
     const data = {
       profile: sanitizedProfile,

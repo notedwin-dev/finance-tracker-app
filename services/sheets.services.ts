@@ -26,6 +26,14 @@ const DISCOVERY_DOCS = [
 const getApiKey = () =>
 	import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
 
+/**
+ * Masks a file ID for logging purposes
+ */
+const maskFileId = (fileId: string): string => {
+	if (!fileId || fileId.length < 8) return "***";
+	return `${fileId.substring(0, 4)}...${fileId.substring(fileId.length - 4)}`;
+};
+
 let gapiInited = false;
 let gapiInitializing = false;
 let hasAccessToken = false;
@@ -1391,7 +1399,7 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 				) {
 					const doc = data[window.google.picker.Response.DOCUMENTS][0];
 					const fileId = doc[window.google.picker.Document.ID];
-					logger.log("User selected spreadsheet via picker:", fileId);
+					logger.log("User selected spreadsheet via picker:", maskFileId(fileId));
 					// Store selected file ID to skip search next time
 					localStorage.setItem("zenfinance_selected_sheet_id", fileId);
 					cachedSheetName = null; // Clear cache when switching spreadsheets

@@ -296,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 						try {
 							const success = await SheetService.updateUser(updatedP!.email, u);
 							if (!success) {
-								console.warn("Failed to sync profile update to sheets: updateUser returned false");
+								logger.warn("Failed to sync profile update to sheets: updateUser returned false");
 							}
 						} catch (err) {
 							logger.warn("Failed to sync profile update to sheets", err);

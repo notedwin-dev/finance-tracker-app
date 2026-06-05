@@ -50,8 +50,6 @@ export async function resetAndSync(
   ];
   const saved: Record<string, string | null> = {};
   keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-  localStorage.clear();
-  keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 
   try {
     const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
@@ -59,6 +57,10 @@ export async function resetAndSync(
       showToast("No cloud data found. Cannot reset.", "alert");
       return;
     }
+
+    // Only clear localStorage after successful cloud validation
+    localStorage.clear();
+    keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 
     if (cloudData.profile) {
       const mergedProfile = { ...profile, ...cloudData.profile };

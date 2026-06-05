@@ -6,6 +6,7 @@ import {
   computeBudgetConsumption,
   computeSavingsMovement,
 } from "../../domain/balance.engine";
+import { isCrossCurrency, computeTransactionDeltas } from "../../domain/transaction";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
 import { generateId } from "./helpers";
@@ -41,13 +42,7 @@ export async function submitTransaction(
     ? accounts.find((a) => a.id === tx.toAccountId)
     : undefined;
 
-  const isCrossCurrency = (acc: Account | undefined) =>
-    !!acc &&
-    acc.currency !== tx.currency &&
-    (tx.currency === "USD" || tx.currency === "MYR") &&
-    (acc.currency === "USD" || acc.currency === "MYR");
-
-  if (usdRate <= 0 && (isCrossCurrency(txAccount) || isCrossCurrency(toAccount))) {
+  if (usdRate <= 0 && (isCrossCurrency(tx, txAccount) || isCrossCurrency(tx, toAccount))) {
     showToast(
       "Exchange rate not loaded. Please wait a moment and try again.",
       "alert",
@@ -60,13 +55,21 @@ export async function submitTransaction(
   const pocketUpdates = new Map<string, number>();
 
   const applyDeltas = (t: Transaction, factor: 1 | -1) => {
-    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
+    const { accountDeltas, potDeltas, pocketDeltas } = computeTransactionDeltas(
+      t,
+      factor,
+      accounts,
+      pots,
+      pockets,
+      usdRate,
+    );
+    for (const [id, delta] of accountDeltas) {
       accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
     }
-    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
+    for (const [id, delta] of potDeltas) {
       potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
     }
-    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
+    for (const [id, delta] of pocketDeltas) {
       pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
     }
   };
@@ -142,15 +145,15 @@ export async function submitTransaction(
     return p;
   });
 
+  await StorageService.saveTransactions(updatedTransactions);
+  if (accountUpdates.size > 0) await StorageService.saveAccounts(updatedAccounts);
+  if (potUpdates.size > 0) await StorageService.savePots(updatedPots);
+  if (pocketUpdates.size > 0) await StorageService.savePockets(updatedPockets);
+
   store.setTransactions(updatedTransactions);
   if (accountUpdates.size > 0) store.setAccounts(updatedAccounts);
   if (potUpdates.size > 0) store.setPots(updatedPots);
   if (pocketUpdates.size > 0) store.setPockets(updatedPockets);
-
-  StorageService.saveTransactions(updatedTransactions);
-  if (accountUpdates.size > 0) StorageService.saveAccounts(updatedAccounts);
-  if (potUpdates.size > 0) StorageService.savePots(updatedPots);
-  if (pocketUpdates.size > 0) StorageService.savePockets(updatedPockets);
 
   if (isCloudEnabled) {
     if (isEdit) {

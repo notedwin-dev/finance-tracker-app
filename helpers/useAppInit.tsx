@@ -37,13 +37,21 @@ export function useAppInit() {
         );
       });
 
-    getUSDToMYRRate().then((data) => {
-      useFinanceStore.getState().setUsdRate(data.rate);
-      useFinanceStore.getState().setExchangeRate(data);
-    });
-    getCryptoPrices().then((prices) => {
-      useFinanceStore.getState().setCryptoPrices(prices);
-    });
+    getUSDToMYRRate()
+      .then((data) => {
+        useFinanceStore.getState().setUsdRate(data.rate);
+        useFinanceStore.getState().setExchangeRate(data);
+      })
+      .catch((e) => {
+        logger.warn("Failed to fetch USD/MYR rate; retaining initial usdRate/exchangeRate", e);
+      });
+    getCryptoPrices()
+      .then((prices) => {
+        useFinanceStore.getState().setCryptoPrices(prices);
+      })
+      .catch((e) => {
+        logger.warn("Failed to fetch crypto prices; retaining initial cryptoPrices", e);
+      });
   }, [profile.id]);
 
   useEffect(() => {

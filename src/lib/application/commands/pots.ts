@@ -22,8 +22,8 @@ export async function savePot(
   const updated = isEdit
     ? existingPots.map((p) => (p.id === pot.id ? potWithUser : p))
     : [...existingPots, potWithUser];
-  store.setPots(updated);
   await StorageService.savePots(updated);
+  store.setPots(updated);
   showToast(isEdit ? "Pot updated" : "Pot saved", "success");
 }
 
@@ -35,7 +35,7 @@ export async function deletePot(
   const { showToast } = useSyncStore.getState();
 
   const updated = existingPots.filter((p) => p.id !== potId);
-  store.setPots(updated);
   await StorageService.savePots(updated);
+  store.setPots(updated);
   showToast("Pot deleted", "success");
 }

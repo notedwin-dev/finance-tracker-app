@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesSearch } from "../../../../components/history/useFilteredTransactions";
+import { matchesSearch } from "../search";
 import { TransactionType } from "../../../../types";
 import type { Transaction } from "../../../../types";
 
@@ -89,10 +89,14 @@ describe("matchesSearch", () => {
     expect(matchesSearch(tx, "savings", categories, accounts)).toBe(true);
   });
 
-  it("does not match destination when accounts list is empty", () => {
-    const tx = makeTx({ toAccountId: "a2" });
-    expect(matchesSearch(tx, "savings", categories, [])).toBe(false);
-  });
+	it("does not match destination when accounts list is empty", () => {
+		const tx = makeTx({
+			toAccountId: "a2",
+			type: TransactionType.TRANSFER,
+			transferDirection: "OUT",
+		});
+		expect(matchesSearch(tx, "savings", categories, [])).toBe(false);
+	});
 
   it("uses includes (not startsWith) for non-date queries", () => {
     const tx = makeTx({ shopName: "SuperTest" });

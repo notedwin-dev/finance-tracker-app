@@ -15,7 +15,7 @@ export async function runVaultSchemaMigration(): Promise<void> {
   if (!needsV1Migration(profile, store.accounts)) return;
 
   const { accounts: cleanedAccounts, profile: cleanedProfile } =
-    migrateSchemaV1toV2(store.accounts, profile);
+    migrateSchemaV1toV2(store.accounts, profile, new Date().toISOString());
 
   await StorageService.saveAccounts(cleanedAccounts);
   StorageService.saveProfile(cleanedProfile);

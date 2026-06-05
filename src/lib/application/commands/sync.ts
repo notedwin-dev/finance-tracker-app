@@ -544,7 +544,7 @@ export async function syncData(
         postSubSubs,
         mergedPots,
         mergedPockets,
-        profile.syncChatToSheets ? mergedChatSessions : undefined,
+        activeProfile.syncChatToSheets ? mergedChatSessions : undefined,
         {
           ...activeProfile,
           lastSyncAt: syncTimestamp,

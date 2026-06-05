@@ -39,36 +39,23 @@ const ProfilePage: React.FC = () => {
       );
     }
 
-    const sanitizedAccounts = accounts.map((a) => {
-      const bag = a as unknown as Record<string, unknown>;
-      const { details, isEncrypted, ...rest } = bag;
-      return rest;
-    });
-
-    const ALLOWED_PROFILE_FIELDS = [
-      "id",
-      "email",
-      "name",
-      "createdAt",
-      "offlineMode",
-      "maskMode",
-      "schemaVersion",
-      "showAIAssistant",
-      "syncChatToSheets",
-      "lastUpdatedAt",
-      "lastSyncAt",
-    ];
-    const profileRecord = profile as unknown as Record<string, unknown>;
-    const sanitizedProfile: Record<string, unknown> = {};
-    for (const key of ALLOWED_PROFILE_FIELDS) {
-      if (profileRecord[key] !== undefined) {
-        sanitizedProfile[key] = profileRecord[key];
+    const SENSITIVE_KEYS =
+      /^(?:apikey|api[_-]?key|secret|token|password|passphrase|geminiApiKey|googleApiKey|vite_(?:gemini|google)_api_key|totpSecret|encryptionKey|vaultSalt|biometricCred(?:Id|Ids)|devices|cardNumber|cvv|expiry|holderName|accountNumber|details|isEncrypted|encryptedDetails|pin|ssn|taxId|iban|routingNumber|swift)$/i;
+    const stripSensitive = (obj: unknown): unknown => {
+      if (Array.isArray(obj)) return obj.map(stripSensitive);
+      if (obj && typeof obj === "object") {
+        return Object.fromEntries(
+          Object.entries(obj as Record<string, unknown>)
+            .filter(([k]) => !SENSITIVE_KEYS.test(k))
+            .map(([k, v]) => [k, stripSensitive(v)]),
+        );
       }
-    }
+      return obj;
+    };
 
     const data = {
-      profile: sanitizedProfile,
-      accounts: sanitizedAccounts,
+      profile: stripSensitive(profile),
+      accounts: accounts.map((a) => stripSensitive(a)),
       transactions: filteredTransactions,
       categories,
       goals,

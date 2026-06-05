@@ -677,7 +677,6 @@ export async function syncData(
     } else {
       useSyncStore.getState().showToast("Cloud sync failed. Working offline.", "info");
     }
-    useSyncStore.getState().setIsSyncing(false);
   } finally {
     useSyncStore.getState().setIsSyncing(false);
     syncInProgress = false;

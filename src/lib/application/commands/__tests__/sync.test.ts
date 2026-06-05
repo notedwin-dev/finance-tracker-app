@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as StorageService from "../../../../../services/storage.services";
 import * as SheetService from "../../../../../services/sheets.services";
 import { useSyncStore } from "../../../../stores/sync.store";
@@ -76,6 +76,6 @@ describe("syncData error handling", () => {
 
     const state = useSyncStore.getState();
     expect(state.isSyncing).toBe(false);
-    expect(state.toast?.message).not.toBe("Syncing with Google Sheets...");
+    expect(state.toast).toBeNull();
   });
 });

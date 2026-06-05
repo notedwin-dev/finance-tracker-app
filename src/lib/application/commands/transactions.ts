@@ -96,7 +96,6 @@ export async function submitTransaction(
       : null;
   if (partnerLeg) applyDeltas(partnerLeg, 1);
 
-  // Build updated transaction list
   let updatedTransactions: Transaction[];
   if (isEdit) {
     updatedTransactions = store.transactions.map((t: Transaction) =>
@@ -143,19 +142,16 @@ export async function submitTransaction(
     return p;
   });
 
-  // Update store
   store.setTransactions(updatedTransactions);
   if (accountUpdates.size > 0) store.setAccounts(updatedAccounts);
   if (potUpdates.size > 0) store.setPots(updatedPots);
   if (pocketUpdates.size > 0) store.setPockets(updatedPockets);
 
-  // Persist to local storage
   StorageService.saveTransactions(updatedTransactions);
   if (accountUpdates.size > 0) StorageService.saveAccounts(updatedAccounts);
   if (potUpdates.size > 0) StorageService.savePots(updatedPots);
   if (pocketUpdates.size > 0) StorageService.savePockets(updatedPockets);
 
-  // Cloud sync
   if (isCloudEnabled) {
     if (isEdit) {
       await SheetService.updateOne("Transactions", txWithUser.id, txWithUser);
@@ -175,7 +171,6 @@ export async function submitTransaction(
     }
   }
 
-  // Handle subscriptions
   if (newSubscription && !isEdit) {
     const sub: Subscription = {
       ...newSubscription,
@@ -196,7 +191,6 @@ export async function submitTransaction(
     if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
   }
 
-  // Handle link to existing subscription (advance next payment date)
   if (txWithUser.subscriptionId && !newSubscription && subscriptions) {
     const sub = subscriptions.find((s: Subscription) => s.id === txWithUser.subscriptionId);
     if (sub) {
@@ -539,7 +533,6 @@ export async function batchEditTransactions(
     finalUpdatesMap.set(id, thisUpdates);
     affectedTransactionIds.add(id);
 
-    // Handle partner leg
     if (
       originalTx.linkedTransactionId &&
       (nullifiedFields.includes("potId") ||
@@ -553,7 +546,6 @@ export async function batchEditTransactions(
       const partner = transactions.find((t) => t.id === originalTx.linkedTransactionId);
       if (partner) {
         const partnerUpdates: any = { ...cleanUpdates };
-        // Swap account/ pocket linkage fields for the partner side
         if (cleanUpdates.accountId !== undefined) {
           partnerUpdates.toAccountId = cleanUpdates.accountId;
         }
@@ -566,8 +558,7 @@ export async function batchEditTransactions(
         if (cleanUpdates.toSavingPocketId !== undefined) {
           partnerUpdates.savingPocketId = cleanUpdates.toSavingPocketId;
         }
-        // Sync shared transfer fields to keep both legs consistent
-        const sharedFields = ["amount", "currency", "date", "fee", "feeType", "notes", "shopName"] as const;
+        const sharedFields = ["amount", "currency", "date", "fee", "feeType", "note", "shopName"] as const;
         for (const field of sharedFields) {
           if (cleanUpdates[field as keyof typeof cleanUpdates] !== undefined) {
             partnerUpdates[field] = cleanUpdates[field as keyof typeof cleanUpdates];
@@ -597,7 +588,6 @@ export async function batchEditTransactions(
     }
   }
 
-  // Recalculate balance/pot/pocket impacts
   const potUpdates = new Map<string, number>();
   const pocketUpdates = new Map<string, number>();
   const accountUpdates = new Map<string, number>();

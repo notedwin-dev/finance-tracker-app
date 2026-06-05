@@ -44,7 +44,7 @@
         "edit": "allow",
         "glob": "allow",
         "grep": "allow",
-        "bash": "allow"
+        "bash": "deny"
       }
     },
     "commands-splitter": {
@@ -63,7 +63,7 @@
         "edit": "allow",
         "glob": "allow",
         "grep": "allow",
-        "bash": "allow"
+        "bash": "deny"
       }
     },
     "page-migrator": {
@@ -82,7 +82,7 @@
         "edit": "allow",
         "glob": "allow",
         "grep": "allow",
-        "bash": "allow"
+        "bash": "deny"
       }
     }
   }

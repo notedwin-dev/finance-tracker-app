@@ -244,6 +244,7 @@ const MainLayout: React.FC = () => {
           )}
 
           <button
+            type="button"
             onClick={() => setMaskMode(!maskMode)}
             aria-pressed={maskMode}
             className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/50 hover:bg-gray-800/50 border border-gray-800/50 transition-all group"
@@ -302,6 +303,7 @@ const MainLayout: React.FC = () => {
               </div>
             )}
             <button
+              type="button"
               onClick={() => setMaskMode(!maskMode)}
               aria-label="Toggle mask mode"
               aria-pressed={maskMode}

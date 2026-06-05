@@ -38,8 +38,11 @@ const AccountForm: React.FC<Props> = ({
 
   const sanitizeNote = (value: string) =>
     value
-      .replace(/\b(?=(?:[\s\S]*\d){13,19})(?:\d[ -]?){13,19}\b/g, "[redacted]")
-      .replace(/\b(cvv|cvc)\s*:?\s*\d{3,4}\b/gi, "[redacted]");
+      .replace(/\b(cvv|cvc)\s*:?\s*\d{3,4}\b/gi, "[redacted]")
+      .replace(/\d[ -]?(?:\d[ -]?){11,17}\d/g, (run) => {
+        const digits = run.replace(/\D/g, "");
+        return digits.length >= 13 && digits.length <= 19 ? "[redacted]" : run;
+      });
 
   const [confirmationModal, setConfirmationModal] = useState<{
     isOpen: boolean;

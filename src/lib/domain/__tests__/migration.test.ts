@@ -298,7 +298,7 @@ describe("needsV1Migration", () => {
     );
   });
 
-  it("returns true when v1 user has plain empty array for biometricCredIds (treated as absent)", () => {
+  it("returns false when v1 user has plain empty array for biometricCredIds (treated as absent)", () => {
     expect(
       needsV1Migration(
         asProfile({ schemaVersion: 2, biometricCredIds: [] }),

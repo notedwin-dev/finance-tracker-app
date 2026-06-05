@@ -1,5 +1,5 @@
 import { Transaction, TransactionType, Account, Pot, SavingPocket } from "../../../types";
-import { normalizeDate } from "../../../helpers/transactions.helper";
+import { normalizeDate } from "./dates";
 import { convertAmount } from "./currency";
 
 export function computeBudgetConsumption(
@@ -8,6 +8,8 @@ export function computeBudgetConsumption(
   pots: Pot[],
 ): Map<string, number> {
   const potDeltas = new Map<string, number>();
+
+  if (t.isHistorical) return potDeltas;
 
   if (t.potId) {
     const potId = String(t.potId);
@@ -39,6 +41,8 @@ export function computeSavingsMovement(
   pockets: SavingPocket[],
 ): Map<string, number> {
   const pocketDeltas = new Map<string, number>();
+
+  if (t.isHistorical) return pocketDeltas;
 
   if (t.savingPocketId) {
     const pocket = pockets.find((p) => p.id === t.savingPocketId);

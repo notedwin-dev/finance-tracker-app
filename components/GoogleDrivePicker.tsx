@@ -5,6 +5,10 @@ import {
 } from "@googleworkspace/drive-picker-react";
 import { logger } from "../src/lib/application/logger";
 
+const maskFileId = (fileId: string): string => {
+  return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
+};
+
 interface GoogleDrivePickerProps {
   onPicked: (fileId: string) => void;
   onCancel?: () => void;
@@ -29,21 +33,6 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
   const appId = import.meta.env.VITE_GOOGLE_APP_ID;
-
-  if (!clientId || !apiKey) {
-    logger.error(
-      "GoogleDrivePicker: Missing VITE_GOOGLE_CLIENT_ID or VITE_GOOGLE_API_KEY",
-    );
-  }
-  if (!appId) {
-    logger.warn(
-      "GoogleDrivePicker: Missing VITE_GOOGLE_APP_ID - this may cause integration issues",
-    );
-  }
-
-  const maskFileId = (fileId: string): string => {
-    return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
-  };
 
   const handlePicked = (e: CustomEvent) => {
     const data = e.detail;
@@ -122,10 +111,6 @@ export const useGoogleDrivePicker = () => {
       setPickerCallback(() => resolve);
       setIsPickerOpen(true);
     });
-  };
-
-  const maskFileId = (fileId: string): string => {
-    return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";
   };
 
   const handlePicked = (e: CustomEvent) => {

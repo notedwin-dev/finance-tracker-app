@@ -4,7 +4,7 @@ import {
 	verifyPassword,
 	isLegacyHash,
 	PBKDF2_ITERATIONS,
-} from "../../../../services/crypto.services";
+} from "../crypto.services";
 
 describe("crypto.services", () => {
 	describe("hashPassword", () => {

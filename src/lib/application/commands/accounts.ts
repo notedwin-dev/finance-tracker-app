@@ -24,10 +24,9 @@ export async function saveAccount(
     ? [...existingAccounts, accountWithUser]
     : existingAccounts.map((a) => (a.id === acc.id ? accountWithUser : a));
 
-  await StorageService.saveAccounts(updated);
-
+  const newTxs: Transaction[] = [];
   if (isNew && accountWithUser.balance !== 0) {
-    const openingTx: Transaction = {
+    newTxs.push({
       id: crypto.randomUUID(),
       userId: accountWithUser.userId,
       accountId: accountWithUser.id,
@@ -38,19 +37,14 @@ export async function saveAccount(
       date: new Date().toLocaleDateString("en-CA"),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
-    const updatedTxs = [openingTx, ...existingTransactions];
-    await StorageService.saveTransactions(updatedTxs);
-    store.setTransactions(updatedTxs);
+    });
   }
-
-  store.setAccounts(updated);
 
   if (!isNew) {
     const oldAcc = existingAccounts.find((a) => a.id === acc.id);
     if (oldAcc && oldAcc.balance !== accountWithUser.balance) {
       const diff = accountWithUser.balance - oldAcc.balance;
-      const adjustmentTx: Transaction = {
+      newTxs.push({
         id: crypto.randomUUID(),
         userId: accountWithUser.userId,
         accountId: accountWithUser.id,
@@ -62,11 +56,24 @@ export async function saveAccount(
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         note: `Manually changed balance from ${oldAcc.balance} to ${accountWithUser.balance}`,
-      };
-      const updatedTxs = [adjustmentTx, ...existingTransactions];
+      });
+    }
+  }
+
+  if (newTxs.length > 0) {
+    const updatedTxs = [...newTxs, ...existingTransactions];
+    await StorageService.saveAccounts(updated);
+    try {
       await StorageService.saveTransactions(updatedTxs);
       store.setTransactions(updatedTxs);
+      store.setAccounts(updated);
+    } catch (error) {
+      await StorageService.saveAccounts(existingAccounts);
+      throw error;
     }
+  } else {
+    await StorageService.saveAccounts(updated);
+    store.setAccounts(updated);
   }
 
   showToast("Account saved", "success");

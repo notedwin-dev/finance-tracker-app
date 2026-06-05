@@ -37,41 +37,49 @@ export async function resetAndSync(
 
   setIsSyncing(true);
 
-  const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
-  if (!cloudData || !cloudData.accounts) {
-    showToast("No cloud data found. Cannot reset.", "alert");
+  try {
+    const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
+    if (!cloudData || !cloudData.accounts) {
+      showToast("No cloud data found. Cannot reset.", "alert");
+      return;
+    }
+
+    const keysToKeep = [
+      "google_access_token",
+      "google_token_expiry",
+      "google_refresh_token",
+      "encrypted_vault_key",
+      "device_id",
+      StorageService.KEYS.PROFILE,
+    ];
+    const saved: Record<string, string | null> = {};
+    keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
+    localStorage.clear();
+    keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
+
+    if (cloudData.profile) {
+      const mergedProfile = { ...profile, ...cloudData.profile };
+      StorageService.saveProfile(mergedProfile);
+      if (onProfileUpdate) onProfileUpdate(cloudData.profile);
+    }
+    StorageService.saveAccounts(cloudData.accounts);
+    StorageService.saveTransactions(cloudData.transactions);
+    StorageService.saveCategories(cloudData.categories);
+    StorageService.saveGoals(cloudData.goals);
+    StorageService.saveSubscriptions(cloudData.subscriptions || []);
+    StorageService.savePots(cloudData.pots || []);
+    StorageService.savePockets(cloudData.pockets || []);
+    StorageService.saveChatSessions(cloudData.chatSessions || []);
+    showToast("Sync reset complete", "success");
+  } catch (e: any) {
+    if (e?.status === 401) {
+      showToast("Session expired. Please sign in again.", "info");
+    } else {
+      showToast("Reset failed. Working offline.", "info");
+    }
+  } finally {
     setIsSyncing(false);
-    return;
   }
-
-  const keysToKeep = [
-    "google_access_token",
-    "google_token_expiry",
-    "google_refresh_token",
-    "device_id",
-    StorageService.KEYS.PROFILE,
-  ];
-  const saved: Record<string, string | null> = {};
-  keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-  localStorage.clear();
-  keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
-
-  if (cloudData.profile) {
-    const mergedProfile = { ...profile, ...cloudData.profile };
-    StorageService.saveProfile(mergedProfile);
-    if (onProfileUpdate) onProfileUpdate(cloudData.profile);
-  }
-  StorageService.saveAccounts(cloudData.accounts);
-  StorageService.saveTransactions(cloudData.transactions);
-  StorageService.saveCategories(cloudData.categories);
-  StorageService.saveGoals(cloudData.goals);
-  StorageService.saveSubscriptions(cloudData.subscriptions || []);
-  StorageService.savePots(cloudData.pots || []);
-  StorageService.savePockets(cloudData.pockets || []);
-  StorageService.saveChatSessions(cloudData.chatSessions || []);
-  showToast("Sync reset complete", "success");
-
-  setIsSyncing(false);
 }
 
 export async function selectExistingSheet(

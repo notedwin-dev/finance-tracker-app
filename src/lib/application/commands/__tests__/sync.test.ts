@@ -15,11 +15,10 @@ const baseProfile = {
 };
 
 describe("syncData error handling", () => {
-  let testTime: number;
-  beforeEach(() => {
-    vi.useFakeTimers();
-    testTime = (testTime ?? 0) + 10_000;
-    vi.setSystemTime(new Date(testTime));
+let testTime = 0;
+beforeEach(() => {
+  testTime += 10_000;
+  vi.setSystemTime(new Date(testTime));
     vi.clearAllMocks();
     useSyncStore.getState().reset();
     vi.mocked(StorageService.getStoredProfile).mockReturnValue({

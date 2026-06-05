@@ -214,7 +214,11 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 				fields: "id",
 			});
 			return savedId;
-		} catch (e) {
+		} catch (e: any) {
+			if (e?.status === 401) {
+				clearGapiAccessToken();
+				throw e;
+			}
 			console.warn("Saved spreadsheet ID is no longer accessible", e);
 			localStorage.removeItem("zenfinance_selected_sheet_id");
 		}
@@ -319,7 +323,8 @@ export const findUser = async (email: string) => {
 		if (!userRow) return null;
 
 		return parseUserRow(headers, userRow);
-	} catch (e) {
+	} catch (e: any) {
+		if (e?.status === 401) throw e;
 		return null;
 	}
 };

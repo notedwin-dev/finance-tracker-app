@@ -214,7 +214,11 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 				fields: "id",
 			});
 			return savedId;
-		} catch (e) {
+		} catch (e: any) {
+			if (e?.status === 401) {
+				clearGapiAccessToken();
+				throw e;
+			}
 			console.warn("Saved spreadsheet ID is no longer accessible", e);
 			localStorage.removeItem("zenfinance_selected_sheet_id");
 		}
@@ -234,6 +238,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		if (err?.status === 401) {
 			console.warn("Unauthorized in getSpreadsheetId, clearing token");
 			clearGapiAccessToken();
+			throw err;
 		}
 		console.error("Error finding sheet", err);
 		return null;
@@ -249,6 +254,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		if (err?.status === 401) {
 			console.warn("Unauthorized in creating sheet, clearing token");
 			clearGapiAccessToken();
+			throw err;
 		}
 		console.error("Error creating sheet", err);
 		return null;
@@ -317,7 +323,13 @@ export const findUser = async (email: string) => {
 		if (!userRow) return null;
 
 		return parseUserRow(headers, userRow);
-	} catch (e) {
+	} catch (e: any) {
+		if (e?.status === 401) {
+			hasAccessToken = false;
+			localStorage.removeItem("google_access_token");
+			localStorage.removeItem("google_token_expiry");
+			throw e;
+		}
 		return null;
 	}
 };
@@ -1278,7 +1290,10 @@ export const loadFromGoogleSheets = async (
 				);
 		});
 	} catch (err: any) {
-		if (err?.status === 401) clearGapiAccessToken();
+		if (err?.status === 401) {
+			clearGapiAccessToken();
+			throw err;
+		}
 		console.warn("Batch load failed", err);
 	}
 

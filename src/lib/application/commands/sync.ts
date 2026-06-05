@@ -30,6 +30,7 @@ export async function migrateData(): Promise<void> {
 export async function resetAndSync(
   profile: UserProfile,
   onProfileUpdate?: (updates: Partial<UserProfile>) => void,
+  loginWithGoogle?: () => void,
 ): Promise<void> {
   const { showToast, setIsSyncing } = useSyncStore.getState();
 
@@ -50,6 +51,7 @@ export async function resetAndSync(
       "google_refresh_token",
       "encrypted_vault_key",
       "device_id",
+      "zenfinance_selected_sheet_id",
       StorageService.KEYS.PROFILE,
     ];
     const saved: Record<string, string | null> = {};
@@ -74,6 +76,7 @@ export async function resetAndSync(
   } catch (e: any) {
     if (e?.status === 401) {
       showToast("Session expired. Please sign in again.", "info");
+      if (loginWithGoogle) loginWithGoogle();
     } else {
       showToast("Reset failed. Working offline.", "info");
     }

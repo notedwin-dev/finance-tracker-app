@@ -324,7 +324,12 @@ export const findUser = async (email: string) => {
 
 		return parseUserRow(headers, userRow);
 	} catch (e: any) {
-		if (e?.status === 401) throw e;
+		if (e?.status === 401) {
+			hasAccessToken = false;
+			localStorage.removeItem("google_access_token");
+			localStorage.removeItem("google_token_expiry");
+			throw e;
+		}
 		return null;
 	}
 };

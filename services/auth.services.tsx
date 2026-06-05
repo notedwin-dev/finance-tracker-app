@@ -284,7 +284,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 					// Sync with Google Sheets if logged in and ready
 					if (!skipCloud && SheetService.isClientReady() && updatedP!.email) {
 						try {
-							await SheetService.updateUser(updatedP!.email, u);
+							const success = await SheetService.updateUser(updatedP!.email, u);
+							if (!success) {
+								console.warn("Failed to sync profile update to sheets: updateUser returned false");
+							}
 						} catch (err) {
 							console.warn("Failed to sync profile update to sheets", err);
 						}

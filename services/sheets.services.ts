@@ -9,6 +9,7 @@ import {
 	ChatSession,
 } from "../types";
 import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
+import { logger } from "../src/lib/application/logger";
 
 declare global {
 	interface Window {
@@ -45,7 +46,7 @@ const getProfileSheetName = async (fileId: string): Promise<string> => {
 		if (existingSheets.includes("Profile")) {
 			cachedSheetName = "Profile";
 		} else if (existingSheets.includes("Users")) {
-			console.log(
+			logger.log(
 				"📋 Using legacy 'Users' sheet. Consider migrating to 'Profile'.",
 			);
 			cachedSheetName = "Users";
@@ -56,7 +57,7 @@ const getProfileSheetName = async (fileId: string): Promise<string> => {
 
 		return cachedSheetName;
 	} catch (error) {
-		console.error("Error detecting profile sheet:", error);
+		logger.error("Error detecting profile sheet:", error);
 		return "Profile"; // Default fallback
 	}
 };
@@ -85,7 +86,7 @@ export const initGapiClient = async (): Promise<void> => {
 	gapiInitializing = true;
 	const apiKey = getApiKey();
 	if (!apiKey) {
-		console.warn("Google API Key not found.");
+		logger.warn("Google API Key not found.");
 		return;
 	}
 
@@ -112,7 +113,7 @@ export const initGapiClient = async (): Promise<void> => {
 	await waitForGapi();
 
 	if (!window.gapi) {
-		console.error("Google API script (gapi) failed to load.");
+		logger.error("Google API script (gapi) failed to load.");
 		return;
 	}
 
@@ -137,17 +138,17 @@ export const initGapiClient = async (): Promise<void> => {
 				// Final verification that we have the expected services
 				if (window.gapi.client.sheets && window.gapi.client.drive) {
 					gapiInited = true;
-					console.log(
+					logger.log(
 						"GAPI Client successfully initialized with Sheets, Drive and Picker",
 					);
 				} else {
-					console.error("GAPI Client init finished but services missing", {
+					logger.error("GAPI Client init finished but services missing", {
 						sheets: !!window.gapi.client.sheets,
 						drive: !!window.gapi.client.drive,
 					});
 				}
 			} catch (err) {
-				console.error("GAPI Client init error", err);
+				logger.error("GAPI Client init error", err);
 			}
 			resolve();
 		});
@@ -200,7 +201,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 
 	// Defensive check for gapi client libraries
 	if (!window.gapi?.client?.drive || !window.gapi?.client?.sheets) {
-		console.warn("GAPI client libraries (drive/sheets) not fully loaded");
+		logger.warn("GAPI client libraries (drive/sheets) not fully loaded");
 		return null;
 	}
 
@@ -215,7 +216,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 			});
 			return savedId;
 		} catch (e) {
-			console.warn("Saved spreadsheet ID is no longer accessible", e);
+			logger.warn("Saved spreadsheet ID is no longer accessible", e);
 			localStorage.removeItem("zenfinance_selected_sheet_id");
 		}
 	}
@@ -232,10 +233,10 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		}
 	} catch (err: any) {
 		if (err?.status === 401) {
-			console.warn("Unauthorized in getSpreadsheetId, clearing token");
+			logger.warn("Unauthorized in getSpreadsheetId, clearing token");
 			clearGapiAccessToken();
 		}
-		console.error("Error finding sheet", err);
+		logger.error("Error finding sheet", err);
 		return null;
 	}
 
@@ -247,10 +248,10 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		return createResponse.result.spreadsheetId;
 	} catch (err: any) {
 		if (err?.status === 401) {
-			console.warn("Unauthorized in creating sheet, clearing token");
+			logger.warn("Unauthorized in creating sheet, clearing token");
 			clearGapiAccessToken();
 		}
-		console.error("Error creating sheet", err);
+		logger.error("Error creating sheet", err);
 		return null;
 	}
 };
@@ -265,7 +266,7 @@ const getSheetNames = async (
 		});
 		return response.result.sheets.map((s: any) => s.properties.title);
 	} catch (e) {
-		console.warn("Failed to fetch sheet metadata", e);
+		logger.warn("Failed to fetch sheet metadata", e);
 		return null;
 	}
 };
@@ -438,7 +439,7 @@ export const createUser = async (userData: any) => {
 		});
 		return true;
 	} catch (e) {
-		console.error("Failed to create user", e);
+		logger.error("Failed to create user", e);
 		return false;
 	}
 };
@@ -446,7 +447,10 @@ export const createUser = async (userData: any) => {
 export const updateUser = async (email: string, updates: any) => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
-		console.log("📝 updateUser called with:", { email, updates });
+		logger.log("📝 updateUser called with:", {
+			email,
+			updatedFields: Object.keys(updates || {}),
+		});
 
 		const fileId = await getSpreadsheetId();
 		if (!fileId) return false;
@@ -466,7 +470,7 @@ export const updateUser = async (email: string, updates: any) => {
 		const updateKeys = Object.keys(updates);
 		const missingHeaders = updateKeys.filter((k) => !headers.includes(k));
 		if (missingHeaders.length > 0) {
-			console.log(
+			logger.log(
 				"➕ Adding missing headers to Profile sheet:",
 				missingHeaders,
 			);
@@ -477,7 +481,7 @@ export const updateUser = async (email: string, updates: any) => {
 				valueInputOption: "RAW",
 				resource: { values: [newHeaders] },
 			});
-			console.log("✅ Headers added, re-running updateUser");
+			logger.log("✅ Headers added, re-running updateUser");
 			// Re-fetch to get new headers
 			return updateUser(email, updates);
 		}
@@ -499,7 +503,7 @@ export const updateUser = async (email: string, updates: any) => {
 		});
 
 		// 3. Update the row
-		console.log("💾 Updating Profile sheet row:", {
+		logger.log("💾 Updating Profile sheet row:", {
 			rowIndex: rowIndex + 1,
 			updatedFields: Object.keys(updates),
 		});
@@ -511,10 +515,10 @@ export const updateUser = async (email: string, updates: any) => {
 			resource: { values: [updatedRow] },
 		});
 
-		console.log("✅ Profile sheet updated successfully");
+		logger.log("✅ Profile sheet updated successfully");
 		return true;
 	} catch (e) {
-		console.error("Failed to update user", e);
+		logger.error("Failed to update user", e);
 		return false;
 	}
 };
@@ -641,7 +645,7 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		if (combinedData.length === 0) {
 			if (existingData.length > 0 && data.length > 0) {
 				// This is suspicious - we had data to save AND existing data, but merge resulted in nothing
-				console.error(
+				logger.error(
 					`Sync safety check failed for ${sheetName}: Merge resulted in 0 items when existingData=${existingData.length} and newData=${data.length}. Aborting to prevent data loss.`,
 				);
 				throw new Error(
@@ -737,13 +741,13 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 			}
 		}
 
-		console.log(`Saved ${sheetName} to Google Sheets`);
+		logger.log(`Saved ${sheetName} to Google Sheets`);
 	} catch (err: any) {
 		if (err?.status === 401) {
-			console.warn("Google Access Token expired, clearing session.");
+			logger.warn("Google Access Token expired, clearing session.");
 			clearGapiAccessToken();
 		}
-		console.error(`Error saving ${sheetName}`, err);
+		logger.error(`Error saving ${sheetName}`, err);
 	}
 };
 
@@ -791,9 +795,9 @@ export const insertOne = async (sheetName: string, item: any) => {
 			insertDataOption: "INSERT_ROWS",
 			resource: { values: [row] },
 		});
-		console.log(`Inserted row into ${sheetName}`);
+		logger.log(`Inserted row into ${sheetName}`);
 	} catch (e) {
-		console.error(`Error inserting into ${sheetName}`, e);
+		logger.error(`Error inserting into ${sheetName}`, e);
 	}
 };
 
@@ -843,9 +847,9 @@ export const insertMany = async (sheetName: string, items: any[]) => {
 			insertDataOption: "INSERT_ROWS",
 			resource: { values: rows },
 		});
-		console.log(`Inserted ${items.length} rows into ${sheetName}`);
+		logger.log(`Inserted ${items.length} rows into ${sheetName}`);
 	} catch (e) {
-		console.error(`Error inserting bulk into ${sheetName}`, e);
+		logger.error(`Error inserting bulk into ${sheetName}`, e);
 	}
 };
 
@@ -935,12 +939,12 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 					valueInputOption: "USER_ENTERED",
 				},
 			});
-			console.log(
+			logger.log(
 				`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
 			);
 		}
 	} catch (e) {
-		console.warn(`Error updating row in ${sheetName}`, e);
+		logger.warn(`Error updating row in ${sheetName}`, e);
 		// Fallback: If finding specific row fails, we might need a full sync
 	}
 };
@@ -970,7 +974,7 @@ export const updateMany = async (
 		const idColumnIndex = headers.indexOf("id");
 
 		if (idColumnIndex === -1) {
-			console.warn(`No id column in ${sheetName}, falling back to insertMany`);
+			logger.warn(`No id column in ${sheetName}, falling back to insertMany`);
 			return insertMany(sheetName, items);
 		}
 
@@ -1027,12 +1031,12 @@ export const updateMany = async (
 					valueInputOption: "USER_ENTERED",
 				},
 			});
-			console.log(
+			logger.log(
 				`Batch updated ${data.length} ${columnsToUpdate ? "cells" : "rows"} in ${sheetName}`,
 			);
 		}
 	} catch (e) {
-		console.warn(`Error batch updating ${sheetName}`, e);
+		logger.warn(`Error batch updating ${sheetName}`, e);
 	}
 };
 
@@ -1097,9 +1101,9 @@ export const deleteOne = async (sheetName: string, id: string) => {
 			},
 		});
 
-		console.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
+		logger.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
 	} catch (e) {
-		console.error(`Error deleting row from ${sheetName}`, e);
+		logger.error(`Error deleting row from ${sheetName}`, e);
 	}
 };
 
@@ -1146,17 +1150,17 @@ export const loadFromGoogleSheets = async (
 	profile?: any;
 } | null> => {
 	if (!gapiInited) {
-		console.error("GAPI not initialized");
+		logger.error("GAPI not initialized");
 		return null;
 	}
 	if (!hasAccessToken) {
-		console.warn("No access token found for sync");
+		logger.warn("No access token found for sync");
 		return null;
 	}
 
 	const fileId = await getSpreadsheetId();
 	if (!fileId) {
-		console.warn("Could not retrieve spreadsheet ID");
+		logger.warn("Could not retrieve spreadsheet ID");
 		return null;
 	}
 
@@ -1279,7 +1283,7 @@ export const loadFromGoogleSheets = async (
 		});
 	} catch (err: any) {
 		if (err?.status === 401) clearGapiAccessToken();
-		console.warn("Batch load failed", err);
+		logger.warn("Batch load failed", err);
 	}
 
 	// Perform migration for Pots if needed
@@ -1336,7 +1340,7 @@ export const loadFromGoogleSheets = async (
  * @deprecated Use GoogleDrivePicker component from @googleworkspace/drive-picker-react
  */
 export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
-	console.warn(
+	logger.warn(
 		"selectSpreadsheetWithPicker is deprecated. Use GoogleDrivePicker component instead.",
 	);
 
@@ -1365,7 +1369,7 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 				) {
 					const doc = data[window.google.picker.Response.DOCUMENTS][0];
 					const fileId = doc[window.google.picker.Document.ID];
-					console.log("User selected spreadsheet via picker:", fileId);
+					logger.log("User selected spreadsheet via picker:", fileId);
 					// Store selected file ID to skip search next time
 					localStorage.setItem("zenfinance_selected_sheet_id", fileId);
 					cachedSheetName = null; // Clear cache when switching spreadsheets

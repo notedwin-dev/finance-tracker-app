@@ -11,6 +11,7 @@ import {
   processSubscriptions,
   runVaultSchemaMigration,
 } from "../src/lib/application/commands";
+import { logger } from "../src/lib/application/logger";
 
 export function useAppInit() {
   const { profile, updateProfile, loginWithGoogle, isInitialized } = useAuth();
@@ -29,7 +30,7 @@ export function useAppInit() {
     loadData(profile)
       .then(() => runVaultSchemaMigration())
       .catch((e) => {
-        console.error("loadData failed during init:", e);
+        logger.error("loadData failed during init:", e);
         useSyncStore.getState().showToast(
           "Failed to load data. Please refresh.",
           "alert",
@@ -68,7 +69,7 @@ export function useAppInit() {
           await syncData(profile, updateProfile, loginWithGoogle);
           setHasSynced(true);
         } catch (e) {
-          console.warn("Auto-sync failed, will retry on next dep change", e);
+          logger.warn("Auto-sync failed, will retry on next dep change", e);
         }
       };
       doSync();

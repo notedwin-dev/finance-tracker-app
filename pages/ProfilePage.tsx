@@ -6,6 +6,7 @@ import { useFinanceStore } from "../src/stores/finance.store";
 import { useSyncStore } from "../src/stores/sync.store";
 import { recalculateBalances, migrateData, resetAndSync, selectExistingSheet, syncData } from "../src/lib/application/commands";
 import * as SheetService from "../services/sheets.services";
+import { logger } from "../src/lib/application/logger";
 
 const ProfilePage: React.FC = () => {
   const { profile, loginWithGoogle, updateProfile, unlinkCloud } = useAuth();
@@ -44,8 +45,11 @@ const ProfilePage: React.FC = () => {
       return rest;
     });
 
+    const { geminiApiKey: _geminiKey, ...sanitizedProfile } =
+      profile as unknown as Record<string, unknown>;
+
     const data = {
-      profile,
+      profile: sanitizedProfile,
       accounts: sanitizedAccounts,
       transactions: filteredTransactions,
       categories,
@@ -86,7 +90,7 @@ const ProfilePage: React.FC = () => {
         isCloud,
       );
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 

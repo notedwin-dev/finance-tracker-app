@@ -15,6 +15,7 @@ import {
 	streamFinancialAdvice,
 	generateChatTitle,
 } from "../services/gemini.services";
+import { logger } from "../src/lib/application/logger";
 import {
 	SparklesIcon,
 	PaperAirplaneIcon,
@@ -372,7 +373,7 @@ out center ${safeLimit * 3};`;
 			onSaveSession(updatedSession);
 			setStreamingText("");
 		} catch (err: any) {
-			console.error(err);
+			logger.error(err);
 			const errorMessage: ChatMessage = {
 				role: "model",
 				content: `🚨 **AI Error**\n\n${

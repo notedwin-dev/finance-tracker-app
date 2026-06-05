@@ -25,6 +25,7 @@ import { useMaskStore } from "../src/stores/mask.store";
 import Modal from "./Modal";
 import DatePicker from "./DatePicker";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
+import { logger } from "../src/lib/application/logger";
 
 interface Props {
 	profile: UserProfile;
@@ -390,7 +391,7 @@ const Profile: React.FC<Props> = ({
 						{!profile.offlineMode && onSelectSheet && (
 							<GoogleDrivePicker
 								onPicked={(fileId) => onSelectSheet(fileId)}
-								onCancel={() => console.log("Picker canceled")}
+								onCancel={() => logger.log("Picker canceled")}
 							>
 								<SettingItem
 									icon={DocumentArrowDownIcon}
@@ -456,7 +457,7 @@ const Profile: React.FC<Props> = ({
 														),
 												)
 												.catch((e) => {
-													console.error("Migration error:", e);
+													logger.error("Migration error:", e);
 													useSyncStore
 														.getState()
 														.showToast(

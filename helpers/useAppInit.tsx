@@ -4,9 +4,13 @@ import { getUSDToMYRRate } from "../services/exchange.services";
 import { getCryptoPrices } from "../services/coin.services";
 import * as StorageService from "../services/storage.services";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { usePrivacyStore } from "../src/stores/privacy.store";
 import { useSyncStore } from "../src/stores/sync.store";
-import { loadData, syncData, processSubscriptions } from "../src/lib/application/commands";
+import {
+  loadData,
+  syncData,
+  processSubscriptions,
+  runVaultSchemaMigration,
+} from "../src/lib/application/commands";
 
 export function useAppInit() {
   const { profile, updateProfile, loginWithGoogle, isInitialized } = useAuth();
@@ -22,13 +26,15 @@ export function useAppInit() {
     lastInitializedProfileId.current = profile.id;
 
     setHasSynced(false);
-    loadData(profile).catch((e) => {
-      console.error("loadData failed during init:", e);
-      useSyncStore.getState().showToast(
-        "Failed to load data. Please refresh.",
-        "alert",
-      );
-    });
+    loadData(profile)
+      .then(() => runVaultSchemaMigration())
+      .catch((e) => {
+        console.error("loadData failed during init:", e);
+        useSyncStore.getState().showToast(
+          "Failed to load data. Please refresh.",
+          "alert",
+        );
+      });
 
     getUSDToMYRRate().then((data) => {
       useFinanceStore.getState().setUsdRate(data.rate);
@@ -68,14 +74,4 @@ export function useAppInit() {
       doSync();
     }
   }, [profile.isLoggedIn, isInitialized, profile.offlineMode, hasSynced]);
-
-  useEffect(() => {
-    const isLocked = profile.isVaultLocked === true;
-    if (isLocked && usePrivacyStore.getState().isVaultUnlocked) {
-      usePrivacyStore.getState().setVaultUnlocked(false);
-      loadData(profile).catch((e) => {
-        console.error("loadData failed during vault lock:", e);
-      });
-    }
-  }, [profile.isVaultLocked]);
 }

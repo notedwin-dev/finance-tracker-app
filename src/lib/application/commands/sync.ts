@@ -2,11 +2,10 @@ import * as StorageService from "../../../../services/storage.services";
 import * as SheetService from "../../../../services/sheets.services";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
-import { usePrivacyStore } from "../../../stores/privacy.store";
 import type { UserProfile, Account, Transaction, Subscription } from "../../../../types";
 import { TransactionType } from "../../../../types";
-import { decryptAccount, normalizeAccount, encryptAccount } from "./privacy";
 import { normalizeDate, parseDateSafe } from "../../../../helpers/transactions.helper";
+import { stripVaultFromAccount } from "../../domain/migration";
 
 export async function migrateData(): Promise<void> {
   const { showToast } = useSyncStore.getState();
@@ -49,7 +48,6 @@ export async function resetAndSync(
     "google_access_token",
     "google_token_expiry",
     "google_refresh_token",
-    "encrypted_vault_key",
     "device_id",
     StorageService.KEYS.PROFILE,
   ];
@@ -104,15 +102,9 @@ let syncInProgress = false;
 let lastSyncTime = 0;
 let loadDataToken = 0;
 
-export async function loadData(profile: any, forceUnlock: boolean = false): Promise<void> {
+export async function loadData(profile: any, _forceUnlock?: boolean): Promise<void> {
   const myToken = ++loadDataToken;
   const storedAccounts = StorageService.getStoredAccounts();
-  const decryptedAccounts = await Promise.all(
-    storedAccounts.map(async (a) => {
-      const decrypted = await decryptAccount(a, profile, forceUnlock);
-      return normalizeAccount(decrypted);
-    }),
-  );
 
   if (myToken !== loadDataToken) return;
 
@@ -127,7 +119,7 @@ export async function loadData(profile: any, forceUnlock: boolean = false): Prom
   if (myToken !== loadDataToken) return;
 
   const store = useFinanceStore.getState();
-  store.setAccounts(decryptedAccounts);
+  store.setAccounts(storedAccounts);
   store.setTransactions(loadedTxs);
   store.setCategories(storedCategories);
   store.setGoals(storedGoals);
@@ -374,52 +366,10 @@ export async function syncData(
         }
 
         if (
-          cloudData.profile.isSecurityEnabled !== undefined &&
-          cloudData.profile.isSecurityEnabled !== profile.isSecurityEnabled
+          cloudData.profile.maskMode !== undefined &&
+          cloudData.profile.maskMode !== profile.maskMode
         ) {
-          updates.isSecurityEnabled = cloudData.profile.isSecurityEnabled;
-        }
-
-        if (cloudData.profile.totpSecret && cloudData.profile.totpSecret !== profile.totpSecret) {
-          updates.totpSecret = cloudData.profile.totpSecret;
-        }
-
-        if (
-          cloudData.profile.totpEnabled !== undefined &&
-          cloudData.profile.totpEnabled !== profile.totpEnabled
-        ) {
-          updates.totpEnabled = cloudData.profile.totpEnabled;
-        }
-
-        if (
-          cloudData.profile.isSecurityEnabled === undefined &&
-          cloudData.profile.isVaultEnabled !== undefined
-        ) {
-          updates.isSecurityEnabled = cloudData.profile.isVaultEnabled;
-        }
-
-        if (
-          cloudData.profile.vaultSalt &&
-          cloudData.profile.vaultSalt !== profile.vaultSalt
-        ) {
-          updates.vaultSalt = cloudData.profile.vaultSalt;
-        }
-
-        if (
-          cloudData.profile.isVaultLocked !== undefined &&
-          cloudData.profile.isVaultLocked !== profile.isVaultLocked
-        ) {
-          const isActuallyUnlocked = usePrivacyStore.getState().isVaultUnlocked;
-          if (!(cloudData.profile.isVaultLocked && isActuallyUnlocked)) {
-            updates.isVaultLocked = cloudData.profile.isVaultLocked;
-          }
-        }
-
-        if (
-          cloudData.profile.privacyMode !== undefined &&
-          cloudData.profile.privacyMode !== profile.privacyMode
-        ) {
-          updates.privacyMode = cloudData.profile.privacyMode;
+          updates.maskMode = cloudData.profile.maskMode;
         }
 
         if (
@@ -434,53 +384,6 @@ export async function syncData(
           cloudData.profile.syncChatToSheets !== profile.syncChatToSheets
         ) {
           updates.syncChatToSheets = cloudData.profile.syncChatToSheets;
-        }
-
-        const flatten = (arr: any[]): string[] => {
-          let result: string[] = [];
-          if (!Array.isArray(arr)) return typeof arr === "string" ? [arr] : [];
-          arr.forEach((item) => {
-            if (Array.isArray(item)) result = result.concat(flatten(item));
-            else if (typeof item === "string" && item) result.push(item);
-          });
-          return result;
-        };
-
-        const existingIds = flatten(profile.biometricCredIds || []);
-        const cloudIds = flatten(cloudData.profile.biometricCredIds || []);
-
-        if (profile.biometricCredId && typeof profile.biometricCredId === "string")
-          existingIds.push(profile.biometricCredId);
-        else if (Array.isArray(profile.biometricCredId))
-          existingIds.push(...flatten(profile.biometricCredId));
-
-        if (cloudData.profile.biometricCredId && typeof cloudData.profile.biometricCredId === "string")
-          cloudIds.push(cloudData.profile.biometricCredId);
-        else if (Array.isArray(cloudData.profile.biometricCredId))
-          cloudIds.push(...flatten(cloudData.profile.biometricCredId));
-
-        const mergedBio = Array.from(
-          new Set([...existingIds, ...cloudIds]),
-        ).filter(Boolean);
-
-        if (
-          mergedBio.length !== existingIds.length ||
-          !mergedBio.every((id) => existingIds.includes(id))
-        ) {
-          updates.biometricCredIds = mergedBio;
-        }
-
-        const existingDevices = profile.devices || [];
-        const cloudDevices = cloudData.profile.devices || [];
-        const mergedDevices = Array.from(
-          new Set([...existingDevices, ...cloudDevices]),
-        );
-
-        if (
-          mergedDevices.length !== existingDevices.length ||
-          !mergedDevices.every((d) => existingDevices.includes(d))
-        ) {
-          updates.devices = mergedDevices;
         }
 
         if (Object.keys(updates).length > 0) {
@@ -543,29 +446,14 @@ export async function syncData(
         return Array.from(map.values());
       };
 
-      const cloudAccounts = await Promise.all(
-        (cloudData.accounts || []).map(async (a: Account) => {
-          const decrypted = await decryptAccount(a, profile);
-          return normalizeAccount(decrypted);
-        }),
-      );
+      const cloudAccounts: Account[] = cloudData.accounts || [];
+      const localAccounts: Account[] = StorageService.getStoredAccounts();
 
-      const localAccountsRaw = StorageService.getStoredAccounts();
-      const localAccounts = await Promise.all(
-        localAccountsRaw.map(async (a) => {
-          const decrypted = await decryptAccount(a, profile);
-          return normalizeAccount(decrypted);
-        }),
-      );
-
-      const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority);
+      const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority)
+        .map(stripVaultFromAccount);
       const store = useFinanceStore.getState();
       store.setAccounts(mergedAccounts);
-
-      const encryptedAccounts = await Promise.all(
-        mergedAccounts.map((a) => encryptAccount(a, profile)),
-      );
-      await StorageService.saveAccounts(encryptedAccounts);
+      await StorageService.saveAccounts(mergedAccounts);
 
       const mergedCategories = merge(
         StorageService.getStoredCategories(),
@@ -628,20 +516,16 @@ export async function syncData(
       processSubscriptions(store.accounts, store.usdRate, { persist: false });
 
       const storeAfterSubs = useFinanceStore.getState();
-      const postSubAccounts = storeAfterSubs.accounts;
+      const postSubAccounts = storeAfterSubs.accounts.map(stripVaultFromAccount);
       const postSubTxs = storeAfterSubs.transactions;
       const postSubSubs = storeAfterSubs.subscriptions;
 
-      const postSubEncryptedAccounts = await Promise.all(
-        postSubAccounts.map((a) => encryptAccount(a, profile)),
-      );
-
-      await StorageService.saveAccounts(postSubEncryptedAccounts);
+      await StorageService.saveAccounts(postSubAccounts);
       await StorageService.saveTransactions(postSubTxs);
       await StorageService.saveSubscriptions(postSubSubs);
 
       await SheetService.syncWithGoogleSheets(
-        postSubEncryptedAccounts,
+        postSubAccounts,
         postSubTxs,
         mergedCategories,
         mergedGoals,

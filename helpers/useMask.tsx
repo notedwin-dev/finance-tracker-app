@@ -1,13 +1,13 @@
 import React from "react";
-import { usePrivacyStore } from "../src/stores/privacy.store";
+import { useMaskStore } from "../src/stores/mask.store";
 
 export function useMask() {
-  const privacyMode = usePrivacyStore((s) => s.privacyMode);
+  const maskMode = useMaskStore((s) => s.maskMode);
 
   const maskAmount = React.useCallback(
     (amount: number | string, currency?: string) => {
       const formatted = `${currency ? currency + " " : ""}${amount}`;
-      if (!privacyMode) return formatted;
+      if (!maskMode) return formatted;
       return (
         <span className="group/mask inline-flex cursor-pointer transition-all duration-300">
           <span className="inline group-hover/mask:hidden whitespace-nowrap opacity-80">
@@ -19,7 +19,7 @@ export function useMask() {
         </span>
       );
     },
-    [privacyMode],
+    [maskMode],
   );
 
   const maskText = React.useCallback(
@@ -32,7 +32,7 @@ export function useMask() {
       };
 
       const displayText = permanentMask ? getPermanentMask(text) : text;
-      if (!privacyMode || !text) return displayText;
+      if (!maskMode || !text) return displayText;
 
       return (
         <span className="group/mask inline-flex cursor-pointer transition-all duration-300">
@@ -45,7 +45,7 @@ export function useMask() {
         </span>
       );
     },
-    [privacyMode],
+    [maskMode],
   );
 
   return { maskAmount, maskText };

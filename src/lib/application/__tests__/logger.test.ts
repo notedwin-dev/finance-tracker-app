@@ -87,4 +87,22 @@ describe("logger proxies", () => {
 		logger.log("hello", 42, true);
 		expect(logSpy).toHaveBeenCalledWith("hello", 42, true);
 	});
+
+	it("redacts Error.message and Error.stack but keeps name", () => {
+		const err = new Error("leaked AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+		logger.error(err);
+		const arg = (console.error as any).mock.calls[0][0];
+		expect(arg.name).toBe("Error");
+		expect(arg.message).toBe("[REDACTED]");
+		expect(arg.stack).toBe("[REDACTED]");
+	});
+
+	it("passes non-sensitive Error messages through errorOut", () => {
+		const err = new Error("plain network error");
+		const out = redact(err) as any;
+		expect(out.name).toBe("Error");
+		expect(out.message).toBe("plain network error");
+		expect(typeof out.stack).toBe("string");
+		expect(out.stack).not.toContain("[REDACTED]");
+	});
 });

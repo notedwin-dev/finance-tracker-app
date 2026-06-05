@@ -63,10 +63,10 @@ const redact = (value: unknown, depth = 0): unknown => {
 		if (value instanceof Error) {
 			const errorOut: Record<string, unknown> = {
 				name: value.name,
-				message: value.message,
-				stack: value.stack,
+				message: redact(value.message, depth + 1),
+				stack: redact(value.stack ?? "", depth + 1),
 			};
-			for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+			for (const [k, v] of Object.entries(value as unknown as Record<string, unknown>)) {
 				if (k !== "name" && k !== "message" && k !== "stack") {
 					const normalizedKey = normalizeKey(k);
 					errorOut[k] = normalizedSensitiveSet.has(normalizedKey) ? REDACTED : redact(v, depth + 1);

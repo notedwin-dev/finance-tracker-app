@@ -32,7 +32,7 @@ const maskFileIdForLogging = (fileId: string): string => {
 };
 
 let gapiInited = false;
-let gapiInitializing = false;
+let gapiInitializing: Promise<void> | null = null;
 let hasAccessToken = false;
 let tokenExpiryTime = 0;
 
@@ -74,93 +74,86 @@ export const clearSheetNameCache = () => {
 	cachedSheetName = null;
 };
 
-export const initGapiClient = async (): Promise<void> => {
-	if (gapiInited) return;
-	if (gapiInitializing) {
-		// Wait for the already running initialization
-		return new Promise((resolve) => {
-			const interval = setInterval(() => {
-				if (gapiInited) {
-					clearInterval(interval);
-					resolve();
-				}
-			}, 100);
-		});
-	}
+export const initGapiClient = (): Promise<void> => {
+	if (gapiInited) return Promise.resolve();
+	if (gapiInitializing) return gapiInitializing;
 
-	gapiInitializing = true;
-	try {
-		const apiKey = getApiKey();
-		if (!apiKey) {
-			logger.warn("Google API Key not found.");
-			return;
-		}
-		// Ensure window.gapi is available
-		const waitForGapi = (): Promise<void> => {
-			return new Promise((resolve) => {
-				if (window.gapi) {
-					resolve();
-				} else {
-					const interval = setInterval(() => {
-						if (window.gapi) {
+	gapiInitializing = (async (): Promise<void> => {
+		try {
+			const apiKey = getApiKey();
+			if (!apiKey) {
+				logger.warn("Google API Key not found.");
+				return;
+			}
+			// Ensure window.gapi is available
+			const waitForGapi = (): Promise<void> => {
+				return new Promise((resolve) => {
+					if (window.gapi) {
+						resolve();
+					} else {
+						const interval = setInterval(() => {
+							if (window.gapi) {
+								clearInterval(interval);
+								resolve();
+							}
+						}, 100);
+						setTimeout(() => {
 							clearInterval(interval);
 							resolve();
-						}
-					}, 100);
-					setTimeout(() => {
-						clearInterval(interval);
-						resolve();
-					}, 10000); // 10s timeout
-				}
-			});
-		};
-	
-	await waitForGapi();
-
-	if (!window.gapi) {
-		logger.error("Google API script (gapi) failed to load.");
-		return;
-	}
-
-	// Attempt to restore token from localStorage for auto-sync
-	const savedToken = localStorage.getItem("google_access_token");
-	const savedExpiry = localStorage.getItem("google_token_expiry");
-	if (savedToken) {
-		hasAccessToken = true;
-		if (savedExpiry) {
-			tokenExpiryTime = parseInt(savedExpiry);
-		}
-	}
-
-		return new Promise<void>((resolve) => {
-			window.gapi.load("client:picker", async () => {
-				try {
-					await window.gapi.client.init({
-						apiKey,
-						discoveryDocs: DISCOVERY_DOCS,
-					});
-
-					// Final verification that we have the expected services
-					if (window.gapi.client.sheets && window.gapi.client.drive) {
-						gapiInited = true;
-						logger.log(
-							"GAPI Client successfully initialized with Sheets, Drive and Picker",
-						);
-					} else {
-						logger.error("GAPI Client init finished but services missing", {
-							sheets: !!window.gapi.client.sheets,
-							drive: !!window.gapi.client.drive,
-						});
+						}, 10000); // 10s timeout
 					}
-				} catch (err) {
-					logger.error("GAPI Client init error", err);
+				});
+			};
+
+			await waitForGapi();
+
+			if (!window.gapi) {
+				logger.error("Google API script (gapi) failed to load.");
+				return;
+			}
+
+			// Attempt to restore token from localStorage for auto-sync
+			const savedToken = localStorage.getItem("google_access_token");
+			const savedExpiry = localStorage.getItem("google_token_expiry");
+			if (savedToken) {
+				hasAccessToken = true;
+				if (savedExpiry) {
+					tokenExpiryTime = parseInt(savedExpiry);
 				}
-				resolve();
+			}
+
+			await new Promise<void>((resolve) => {
+				window.gapi.load("client:picker", async () => {
+					try {
+						await window.gapi.client.init({
+							apiKey,
+							discoveryDocs: DISCOVERY_DOCS,
+						});
+
+						// Final verification that we have the expected services
+						if (window.gapi.client.sheets && window.gapi.client.drive) {
+							gapiInited = true;
+							logger.log(
+								"GAPI Client successfully initialized with Sheets, Drive and Picker",
+							);
+						} else {
+							logger.error("GAPI Client init finished but services missing", {
+								sheets: !!window.gapi.client.sheets,
+								drive: !!window.gapi.client.drive,
+							});
+						}
+					} catch (err) {
+						logger.error("GAPI Client init error", err);
+					}
+					resolve();
+				});
 			});
-		});
-	} finally {
-		gapiInitializing = false;
-	}
+		} finally {
+			gapiInitializing = null;
+		}
+	})();
+
+	return gapiInitializing;
 };
 
 export const setGapiAccessToken = (accessToken: string, expiresIn?: number) => {

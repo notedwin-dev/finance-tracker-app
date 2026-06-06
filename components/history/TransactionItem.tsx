@@ -32,6 +32,71 @@ interface Props {
   onChevronClick: (e: React.MouseEvent) => void;
 }
 
+type MaskText = (s: string) => string | React.ReactNode;
+
+const isTransferTx = (t: GroupedTransaction): boolean =>
+  !!t.linkedTransaction || t.type === TransactionType.TRANSFER;
+
+const isIncomeTx = (t: GroupedTransaction): boolean =>
+  t.type === TransactionType.INCOME ||
+  t.type === TransactionType.ACCOUNT_OPENING ||
+  (t.type === TransactionType.TRANSFER && t.transferDirection === "IN") ||
+  (t.type === TransactionType.ADJUSTMENT && t.amount >= 0);
+
+const getCategoryIconFor = (categories: Category[], catId?: string): string => {
+  const cat = categories.find((c) => c.id === catId);
+  return cat ? cat.icon : "📄";
+};
+
+const getAmountPrefix = (t: GroupedTransaction, isIncome: boolean): string => {
+  if (t.linkedTransaction) return "";
+  return isIncome ? "+" : "-";
+};
+
+const getAmountColor = (t: GroupedTransaction, isIncome: boolean): string => {
+  if (t.linkedTransaction) return "text-indigo-400";
+  if (isIncome) return "text-emerald-400";
+  return "text-rose-400";
+};
+
+const getDisplayName = (
+  t: GroupedTransaction,
+  isTransfer: boolean,
+  accounts: Account[],
+  maskText: MaskText,
+): React.ReactNode => {
+  if (isTransfer) {
+    if (t.shopName) return maskText(t.shopName);
+    const sourceId = t.transferDirection === "IN" ? t.toAccountId : t.accountId;
+    const destId = t.transferDirection === "IN" ? t.accountId : t.toAccountId;
+    const sourceAccount = accounts.find((a) => a.id === sourceId);
+    const destAccount = accounts.find((a) => a.id === destId);
+    return (
+      <>
+        {maskText(sourceAccount?.name || "???")} → {maskText(destAccount?.name || "???")}
+      </>
+    );
+  }
+  return maskText(t.shopName || "UNTITLED");
+};
+
+const getSubtitleLabel = (
+  t: GroupedTransaction,
+  isTransfer: boolean,
+  categories: Category[],
+): string => {
+  if (isTransfer) {
+    if (t.linkedTransaction) return "TRANSFER";
+    if (t.transferDirection === "IN") return "TRANSFER IN";
+    if (t.transferDirection === "OUT") return "TRANSFER OUT";
+    return "INTERNAL TRANSFER";
+  }
+  return (
+    categories.find((c) => c.id === t.categoryId)?.name ||
+    (t.type === TransactionType.ACCOUNT_OPENING ? "OPENING BALANCE" : t.type)
+  );
+};
+
 const TransactionItem: React.FC<Props> = ({
   transaction: t,
   swipedId,
@@ -53,60 +118,9 @@ const TransactionItem: React.FC<Props> = ({
   onChevronClick,
 }) => {
   const isSwiped = swipedId === t.id;
-  const isTransfer = t.linkedTransaction || t.type === TransactionType.TRANSFER;
+  const isTransfer = isTransferTx(t);
+  const isIncome = isIncomeTx(t);
   const isExpense = t.type === TransactionType.EXPENSE;
-  const isIncome =
-    t.type === TransactionType.INCOME ||
-    t.type === TransactionType.ACCOUNT_OPENING ||
-    (t.type === TransactionType.TRANSFER && t.transferDirection === "IN") ||
-    (t.type === TransactionType.ADJUSTMENT && t.amount >= 0);
-
-  const getCategoryIcon = (catId?: string) => {
-    const cat = categories.find((c) => c.id === catId);
-    return cat ? cat.icon : "📄";
-  };
-
-  const getAmountPrefix = () => {
-    if (t.linkedTransaction) return "";
-    return isIncome ? "+" : "-";
-  };
-
-  const getAmountColor = () => {
-    if (t.linkedTransaction) return "text-indigo-400";
-    if (isIncome) return "text-emerald-400";
-    return "text-rose-400";
-  };
-
-  const getDisplayName = () => {
-    if (isTransfer) {
-      if (t.shopName) return maskText(t.shopName);
-      const sourceAccount = accounts.find(
-        (a) => a.id === (t.transferDirection === "IN" ? t.toAccountId : t.accountId),
-      );
-      const destAccount = accounts.find(
-        (a) => a.id === (t.transferDirection === "IN" ? t.accountId : t.toAccountId),
-      );
-      return (
-        <>
-          {maskText(sourceAccount?.name || "???")} → {maskText(destAccount?.name || "???")}
-        </>
-      );
-    }
-    return maskText(t.shopName || "UNTITLED");
-  };
-
-  const getSubtitleLabel = () => {
-    if (isTransfer) {
-      if (t.linkedTransaction) return "TRANSFER";
-      if (t.transferDirection === "IN") return "TRANSFER IN";
-      if (t.transferDirection === "OUT") return "TRANSFER OUT";
-      return "INTERNAL TRANSFER";
-    }
-    return (
-      categories.find((c) => c.id === t.categoryId)?.name ||
-      (t.type === TransactionType.ACCOUNT_OPENING ? "OPENING BALANCE" : t.type)
-    );
-  };
 
   return (
     <div className="relative overflow-hidden rounded-4xl group">
@@ -195,13 +209,13 @@ const TransactionItem: React.FC<Props> = ({
               ? "↔️"
               : t.type === TransactionType.INCOME
                 ? "💰"
-                : getCategoryIcon(t.categoryId)}
+                : getCategoryIconFor(categories, t.categoryId)}
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="font-extrabold sm:font-black text-white text-[17px] sm:text-lg tracking-tight truncate">
-                {getDisplayName()}
+                {getDisplayName(t, isTransfer, accounts, maskText)}
               </p>
               {t.isSubsidized && (
                 <SparklesIcon className="w-4 h-4 text-indigo-400 shrink-0 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
@@ -273,7 +287,7 @@ const TransactionItem: React.FC<Props> = ({
                   isTransfer ? "text-indigo-400/70 tracking-wider" : "text-gray-500/70",
                 )}
               >
-                {getSubtitleLabel()}
+                {getSubtitleLabel(t, isTransfer, categories)}
               </p>
             </div>
           </div>
@@ -281,8 +295,8 @@ const TransactionItem: React.FC<Props> = ({
 
         <div className="flex items-center gap-3 sm:gap-4 shrink-0 px-2">
           <div className="flex flex-col items-end">
-            <span className={cn("font-black text-xl sm:text-xl tracking-tighter", getAmountColor())}>
-              {getAmountPrefix()}
+            <span className={cn("font-black text-xl sm:text-xl tracking-tighter", getAmountColor(t, isIncome))}>
+              {getAmountPrefix(t, isIncome)}
               {maskAmount(
                 Math.abs(t.amount).toLocaleString(undefined, {
                   minimumFractionDigits: 2,

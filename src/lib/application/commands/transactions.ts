@@ -17,6 +17,7 @@ import {
   parseDateSafe,
 } from "../../../../helpers/transactions.helper";
 import { logger } from "../logger";
+import { buildPartnerLeg, buildNewSubscription, bumpSubscriptionNextDate, syncTransactionToCloud } from "./transactions.helpers";
 
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
@@ -86,18 +87,7 @@ export async function submitTransaction(
   };
   applyDeltas(txWithUser, 1);
 
-  const partnerLeg: Transaction | null =
-    tx.linkedTransactionId && tx.transferDirection === "OUT"
-      ? {
-          ...txWithUser,
-          id: tx.linkedTransactionId,
-          accountId: tx.toAccountId || tx.accountId,
-          toAccountId: undefined,
-          transferDirection: "IN" as const,
-          linkedTransactionId: txWithUser.id,
-          isHistorical: isDestHistorical || false,
-        }
-      : null;
+  const partnerLeg = buildPartnerLeg(tx, txWithUser, isDestHistorical);
   if (partnerLeg) applyDeltas(partnerLeg, 1);
 
   let updatedTransactions: Transaction[];
@@ -171,38 +161,17 @@ export async function submitTransaction(
   if (pocketUpdates.size > 0) store.setPockets(updatedPockets);
 
   if (isCloudEnabled) {
-    if (isEdit) {
-      await SheetService.updateOne("Transactions", txWithUser.id, txWithUser);
-      if (partnerLeg) {
-        if (store.transactions.some((t: Transaction) => t.id === partnerLeg.id)) {
-          await SheetService.updateOne("Transactions", partnerLeg.id, partnerLeg);
-        } else {
-          await SheetService.insertOne("Transactions", partnerLeg);
-        }
-      }
-      if (partnerIdToDelete) {
-        await SheetService.deleteOne("Transactions", partnerIdToDelete);
-      }
-    } else {
-      await SheetService.insertOne("Transactions", txWithUser);
-      if (partnerLeg) await SheetService.insertOne("Transactions", partnerLeg);
-    }
+    await syncTransactionToCloud(
+      txWithUser,
+      partnerLeg,
+      partnerIdToDelete,
+      isEdit,
+      store.transactions,
+    );
   }
 
   if (newSubscription && !isEdit) {
-    const sub: Subscription = {
-      ...newSubscription,
-      id: crypto.randomUUID(),
-      userId,
-      updatedAt: now,
-    };
-    const d = parseDateSafe(sub.nextPaymentDate);
-    if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
-    else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
-    else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
-    else d.setDate(d.getDate() + 1);
-    sub.nextPaymentDate = d.toLocaleDateString("en-CA");
-
+    const sub = buildNewSubscription(newSubscription, userId, now);
     const updatedSubs = [...(subscriptions || []), sub];
     store.setSubscriptions(updatedSubs);
     StorageService.saveSubscriptions(updatedSubs);
@@ -212,16 +181,9 @@ export async function submitTransaction(
   if (txWithUser.subscriptionId && !newSubscription && subscriptions) {
     const sub = subscriptions.find((s: Subscription) => s.id === txWithUser.subscriptionId);
     if (sub) {
-      let nextDateStr = normalizeDate(sub.nextPaymentDate);
       const txDate = normalizeDate(tx.date);
-      if (txDate >= nextDateStr) {
-        const d = parseDateSafe(txDate);
-        if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
-        else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
-        else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
-        else d.setDate(d.getDate() + 1);
-        nextDateStr = d.toLocaleDateString("en-CA");
-
+      const nextDateStr = bumpSubscriptionNextDate(sub, txDate);
+      if (nextDateStr !== sub.nextPaymentDate) {
         const updatedSub = { ...sub, nextPaymentDate: nextDateStr, updatedAt: now };
         const updatedSubsList = subscriptions.map((s: Subscription) =>
           s.id === sub.id ? updatedSub : s,

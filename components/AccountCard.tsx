@@ -8,7 +8,7 @@ import {
 	ArrowDownRightIcon,
 } from "@heroicons/react/24/solid";
 import { SparklineChart } from "./Charts";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
 import { groupTransactions } from "../helpers/transactions.helper";
 
 interface Props {
@@ -32,7 +32,7 @@ const AccountCard: React.FC<Props> = ({
 	displayCurrency = "MYR",
 	hideBalance = false,
 }) => {
-	const { maskAmount, maskText } = useData();
+	const { maskAmount, maskText } = useMask();
 	const accountPots = pots.filter((p) => p.accountId === account.id);
 	const totalInPots = accountPots.reduce(
 		(sum, p) => sum + (p.amountLeft || 0),

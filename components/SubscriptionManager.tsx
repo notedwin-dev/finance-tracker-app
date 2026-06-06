@@ -12,7 +12,7 @@ import {
   CalendarDaysIcon,
 } from "@heroicons/react/24/outline";
 import { parseDateSafe } from "../helpers/transactions.helper";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
 import DatePicker from "./DatePicker";
 
 interface Props {
@@ -34,7 +34,7 @@ const SubscriptionManager: React.FC<Props> = ({
   onRecordPayment,
   onClose,
 }) => {
-  const { maskText, maskAmount } = useData();
+  const { maskText, maskAmount } = useMask();
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -21,44 +21,43 @@ import {
   SparklesIcon as SparklesIconSolid,
 } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
-import { useData } from "../context/DataContext";
+import * as SheetService from "../services/sheets.services";
+import { useSyncStore } from "../src/stores/sync.store";
+import { useMaskStore } from "../src/stores/mask.store";
+import { syncData } from "../src/lib/application/commands";
+import { useFinanceStore } from "../src/stores/finance.store";
 import AIInsights from "../components/AIInsights";
 import TransactionForm from "../components/TransactionForm";
 import AccountForm from "../components/AccountForm";
 import CategoryManager from "../components/CategoryManager";
 import SubscriptionManager from "../components/SubscriptionManager";
+import {
+  saveCategory, deleteCategory,
+  saveGoal, deleteGoal,
+  addSubscription, deleteSubscription,
+  saveChatSession, deleteChatSession,
+  saveAccount, deleteAccount,
+  submitTransaction,
+} from "../src/lib/application/commands";
 import { Transaction, Account, TransactionType, Subscription } from "../types";
 
 const zenLogo = "/images/ZenFinance.svg";
 
 const MainLayout: React.FC = () => {
   const { profile, logout, updateProfile, loginWithGoogle } = useAuth();
-  const {
-    accounts,
-    transactions,
-    categories,
-    pots,
-    pockets,
-    goals,
-    subscriptions,
-    chatSessions,
-    toast,
-    handleTransactionSubmit,
-    handleAccountSave,
-    handleAccountDelete,
-    handleCategorySave,
-    handleCategoryDelete,
-    handleAddSubscription,
-    handleDeleteSubscription,
-    handleSaveChatSession,
-    handleDeleteChatSession,
-    syncData,
-    handleMigrateData,
-    handleResetAndSync,
-    isSyncing,
-    privacyMode,
-    setPrivacyMode,
-  } = useData();
+  const toast = useSyncStore((s) => s.toast);
+  const isSyncing = useSyncStore((s) => s.isSyncing);
+  const maskMode = useMaskStore((s) => s.maskMode);
+  const setMaskMode = useMaskStore((s) => s.setMaskMode);
+
+  const categories = useFinanceStore((s) => s.categories);
+  const goals = useFinanceStore((s) => s.goals);
+  const subscriptions = useFinanceStore((s) => s.subscriptions);
+  const chatSessions = useFinanceStore((s) => s.chatSessions);
+  const accounts = useFinanceStore((s) => s.accounts);
+  const pots = useFinanceStore((s) => s.pots);
+  const pockets = useFinanceStore((s) => s.pockets);
+  const storeTransactions = useFinanceStore((s) => s.transactions);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -115,6 +114,36 @@ const MainLayout: React.FC = () => {
       subscriptionId: sub.id,
     } as Transaction);
     setShowAddModal(true);
+  };
+
+  const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
+
+  const handleTransactionSubmit = async (
+    tx: Omit<Transaction, "userId">,
+    newSubscription?: Omit<Subscription, "userId" | "id">,
+    isDestHistorical?: boolean,
+  ) => {
+    const store = useFinanceStore.getState();
+    const existingTx = store.transactions.find((t) => t.id === tx.id);
+    const partnerTx = existingTx?.linkedTransactionId
+      ? store.transactions.find((t) => t.id === existingTx.linkedTransactionId)
+      : null;
+
+    await submitTransaction(
+      tx,
+      store.accounts,
+      store.pots,
+      store.pockets,
+      store.usdRate,
+      profile.id || "local",
+      isCloudEnabled,
+      existingTx,
+      partnerTx,
+      undefined,
+      newSubscription,
+      store.subscriptions,
+      isDestHistorical,
+    );
   };
 
   return (
@@ -194,8 +223,7 @@ const MainLayout: React.FC = () => {
           />
         </nav>
 
-        {/* Privacy Mode Toggle */}
-        <div className="mt-auto space-y-3 pt-6 border-t border-gray-800">
+        <div className="mt-auto space-y-3 pt-6 border-t border-gray-800" aria-label="Mask mode toggle">
           {!isOnline && (
             <div className="flex items-center gap-3 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl">
               <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
@@ -215,29 +243,31 @@ const MainLayout: React.FC = () => {
           )}
 
           <button
-            onClick={() => setPrivacyMode(!privacyMode)}
+            type="button"
+            onClick={() => setMaskMode(!maskMode)}
+            aria-pressed={maskMode}
             className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/50 hover:bg-gray-800/50 border border-gray-800/50 transition-all group"
           >
             <div className="flex items-center gap-3">
               <div className="text-gray-400 group-hover:text-indigo-400 transition-colors">
-                {privacyMode ? (
+                {maskMode ? (
                   <EyeSlashIcon className="w-5 h-5" />
                 ) : (
                   <EyeIcon className="w-5 h-5" />
                 )}
               </div>
               <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors">
-                Privacy Mode
+                Mask Mode
               </span>
             </div>
             <div
               className={`w-8 h-4 rounded-full relative transition-colors ${
-                privacyMode ? "bg-indigo-500" : "bg-gray-700"
+                maskMode ? "bg-indigo-500" : "bg-gray-700"
               }`}
             >
               <div
                 className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
-                  privacyMode ? "right-1" : "left-1"
+                  maskMode ? "right-1" : "left-1"
                 }`}
               />
             </div>
@@ -272,14 +302,17 @@ const MainLayout: React.FC = () => {
               </div>
             )}
             <button
-              onClick={() => setPrivacyMode(!privacyMode)}
+              type="button"
+              onClick={() => setMaskMode(!maskMode)}
+              aria-label="Toggle mask mode"
+              aria-pressed={maskMode}
               className={`p-2 rounded-xl transition-all ${
-                privacyMode
+                maskMode
                   ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"
                   : "bg-surface border border-gray-800 text-gray-400"
               }`}
             >
-              {privacyMode ? (
+              {maskMode ? (
                 <EyeSlashIcon className="w-5 h-5" />
               ) : (
                 <EyeIcon className="w-5 h-5" />
@@ -391,14 +424,14 @@ const MainLayout: React.FC = () => {
           sessions={chatSessions}
           activeSessionId={activeChatId}
           accounts={accounts}
-          transactions={transactions}
+          transactions={storeTransactions}
           categories={categories}
           pots={pots}
           goals={goals}
           subscriptions={subscriptions}
           onClose={() => navigate(-1)}
-          onSaveSession={handleSaveChatSession}
-          onDeleteSession={handleDeleteChatSession}
+          onSaveSession={(s) => saveChatSession(s, chatSessions)}
+          onDeleteSession={(id) => deleteChatSession(id, chatSessions)}
           onSelectSession={setActiveChatId}
           onNewChat={() => setActiveChatId(null)}
         />
@@ -425,12 +458,12 @@ const MainLayout: React.FC = () => {
         <AccountForm
           initialAccount={editingAccount}
           accounts={accounts}
-          onSave={handleAccountSave}
+          onSave={(a) => saveAccount(a, accounts, storeTransactions, profile.id || "local", profile)}
           onClose={() => {
             setShowAccountForm(false);
             setEditingAccount(undefined);
           }}
-          onDelete={handleAccountDelete}
+          onDelete={(id) => deleteAccount(id, accounts, storeTransactions)}
         />
       )}
 
@@ -438,8 +471,8 @@ const MainLayout: React.FC = () => {
         <CategoryManager
           categories={categories}
           onClose={() => setShowCategoryManager(false)}
-          onSave={handleCategorySave}
-          onDelete={handleCategoryDelete}
+          onSave={(cat) => saveCategory(cat, categories, profile.id || "local")}
+          onDelete={(id) => deleteCategory(id, categories)}
         />
       )}
 
@@ -448,8 +481,8 @@ const MainLayout: React.FC = () => {
           subscriptions={subscriptions}
           accounts={accounts}
           categories={categories}
-          onAdd={handleAddSubscription}
-          onDelete={handleDeleteSubscription}
+          onAdd={(s) => addSubscription(s, subscriptions, profile.id || "local")}
+          onDelete={(id) => deleteSubscription(id, subscriptions)}
           onRecordPayment={handleRecordSubscriptionPayment}
           onClose={() => setShowSubscriptionManager(false)}
         />

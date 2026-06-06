@@ -4,7 +4,6 @@ import {
   Transaction,
   Goal,
   UserProfile,
-  UserCloudSettings,
   Subscription,
   Pot,
   SavingPocket,
@@ -12,6 +11,7 @@ import {
 } from "../types";
 import * as SheetService from "./sheets.services";
 import { getKey as getBaseKey } from "../helpers/storage.helper";
+import { logger } from "../src/lib/application/logger";
 
 export const KEYS = {
   ACCOUNTS: "zenfinance_accounts_v2",
@@ -19,7 +19,6 @@ export const KEYS = {
   CATEGORIES: "zenfinance_categories_v2",
   GOALS: "zenfinance_goals_v2",
   PROFILE: "zenfinance_profile_v2",
-  SECURITY: "zenfinance_security_settings_v1",
   SUBSCRIPTIONS: "zenfinance_subscriptions_v2",
   POTS: "zenfinance_pots_v2",
   POCKETS: "zenfinance_pockets_v2",
@@ -80,7 +79,7 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
         targetData = [...targetData, ...itemsToMigrate];
         localStorage.setItem(targetKey, JSON.stringify(targetData));
         hasChanges = true;
-        console.log(
+        logger.log(
           `Migrated ${itemsToMigrate.length} items from guest into account`,
         );
       }
@@ -88,7 +87,7 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
       // Clear legacy key ONLY if migration succeeded or it was effectively merged
       localStorage.removeItem(key);
     } catch (e) {
-      console.error(`Error migrating ${sheetName}`, e);
+      logger.error(`Error migrating ${sheetName}`, e);
     }
   };
 
@@ -161,11 +160,11 @@ export const importFromKey = (sourceKey: string, targetBaseKey: string) => {
     if (toImport.length > 0) {
       const merged = [...targetData, ...toImport];
       localStorage.setItem(targetKey, JSON.stringify(merged));
-      console.log(`Rescued ${toImport.length} items from ${sourceKey}`);
+      logger.log(`Rescued ${toImport.length} items from ${sourceKey}`);
       return true;
     }
   } catch (e) {
-    console.error("Rescue failed for key", sourceKey, e);
+    logger.error("Rescue failed for key", sourceKey, e);
   }
   return false;
 };
@@ -485,94 +484,30 @@ export const saveChatSessions = (sessions: ChatSession[]) => {
   localStorage.setItem(getKey(KEYS.CHATS), JSON.stringify(sessions));
 };
 
-export const getStoredSecuritySettings = (): UserCloudSettings => {
-  const stored = localStorage.getItem(KEYS.SECURITY);
-  return stored ? JSON.parse(stored) : {};
-};
-
-export const saveSecuritySettings = (settings: UserCloudSettings) => {
-  const current = getStoredSecuritySettings();
-  const merged = { ...current, ...settings };
-  localStorage.setItem(KEYS.SECURITY, JSON.stringify(merged));
-};
-
 export const getStoredProfile = (): UserProfile => {
   const stored = localStorage.getItem(KEYS.PROFILE);
   const profile = stored
     ? JSON.parse(stored)
     : { name: "", email: "", isLoggedIn: false };
 
-  const security = getStoredSecuritySettings();
-  const fullProfile = { ...profile, ...security };
-
-  // Set defaults for newly added fields
-  if (fullProfile.syncChatToSheets === undefined) {
-    fullProfile.syncChatToSheets = true;
+  if (profile.syncChatToSheets === undefined) {
+    profile.syncChatToSheets = true;
   }
-  if (fullProfile.showAIAssistant === undefined) {
-    fullProfile.showAIAssistant = true;
+  if (profile.showAIAssistant === undefined) {
+    profile.showAIAssistant = true;
   }
-  if (fullProfile.privacyMode === undefined) {
-    fullProfile.privacyMode = false;
+  if (profile.maskMode === undefined) {
+    profile.maskMode = false;
   }
-  if (fullProfile.isVaultLocked === undefined) {
-    fullProfile.isVaultLocked = true;
+  if (profile.schemaVersion === undefined) {
+    profile.schemaVersion = 2;
   }
 
-  // Normalize booleans that might come as strings from Sheets
-  const normalizeBool = (val: any) => {
-    if (typeof val === "string") {
-      const lower = val.toLowerCase();
-      if (lower === "true") return true;
-      if (lower === "false") return false;
-    }
-    return val;
-  };
-
-  fullProfile.isVaultEnabled = normalizeBool(fullProfile.isVaultEnabled);
-  fullProfile.isVaultCreated = normalizeBool(fullProfile.isVaultCreated);
-  fullProfile.isVaultLocked = normalizeBool(fullProfile.isVaultLocked);
-  fullProfile.privacyMode = normalizeBool(fullProfile.privacyMode);
-
-  return fullProfile;
+  return profile;
 };
 
 export const saveProfile = (profile: UserProfile) => {
-  // Separate security settings from profile
-  const {
-    isVaultEnabled,
-    isVaultCreated,
-    isVaultLocked,
-    vaultSalt,
-    biometricCredId,
-    biometricCredIds,
-    devices,
-    privacyMode,
-    ...pureProfile
-  } = profile;
-
-  localStorage.setItem(KEYS.PROFILE, JSON.stringify(pureProfile));
-
-  // Save security settings separately
-  const securitySettings: UserCloudSettings = {
-    isVaultEnabled,
-    isVaultCreated,
-    isVaultLocked,
-    vaultSalt,
-    biometricCredId,
-    biometricCredIds,
-    devices,
-    privacyMode,
-  };
-
-  // Remove undefined values to avoid overwriting existing valid settings with undefined if full profile wasn't passed
-  const cleanSecurity = Object.fromEntries(
-    Object.entries(securitySettings).filter(([_, v]) => v !== undefined),
-  );
-
-  if (Object.keys(cleanSecurity).length > 0) {
-    saveSecuritySettings(cleanSecurity);
-  }
+  localStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
 };
 
 // Full Sync Operation

@@ -2,25 +2,34 @@ import React from "react";
 import { useOutletContext } from "react-router-dom";
 import Profile from "../components/Profile";
 import { useAuth } from "../services/auth.services";
-import { useData } from "../context/DataContext";
+import { useFinanceStore } from "../src/stores/finance.store";
+import {
+  recalculateBalances,
+  migrateData,
+} from "../src/lib/application/commands";
+import { useSyncStore } from "../src/stores/sync.store";
+import {
+  selectExistingSheet,
+  syncData,
+  resetAndSync,
+} from "../src/lib/application/commands/sync";
+import { checkSheetClientReady } from "../src/lib/application/commands/sheet";
+import { logger } from "../src/lib/application/logger";
 
 const ProfilePage: React.FC = () => {
   const { profile, loginWithGoogle, updateProfile, unlinkCloud } = useAuth();
   const {
-    isSyncing,
-    syncData,
-    handleSelectExistingSheet,
-    handleResetAndSync,
-    handleMigrateData,
     accounts,
     transactions,
     categories,
     goals,
     subscriptions,
+    chatSessions,
     pots,
     pockets,
-    chatSessions,
-  } = useData();
+    usdRate,
+  } = useFinanceStore();
+  const isSyncing = useSyncStore((s) => s.isSyncing);
   const { setShowCategoryManager, setShowSubscriptionManager, handleLogout } =
     useOutletContext<any>();
 
@@ -38,9 +47,23 @@ const ProfilePage: React.FC = () => {
       );
     }
 
+    const SENSITIVE_KEYS =
+      /^(?:apikey|api[_-]?key|secret|token|password|passphrase|geminiApiKey|googleApiKey|vite_(?:gemini|google)_api_key|totpSecret|encryptionKey|vaultSalt|biometricCred(?:Id|Ids)|devices|cardNumber|cvv|expiry|holderName|accountNumber|details|isEncrypted|encryptedDetails|pin|ssn|taxId|iban|routingNumber|swift)$/i;
+    const stripSensitive = (obj: unknown): unknown => {
+      if (Array.isArray(obj)) return obj.map(stripSensitive);
+      if (obj && typeof obj === "object") {
+        return Object.fromEntries(
+          Object.entries(obj as Record<string, unknown>)
+            .filter(([k]) => !SENSITIVE_KEYS.test(k))
+            .map(([k, v]) => [k, stripSensitive(v)]),
+        );
+      }
+      return obj;
+    };
+
     const data = {
-      profile,
-      accounts,
+      profile: stripSensitive(profile),
+      accounts: accounts.map((a) => stripSensitive(a)),
       transactions: filteredTransactions,
       categories,
       goals,
@@ -67,6 +90,35 @@ const ProfilePage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleRecalculateBalances = async () => {
+    try {
+      const isCloud = !(profile as any).offlineMode && checkSheetClientReady();
+      await recalculateBalances(
+        accounts,
+        pots,
+        pockets,
+        transactions,
+        usdRate,
+        (profile as any).id || "local",
+        isCloud,
+      );
+    } catch (err) {
+      logger.error(err);
+    }
+  };
+
+  const handleMigrateData = async () => {
+    await migrateData();
+  };
+
+  const handleResetAndSync = async () => {
+    await resetAndSync(profile, updateProfile);
+  };
+
+  const handleSelectExistingSheet = async (sheetId?: string) => {
+    await selectExistingSheet(sheetId, () => syncData(profile, updateProfile, loginWithGoogle));
+  };
+
   return (
     <div className="animate-fadeIn max-w-2xl mx-auto w-full">
       <div className="mb-8 px-4 sm:px-0">
@@ -84,10 +136,11 @@ const ProfilePage: React.FC = () => {
         onManageSubscriptions={() => setShowSubscriptionManager(true)}
         onExport={handleExportData}
         onMigrate={handleMigrateData}
-        onSync={syncData}
+        onSync={() => syncData(profile, updateProfile, loginWithGoogle)}
         onUnlinkCloud={unlinkCloud}
         onResetSync={handleResetAndSync}
         onSelectSheet={handleSelectExistingSheet}
+        onRecalculateBalances={handleRecalculateBalances}
         isSyncing={isSyncing}
       />
     </div>

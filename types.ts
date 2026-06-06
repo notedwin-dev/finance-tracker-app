@@ -20,15 +20,6 @@ export interface ExchangeRateData {
   }[];
 }
 
-export interface AccountDetails {
-  accountNumber?: string;
-  cardNumber?: string;
-  holderName?: string;
-  expiry?: string;
-  cvv?: string;
-  note?: string;
-}
-
 export interface Account {
   id: string;
   name: string;
@@ -41,8 +32,7 @@ export interface Account {
   updatedAt?: string; // Timestamp for sync
   userId: string; // User ID owner
   providerId?: string;
-  details?: AccountDetails | string;
-  isEncrypted?: boolean;
+  note?: string;
 }
 
 export interface Category {
@@ -93,14 +83,8 @@ export interface Transaction {
 }
 
 export interface UserCloudSettings {
-  isSecurityEnabled?: boolean; // Replaces isVaultEnabled - enables encryption for sensitive data
-  totpSecret?: string; // TOTP secret for 2FA (stored encrypted in cloud)
-  totpEnabled?: boolean; // Whether 2FA is enabled
-  biometricEnabled?: boolean; // Whether biometrics is enabled on this device
-  encryptionKey?: string; // Encrypted master key for data encryption (encrypted with biometric + 2FA)
-  biometricCredIds?: string[]; // Credential ID for WebAuthn biometric auth
-  devices?: string[]; // List of registered devices for biometric auth
-  privacyMode?: boolean;
+  schemaVersion?: number;
+  maskMode?: boolean;
   lastSyncAt?: string;
   lastUpdatedAt?: string; // Timestamp when data was last modified in Sheets (for re-linking comparison)
 }

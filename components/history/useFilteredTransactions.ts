@@ -6,6 +6,10 @@ import {
   normalizeDate,
 } from "../../helpers/transactions.helper";
 import { PAGE_SIZE } from "./constants";
+import { logger } from "../../src/lib/application/logger";
+import { matchesSearch } from "../../src/lib/domain/search";
+
+export { matchesSearch };
 
 interface UseFilteredTransactionsResult {
   filteredTransactions: Transaction[];
@@ -15,27 +19,6 @@ interface UseFilteredTransactionsResult {
   sortedDates: string[];
   visibleCount: number;
   setVisibleCount: React.Dispatch<React.SetStateAction<number>>;
-}
-
-export function matchesSearch(t: Transaction, query: string, categories: { id: string; name: string }[], accounts: { id: string; name: string }[]): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase();
-
-  // When query looks like a date (YYYY, YYYY-MM, YYYY-MM-DD), only match dates
-  if (/^\d{4}(-\d{2}(-\d{2})?)?$/.test(q)) {
-    return t.date?.toLowerCase().startsWith(q) === true;
-  }
-
-  if (t.shopName?.toLowerCase().includes(q)) return true;
-  if (t.note?.toLowerCase().includes(q)) return true;
-  if (t.type?.toLowerCase().includes(q)) return true;
-  const cat = categories.find((c) => c.id === t.categoryId);
-  if (cat?.name?.toLowerCase().includes(q)) return true;
-  if (t.currency?.toLowerCase().includes(q)) return true;
-  if (t.date?.toLowerCase().startsWith(q)) return true;
-  if (t.time?.toLowerCase().includes(q)) return true;
-  if (t.toAccountId && accounts?.find((a) => a.id === t.toAccountId)?.name?.toLowerCase().includes(q)) return true;
-  return false;
 }
 
 export function useFilteredTransactions(
@@ -64,7 +47,7 @@ export function useFilteredTransactions(
     try {
       return groupTransactions(filteredTransactions);
     } catch (e) {
-      console.warn("Failed to group transactions", e);
+      logger.warn("Failed to group transactions", e);
       return [];
     }
   }, [filteredTransactions]);

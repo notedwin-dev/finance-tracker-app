@@ -1,3 +1,5 @@
+import { logger } from "../src/lib/application/logger";
+
 export interface CryptoPrices {
   BTC: number;
   ETH: number;
@@ -39,7 +41,7 @@ export async function getCryptoPrices(): Promise<CryptoPrices> {
 
     return prices;
   } catch (error) {
-    console.error("Error fetching crypto prices:", error);
+    logger.error("Error fetching crypto prices:", error);
     // Fallback prices if API fails
     return {
       BTC: 65000,

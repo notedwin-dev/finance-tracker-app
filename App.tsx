@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./services/auth.services";
-import { DataProvider } from "./context/DataProvider";
+import { useAppInit } from "./helpers/useAppInit";
 
 // Layouts
 import MainLayout from "./layouts/MainLayout";
@@ -37,41 +37,42 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const ProtectedAppShell = () => (
+  <ProtectedRoute>
+    <MainLayout />
+  </ProtectedRoute>
+);
+
+const AppInit: React.FC = () => {
+  useAppInit();
+  return null;
+};
+
 const App: React.FC = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <DataProvider>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<AuthPage />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsOfService />} />
+        <AppInit />
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<AuthPage />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
 
-            {/* Protected App Routes */}
-            <Route
-              path="/app"
-              element={
-                <ProtectedRoute>
-                  <MainLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<DashboardPage />} />
-              <Route path="history" element={<HistoryPage />} />
-              <Route path="account/:id" element={<AccountPage />} />
-              <Route path="goals" element={<GoalsPage />} />
-              <Route path="assets" element={<AssetsPage />} />
-              <Route path="ai" element={<div />} />
-              <Route path="profile" element={<ProfilePage />} />
-            </Route>
+          <Route path="/app" element={<ProtectedAppShell />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="history" element={<HistoryPage />} />
+            <Route path="account/:id" element={<AccountPage />} />
+            <Route path="goals" element={<GoalsPage />} />
+            <Route path="assets" element={<AssetsPage />} />
+            <Route path="ai" element={<div />} />
+            <Route path="profile" element={<ProfilePage />} />
+          </Route>
 
-            {/* fallback */}
-            <Route path="/404" element={<NotFound />} />
-            <Route path="*" element={<Navigate to="/404" replace />} />
-          </Routes>
-        </DataProvider>
+          {/* fallback */}
+          <Route path="/404" element={<NotFound />} />
+          <Route path="*" element={<Navigate to="/404" replace />} />
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

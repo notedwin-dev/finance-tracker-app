@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Goal, Account, Pot, SavingPocket } from "../types";
 import { parseDateSafe, normalizeDate } from "../helpers/transactions.helper";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
 import DatePicker from "./DatePicker";
 import {
   PlusIcon,
@@ -39,7 +39,7 @@ const Goals: React.FC<Props> = ({
   onSavePocket,
   onDeletePocket,
 }) => {
-  const { maskText, maskAmount } = useData();
+  const { maskText, maskAmount } = useMask();
   const [activeTab, setActiveTab] = useState<"POTS" | "GOALS" | "POCKETS">(
     "POTS",
   );

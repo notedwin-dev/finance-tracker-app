@@ -9,6 +9,7 @@ import {
 	Subscription,
 	TransactionType,
 } from "../types";
+import { logger } from "../src/lib/application/logger";
 
 const BACKEND_URL =
 	import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
@@ -285,7 +286,7 @@ export const streamFinancialAdvice = async (
 		try {
 			return await requestChatViaProxy(history, contextData, onChunk);
 		} catch (error) {
-			console.error("Proxy AI Error:", error);
+			logger.error("Proxy AI Error:", error);
 			throw error;
 		}
 	}
@@ -404,15 +405,15 @@ export const streamFinancialAdvice = async (
 
 		return { text: fullText, functionCall };
 	} catch (error: any) {
-		console.error("Gemini Streaming Error:", error);
+		logger.error("Gemini Streaming Error:", error);
 		if (isInvalidApiKeyError(error)) {
 			try {
-				console.warn(
+				logger.warn(
 					"Invalid Gemini API key detected. Falling back to backend proxy.",
 				);
 				return await requestChatViaProxy(history, contextData, onChunk);
 			} catch (proxyError) {
-				console.error("Proxy AI Fallback Error:", proxyError);
+				logger.error("Proxy AI Fallback Error:", proxyError);
 				throw new Error(
 					"Gemini API key is invalid. Please update your Gemini key in Profile settings.",
 				);
@@ -451,7 +452,7 @@ export const generateChatTitle = async (
 			const data = await response.json();
 			return data.title || "New Financial Chat";
 		} catch (e) {
-			console.error("Proxy Title Error:", e);
+			logger.error("Proxy Title Error:", e);
 			return "New Financial Chat";
 		}
 	}
@@ -491,10 +492,10 @@ export const generateChatTitle = async (
 				const data = await response.json();
 				return data.title || "New Financial Chat";
 			} catch (proxyError) {
-				console.error("Title Proxy Fallback Error:", proxyError);
+				logger.error("Title Proxy Fallback Error:", proxyError);
 			}
 		}
-		console.error("Title Generation Error:", e);
+		logger.error("Title Generation Error:", e);
 		return "New Financial Chat";
 	}
 };
@@ -561,7 +562,7 @@ export const parseBankStatement = async (
 		const parsed = typeof text === "string" ? JSON.parse(text) : text;
 		return Array.isArray(parsed) ? parsed : parsed.transactions || [];
 	} catch (error) {
-		console.error("Bank Statement Parsing Error:", error);
+		logger.error("Bank Statement Parsing Error:", error);
 		if (isInvalidApiKeyError(error)) {
 			throw new Error(
 				"Gemini API key is invalid. Please update your key in Profile settings and try again.",

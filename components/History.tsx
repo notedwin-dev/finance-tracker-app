@@ -14,7 +14,9 @@ import {
 	MagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
 import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helper";
-import { useData } from "../context/DataContext";
+import { useMask } from "../helpers/useMask";
+import { useFinanceStore } from "../src/stores/finance.store";
+import { batchDeleteTransaction, batchEditTransactions } from "../src/lib/application/commands";
 import { cn } from "./history/cn";
 import { SCROLL_THRESHOLD } from "./history/constants";
 import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
@@ -37,7 +39,7 @@ interface Props {
 	isAssetPage?: boolean;
 	onAddTransaction: () => void;
 	onEditTransaction: (t: Transaction) => void;
-	onDeleteTransaction: (id: string) => void;
+	onDeleteTransaction: (id: string) => Promise<void>;
 }
 
 const History: React.FC<Props> = ({
@@ -51,14 +53,9 @@ const History: React.FC<Props> = ({
 	onEditTransaction,
 	onDeleteTransaction,
 }) => {
-	const {
-		maskAmount,
-		maskText,
-		privacyMode,
-		handleBatchTransactionDelete,
-		handleBatchTransactionEdit,
-		pots,
-	} = useData();
+	const { maskAmount, maskText } = useMask();
+	const usdRate = useFinanceStore((s) => s.usdRate);
+	const { pots } = useFinanceStore();
 
 	const [startDate, setStartDate] = useState("");
 	const [endDate, setEndDate] = useState("");
@@ -159,14 +156,16 @@ const History: React.FC<Props> = ({
 	);
 
 	const handleSwipeDelete = useCallback(
-		(t: GroupedTransaction) => {
+		async (t: GroupedTransaction) => {
 			if (
 				window.confirm(
 					"Delete this transaction? This cannot be undone.",
 				)
 			) {
-				onDeleteTransaction(t.id);
-				swipe.setSwipedId(null);
+				try {
+					await onDeleteTransaction(t.id);
+					swipe.setSwipedId(null);
+				} catch {}
 			}
 		},
 		[onDeleteTransaction, swipe.setSwipedId],
@@ -174,25 +173,37 @@ const History: React.FC<Props> = ({
 
 	const handleBatchDelete = useCallback(async () => {
 		batch.startSubmit();
-		if (
-			window.confirm(
-				`Delete ${batch.selectedIds.length} transactions? This cannot be undone.`,
-			)
-		) {
-			await handleBatchTransactionDelete(batch.selectedIds);
-			batch.clearSelection();
+		try {
+			if (
+				window.confirm(
+					`Delete ${batch.selectedIds.length} transactions? This cannot be undone.`,
+				)
+			) {
+				await batchDeleteTransaction(batch.selectedIds, accounts, pots, pockets, usdRate, transactions);
+				batch.clearSelection();
+			}
+		} finally {
+			batch.endSubmit();
 		}
-		batch.endSubmit();
-	}, [batch, handleBatchTransactionDelete]);
+	}, [batch, batchDeleteTransaction, accounts, pots, pockets, usdRate, transactions]);
 
 	const handleBatchEditSubmit = useCallback(async () => {
 		batch.startSubmit();
-		await handleBatchTransactionEdit(
-			batch.selectedIds,
-			batch.batchUpdates,
-		);
-		batch.endSubmit();
-	}, [batch, handleBatchTransactionEdit]);
+		try {
+			await batchEditTransactions(
+				batch.selectedIds,
+				batch.batchUpdates,
+				transactions,
+				accounts,
+				pots,
+				pockets,
+				usdRate,
+				false,
+			);
+		} finally {
+			batch.endSubmit();
+		}
+	}, [batch, batchEditTransactions, transactions, accounts, pots, pockets, usdRate]);
 
 	const handleChevronClick = useCallback(
 		(e: React.MouseEvent, id: string) => {

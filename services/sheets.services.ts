@@ -516,8 +516,7 @@ export const updateUser = async (email: string, updates: any) => {
 			if (updates[header] !== undefined) {
 				const val = updates[header];
 				if (typeof val === "boolean") return val.toString();
-				if (typeof val === "object" && val !== null) return JSON.stringify(val);
-				return val;
+				return serializeCellValue(val);
 			}
 			return currentRow[i] ?? "";
 		});
@@ -717,10 +716,7 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		const rowsToUpdate = sanitizedItems.map((item) => {
 			return headers.map((header) => {
 				const val = item[header];
-				if (typeof val === "object" && val !== null) {
-					return JSON.stringify(val);
-				}
-				return val ?? "";
+				return serializeCellValue(val) ?? "";
 			});
 		});
 
@@ -800,10 +796,7 @@ export const insertOne = async (sheetName: string, item: any) => {
 	// 2. Align Data to Headers
 	const row = headers.map((header) => {
 		const val = item[header];
-		if (typeof val === "object" && val !== null) {
-			return JSON.stringify(val);
-		}
-		return val ?? "";
+		return serializeCellValue(val) ?? "";
 	});
 
 	// 3. Append Row
@@ -851,10 +844,7 @@ export const insertMany = async (sheetName: string, items: any[]) => {
 	const rows = items.map((item) => {
 		return headers.map((header) => {
 			const val = item[header];
-			if (typeof val === "object" && val !== null) {
-				return JSON.stringify(val);
-			}
-			return val ?? "";
+			return serializeCellValue(val) ?? "";
 		});
 	});
 
@@ -880,6 +870,11 @@ const getColumnLetter = (index: number): string => {
 		index = Math.floor(index / 26) - 1;
 	}
 	return letter;
+};
+
+const serializeCellValue = (val: unknown): unknown => {
+	if (typeof val === "object" && val !== null) return JSON.stringify(val);
+	return val;
 };
 
 /**
@@ -925,10 +920,7 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 		// 3. Prepare the updated row
 		const row = headers.map((header: string) => {
 			const val = item[header];
-			if (typeof val === "object" && val !== null) {
-				return JSON.stringify(val);
-			}
-			return val ?? "";
+			return serializeCellValue(val) ?? "";
 		});
 
 		// 4. Update specific row (A1 notation requires 1-based indexing for rows)
@@ -936,19 +928,13 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 		const data: any[] = [];
 		headers.forEach((header: string, colIndex: number) => {
 			const val = item[header];
-			if (val !== undefined) {
-				const colLetter = getColumnLetter(colIndex);
-				data.push({
-					range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
-					values: [
-						[
-							typeof val === "object" && val !== null
-								? JSON.stringify(val)
-								: val,
-						],
-					],
-				});
-			}
+				if (val !== undefined) {
+					const colLetter = getColumnLetter(colIndex);
+					data.push({
+						range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+						values: [[serializeCellValue(val)]],
+					});
+				}
 		});
 
 		if (data.length > 0) {
@@ -1024,19 +1010,13 @@ export const updateMany = async (
 					if (colIndex !== -1) {
 						const val = item[header];
 						// Only update if value is present in the object
-						if (val !== undefined) {
-							const colLetter = getColumnLetter(colIndex);
-							data.push({
-								range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
-								values: [
-									[
-										typeof val === "object" && val !== null
-											? JSON.stringify(val)
-											: (val ?? ""),
-									],
-								],
-							});
-						}
+					if (val !== undefined) {
+						const colLetter = getColumnLetter(colIndex);
+						data.push({
+							range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+							values: [[serializeCellValue(val) ?? ""]],
+						});
+					}
 					}
 				});
 			}

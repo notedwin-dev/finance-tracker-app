@@ -89,6 +89,36 @@ const Profile: React.FC<Props> = ({
 		setIsEditing(false);
 	};
 
+	const requestConfirmation = (opts: {
+		title: string;
+		description: string;
+		confirmLabel: string;
+		isDestructive?: boolean;
+		icon?: any;
+		onConfirm: () => void;
+	}) => {
+		setConfirmationModal({
+			isOpen: true,
+			title: opts.title,
+			description: opts.description,
+			confirmLabel: opts.confirmLabel,
+			isDestructive: opts.isDestructive,
+			icon: opts.icon,
+			onConfirm: opts.onConfirm,
+		});
+	};
+
+	const runMigrationAndNotify = () => {
+		runVaultSchemaMigration()
+			.then(() =>
+				useSyncStore.getState().showToast("Migration complete", "success"),
+			)
+			.catch((e) => {
+				logger.error("Migration error:", e);
+				useSyncStore.getState().showToast("Migration failed. Check console.", "alert");
+			});
+	};
+
 	const SettingItem = ({
 		icon: Icon,
 		label,
@@ -338,8 +368,7 @@ const Profile: React.FC<Props> = ({
 								profile.offlineMode
 									? onLogin
 									: () => {
-											setConfirmationModal({
-												isOpen: true,
+											requestConfirmation({
 												title: "Disconnect Cloud",
 												description:
 													"Disconnect from Google Sheets? Your data will remain on this device but won't sync to the cloud until re-linked.",
@@ -437,32 +466,12 @@ const Profile: React.FC<Props> = ({
 								description="One-time v1 → v2 cleanup. Strips legacy vault fields and syncs to cloud."
 								color="text-amber-400"
 								onClick={() => {
-									setConfirmationModal({
-										isOpen: true,
+									requestConfirmation({
 										title: "Run v1 → v2 Migration",
 										description:
 											"This will strip legacy vault fields from your local data and push the cleaned data to Google Sheets. Run on the device with the most complete data, while online. This cannot be undone.",
 										confirmLabel: "Run Migration",
-										onConfirm: () => {
-											runVaultSchemaMigration()
-												.then(() =>
-													useSyncStore
-														.getState()
-														.showToast(
-															"Migration complete",
-															"success",
-														),
-												)
-												.catch((e) => {
-													logger.error("Migration error:", e);
-													useSyncStore
-														.getState()
-														.showToast(
-															"Migration failed. Check console.",
-															"alert",
-														);
-												});
-										},
+										onConfirm: runMigrationAndNotify,
 									});
 								}}
 							/>

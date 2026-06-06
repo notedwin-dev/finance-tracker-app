@@ -39,11 +39,10 @@ export async function deleteSavingPocket(
     if (newT.toSavingPocketId === id) newT.toSavingPocketId = null as string | null;
     return newT;
   });
-  await StorageService.saveTransactions(updatedTransactions);
-  store.setTransactions(updatedTransactions);
-
   const updatedPockets = existingPockets.filter((p) => p.id !== id);
+  await StorageService.saveTransactions(updatedTransactions);
   await StorageService.savePockets(updatedPockets);
+  store.setTransactions(updatedTransactions);
   store.setPockets(updatedPockets);
 
   showToast("Saving pocket deleted", "success");

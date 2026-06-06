@@ -16,6 +16,7 @@ import {
   normalizeDate,
   parseDateSafe,
 } from "../../../../helpers/transactions.helper";
+import { logger } from "../logger";
 
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
@@ -145,10 +146,24 @@ export async function submitTransaction(
     return p;
   });
 
-  await StorageService.saveTransactions(updatedTransactions);
-  if (accountUpdates.size > 0) await StorageService.saveAccounts(updatedAccounts);
-  if (potUpdates.size > 0) await StorageService.savePots(updatedPots);
-  if (pocketUpdates.size > 0) await StorageService.savePockets(updatedPockets);
+  const snapshotTransactions = StorageService.getStoredTransactions();
+  const snapshotAccounts = StorageService.getStoredAccounts();
+  const snapshotPots = StorageService.getStoredPots();
+  const snapshotPockets = StorageService.getStoredPockets();
+
+  try {
+    await StorageService.saveTransactions(updatedTransactions);
+    if (accountUpdates.size > 0) await StorageService.saveAccounts(updatedAccounts);
+    if (potUpdates.size > 0) await StorageService.savePots(updatedPots);
+    if (pocketUpdates.size > 0) await StorageService.savePockets(updatedPockets);
+  } catch (saveError) {
+    logger.error("submitTransaction: save failed, rolling back localStorage", saveError);
+    await StorageService.saveTransactions(snapshotTransactions);
+    if (accountUpdates.size > 0) await StorageService.saveAccounts(snapshotAccounts);
+    if (potUpdates.size > 0) await StorageService.savePots(snapshotPots);
+    if (pocketUpdates.size > 0) await StorageService.savePockets(snapshotPockets);
+    throw saveError;
+  }
 
   store.setTransactions(updatedTransactions);
   if (accountUpdates.size > 0) store.setAccounts(updatedAccounts);

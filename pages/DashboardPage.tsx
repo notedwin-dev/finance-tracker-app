@@ -25,6 +25,13 @@ import {
 	GroupedTransaction,
 	formatDateReadable,
 } from "../helpers/transactions.helper";
+import {
+	getTrendStartLimit,
+	convertValueToBaseCurrency,
+	applyTransactionToBalance,
+	sortTransactionsByDateDesc,
+	TrendTimeframe,
+} from "../src/lib/domain/dashboard-trend";
 import { TransactionType } from "../types";
 import DatePicker from "../components/DatePicker";
 
@@ -177,96 +184,37 @@ const DashboardPage: React.FC = () => {
 	const trendPoints = useMemo(() => {
 		const numPoints = 12;
 		const now = new Date();
-		let startLimit = new Date();
-
-		if (timeframe === "1D") startLimit.setHours(now.getHours() - 24);
-		else if (timeframe === "1W") startLimit.setDate(now.getDate() - 7);
-		else if (timeframe === "1M") startLimit.setDate(now.getDate() - 30);
-		else if (timeframe === "YTD")
-			startLimit = new Date(now.getFullYear(), 0, 1);
-		else if (timeframe === "ALL") {
-			const allDates = transactions.map((t) => new Date(t.date).getTime());
-			startLimit =
-				allDates.length > 0
-					? new Date(Math.min(...allDates))
-					: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-		} else if (timeframe === "CUSTOM") {
-			startLimit = new Date(customRange.start);
-		}
+		const startLimit = getTrendStartLimit(
+			timeframe as TrendTimeframe,
+			customRange,
+			transactions,
+			now,
+		);
 
 		const duration = now.getTime() - startLimit.getTime();
 		const interval = duration / (numPoints - 1);
 		const resultLabels: string[] = [];
 		const resultData: number[] = [];
 
-		// All transactions sorted by date descending to help with balance backtracking
-		const sortedTxs = [...transactions].sort((a, b) => {
-			const timeA = new Date(a.date).getTime();
-			const timeB = new Date(b.date).getTime();
-			if (timeA !== timeB) return timeB - timeA;
-			return (b.createdAt || 0)
-				.toString()
-				.localeCompare((a.createdAt || 0).toString());
-		});
+		const sortedTxs = sortTransactionsByDateDesc(transactions);
 
 		for (let i = 0; i < numPoints; i++) {
 			const pointTime = startLimit.getTime() + i * interval;
 			const pointDate = new Date(pointTime);
 
-			// Calculate balance at this specific point in time
-			// Balance @ Point = Current Total - Transactions that happened AFTER this point
 			let balanceAtPoint = totalBalance;
 
 			for (const tx of sortedTxs) {
 				const txTime = new Date(tx.date).getTime();
-				if (txTime <= pointTime) break; // Optimization: since txs are sorted desc, we can stop early
+				if (txTime <= pointTime) break;
 
-				let txValueInBase = tx.amount;
-				if (tx.currency === "MYR") {
-					txValueInBase =
-						displayCurrency === "MYR" ? tx.amount : tx.amount / usdRate;
-				} else {
-					// Crypto or other non-MYR
-					let valInUSD = tx.amount;
-					if (tx.currency === "BTC") valInUSD = tx.amount * cryptoPrices.BTC;
-					else if (tx.currency === "ETH")
-						valInUSD = tx.amount * cryptoPrices.ETH;
-					txValueInBase =
-						displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
-				}
-
-				if (tx.isHistorical) continue;
-
-				if (
-					tx.type === TransactionType.INCOME ||
-					tx.type === TransactionType.ACCOUNT_OPENING
-				) {
-					balanceAtPoint -= txValueInBase;
-				} else if (
-					tx.type === TransactionType.EXPENSE ||
-					tx.type === TransactionType.ACCOUNT_DELETE
-				) {
-					balanceAtPoint += txValueInBase;
-				} else if (tx.type === TransactionType.ADJUSTMENT) {
-					balanceAtPoint -= txValueInBase;
-				} else if (tx.type === TransactionType.TRANSFER) {
-					// Total Portfolio balance only affected by the fee
-					const fee = tx.fee || 0;
-					if (fee > 0) {
-						let feeInBase = fee;
-						if (tx.currency === "MYR") {
-							feeInBase = displayCurrency === "MYR" ? fee : fee / usdRate;
-						} else {
-							let feeInUSD = fee;
-							if (tx.currency === "BTC") feeInUSD = fee * cryptoPrices.BTC;
-							else if (tx.currency === "ETH") feeInUSD = fee * cryptoPrices.ETH;
-							feeInBase =
-								displayCurrency === "USD" ? feeInUSD : feeInUSD * usdRate;
-						}
-						// A fee is an expense, so reversing it means ADDING it back
-						balanceAtPoint += feeInBase;
-					}
-				}
+				balanceAtPoint = applyTransactionToBalance(
+					balanceAtPoint,
+					tx,
+					displayCurrency,
+					usdRate,
+					cryptoPrices,
+				);
 			}
 
 			resultLabels.push(formatDateReadable(pointDate));

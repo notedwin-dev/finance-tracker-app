@@ -224,6 +224,68 @@ out center ${safeLimit * 3};`;
 		};
 	};
 
+	const buildOfflineSession = (
+		session: ChatSession | null,
+		userQuery: string,
+		includeUserMessage: boolean,
+		userId: string | undefined,
+	): ChatSession => {
+		const now = new Date().toISOString();
+		const offlineMsg: ChatMessage = {
+			role: "model",
+			content:
+				"🚫 **No Internet Connection**\n\nI need an active internet connection to process your request. Please check your connection and try again.",
+			timestamp: now,
+		};
+		if (session) {
+			return {
+				...session,
+				messages: includeUserMessage
+					? [
+							...session.messages,
+							{ role: "user", content: userQuery, timestamp: now } as ChatMessage,
+							offlineMsg,
+						]
+					: [...session.messages, offlineMsg],
+				updatedAt: now,
+			};
+		}
+		return {
+			id: crypto.randomUUID(),
+			userId: userId || "local",
+			title: "Offline Request",
+			messages: includeUserMessage
+				? [
+						{ role: "user", content: userQuery, timestamp: now } as ChatMessage,
+						offlineMsg,
+					]
+				: [offlineMsg],
+			updatedAt: now,
+		};
+	};
+
+	const buildCurrentSession = (
+		session: ChatSession | null,
+		userMessage: ChatMessage | null,
+		userId: string | undefined,
+	): ChatSession => {
+		const now = new Date().toISOString();
+		if (!session) {
+			return {
+				id: crypto.randomUUID(),
+				userId: userId || "guest",
+				title: "New Chat",
+				messages: userMessage ? [userMessage] : [],
+				updatedAt: now,
+			};
+		}
+		return {
+			...session,
+			messages: userMessage ? [...session.messages, userMessage] : [...session.messages],
+			updatedAt: now,
+		};
+	};
+
 	const handleAsk = async (
 		e?: React.FormEvent,
 		overrideQuery?: string,
@@ -240,86 +302,32 @@ out center ${safeLimit * 3};`;
 		}
 
 		if (!navigator.onLine) {
-			const offlineMsg: ChatMessage = {
-				role: "model",
-				content:
-					"🚫 **No Internet Connection**\n\nI need an active internet connection to process your request. Please check your connection and try again.",
-				timestamp: new Date().toISOString(),
-			};
-
-			const sessionForError = activeSession
-				? {
-						...activeSession,
-						messages: includeUserMessage
-							? [
-									...activeSession.messages,
-									{
-										role: "user",
-										content: userQuery,
-										timestamp: new Date().toISOString(),
-									} as ChatMessage,
-									offlineMsg,
-								]
-							: [...activeSession.messages, offlineMsg],
-						updatedAt: new Date().toISOString(),
-					}
-				: {
-						id: crypto.randomUUID(),
-						userId: accounts[0]?.userId || "local",
-						title: "Offline Request",
-						messages: includeUserMessage
-							? [
-									{
-										role: "user",
-										content: userQuery,
-										timestamp: new Date().toISOString(),
-									} as ChatMessage,
-									offlineMsg,
-								]
-							: [offlineMsg],
-						updatedAt: new Date().toISOString(),
-					};
-
-			onSaveSession(sessionForError);
-			if (!activeSession) onSelectSession(sessionForError.id);
+			const offlineSession = buildOfflineSession(
+				activeSession,
+				userQuery,
+				includeUserMessage,
+				accounts[0]?.userId,
+			);
+			onSaveSession(offlineSession);
+			if (!activeSession) onSelectSession(offlineSession.id);
 			return;
 		}
 
 		setLoading(true);
 		setStreamingText("");
 
-		// 1. Create message objects
 		const userMessage: ChatMessage | null = includeUserMessage
-			? {
-					role: "user",
-					content: userQuery,
-					timestamp: new Date().toISOString(),
-				}
+			? { role: "user", content: userQuery, timestamp: new Date().toISOString() }
 			: null;
 
 		const sessionForTurn = sessionOverride || activeSession;
-
-		let currentSession: ChatSession;
-		if (!sessionForTurn) {
-			currentSession = {
-				id: crypto.randomUUID(),
-				userId: accounts[0]?.userId || "guest",
-				title: "New Chat",
-				messages: userMessage ? [userMessage] : [],
-				updatedAt: new Date().toISOString(),
-			};
-			onSaveSession(currentSession);
-			onSelectSession(currentSession.id);
-		} else {
-			currentSession = {
-				...sessionForTurn,
-				messages: userMessage
-					? [...sessionForTurn.messages, userMessage]
-					: [...sessionForTurn.messages],
-				updatedAt: new Date().toISOString(),
-			};
-			onSaveSession(currentSession);
-		}
+		const currentSession = buildCurrentSession(
+			sessionForTurn ?? null,
+			userMessage,
+			accounts[0]?.userId,
+		);
+		onSaveSession(currentSession);
+		if (!sessionForTurn) onSelectSession(currentSession.id);
 
 		try {
 			let fullResponse = "";

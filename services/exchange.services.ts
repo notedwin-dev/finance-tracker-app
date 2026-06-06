@@ -8,6 +8,60 @@ const REFRESH_INTERVAL = 60 * 60 * 1000; // Check every hour for intraday update
 
 const formatSource = (id: string) => id.split("_").pop() || "0900";
 
+const MY_DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kuala_Lumpur",
+  hour: "numeric",
+  minute: "numeric",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour12: false,
+});
+
+const partsToMYDate = (parts: Intl.DateTimeFormatPart[]): string => {
+  const find = (type: string) => parts.find((p) => p.type === type)?.value || "";
+  return `${find("year")}-${find("month").padStart(2, "0")}-${find("day").padStart(2, "0")}`;
+};
+
+const getCachedRate = (now: number): ExchangeRateData | null => {
+  const cached = localStorage.getItem(CACHE_KEY);
+  const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+  if (!cached || !cachedTime) return null;
+  if (now - parseInt(cachedTime) >= REFRESH_INTERVAL) return null;
+  try {
+    const parsed = JSON.parse(cached);
+    if (parsed.history && parsed.history.length > 0) return parsed;
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const selectDailyRateSlot = (
+  now: Date,
+): { dataId: string; searchDate: string; today: string } => {
+  const parts = MY_DATETIME_FORMATTER.formatToParts(now);
+  const find = (type: string) => parts.find((p) => p.type === type)?.value || "";
+  const hours = parseInt(find("hour"));
+  const minutes = parseInt(find("minutes"));
+  const timeVal = hours * 100 + minutes;
+  const today = partsToMYDate(parts);
+
+  if (timeVal < 900) {
+    const yesterday = new Date(now);
+    yesterday.setHours(yesterday.getHours() - 12);
+    return {
+      dataId: "exchangerates_daily_1700",
+      searchDate: partsToMYDate(MY_DATETIME_FORMATTER.formatToParts(yesterday)),
+      today,
+    };
+  }
+  if (timeVal >= 1700) return { dataId: "exchangerates_daily_1700", searchDate: today, today };
+  if (timeVal >= 1200) return { dataId: "exchangerates_daily_1200", searchDate: today, today };
+  if (timeVal >= 1130) return { dataId: "exchangerates_daily_1130", searchDate: today, today };
+  return { dataId: "exchangerates_daily_0900", searchDate: today, today };
+};
+
 const getHistoricalRates = async (
   dataId: string,
   days: number = 31,
@@ -50,70 +104,17 @@ const getHistoricalRates = async (
 };
 
 export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
-  // 1. Check Cache
-  const cached = localStorage.getItem(CACHE_KEY);
-  const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-  const now = Date.now();
+  const cached = getCachedRate(Date.now());
+  if (cached) return cached;
 
-  if (cached && cachedTime && now - parseInt(cachedTime) < REFRESH_INTERVAL) {
-    try {
-      const parsed = JSON.parse(cached);
-      // Ensure history is present if we're using cache
-      if (parsed.history && parsed.history.length > 0) {
-        return parsed;
-      }
-    } catch (e) {
-      // If parsing fails, fall through to fetch
-    }
-  }
+  const { dataId, searchDate, today } = selectDailyRateSlot(new Date());
 
-  // 2. Determine Best Data ID based on Malaysian Time (UTC+8)
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    hour: "numeric",
-    minute: "numeric",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour12: false,
-  });
-
-  const parts = formatter.formatToParts(new Date());
-  const getPart = (type: string) =>
-    parts.find((p) => p.type === type)?.value || "";
-
-  const hours = parseInt(getPart("hour"));
-  const minutes = parseInt(getPart("minute"));
-  const timeVal = hours * 100 + minutes;
-  const today = `${getPart("year")}-${getPart("month").padStart(2, "0")}-${getPart("day").padStart(2, "0")}`;
-
-  let dataId = "exchangerates_daily_0900";
-  let searchDate = today;
-
-  if (timeVal < 900) {
-    // Before 9am, use yesterday's 5pm rate
-    dataId = "exchangerates_daily_1700";
-    const dateObj = new Date();
-    dateObj.setHours(dateObj.getHours() - 12);
-    const yesterdayParts = formatter.formatToParts(dateObj);
-    const getYesterdayPart = (type: string) =>
-      yesterdayParts.find((p) => p.type === type)?.value || "";
-    searchDate = `${getYesterdayPart("year")}-${getYesterdayPart("month").padStart(2, "0")}-${getYesterdayPart("day").padStart(2, "0")}`;
-  } else if (timeVal >= 1700) {
-    dataId = "exchangerates_daily_1700";
-  } else if (timeVal >= 1200) {
-    dataId = "exchangerates_daily_1200";
-  } else if (timeVal >= 1130) {
-    dataId = "exchangerates_daily_1130";
-  }
-
-  // 3. Fetch from API (Live + History)
   try {
     const liveUrl = `${BASE_URL}?id=${dataId}&meta=true&limit=1&include=usd,rate_type,date&filter=${searchDate}@date,middle@rate_type`;
 
     const [liveRes, history] = await Promise.all([
       fetch(liveUrl).then((r) => r.json()),
-      getHistoricalRates(dataId, 450), // Fetch enough history to support YTD/ALL views (Dashboard uses up to 400)
+      getHistoricalRates(dataId, 450),
     ]);
 
     let liveMeta = liveRes.meta;
@@ -144,14 +145,14 @@ export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
         history,
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(result));
-      localStorage.setItem(CACHE_TIME_KEY, now.toString());
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
       return result;
     }
   } catch (error) {
     logger.error("Failed to fetch exchange rate:", error);
   }
 
-  // 4. Final Fallback
+  const rawCache = localStorage.getItem(CACHE_KEY);
   const defaultResult: ExchangeRateData = {
     rate: 4.45,
     date: searchDate,
@@ -159,7 +160,7 @@ export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
     history: [],
   };
   try {
-    return cached ? JSON.parse(cached) : defaultResult;
+    return rawCache ? JSON.parse(rawCache) : defaultResult;
   } catch {
     return defaultResult;
   }

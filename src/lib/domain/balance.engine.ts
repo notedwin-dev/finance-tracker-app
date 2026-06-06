@@ -193,48 +193,69 @@ export function computeAccountTransactionAmount(
   if (t.isHistorical) return accountDeltas;
 
   const acc = accounts.find((a) => a.id === t.accountId);
-  if (acc) {
-    const amt = convertAmount(t.amount, t.currency, acc.currency, usdRate);
-    const fee = t.fee ? convertAmount(t.fee, t.currency, acc.currency, usdRate) : 0;
-    const feeType = t.feeType || "INCLUSIVE";
+  if (!acc) return accountDeltas;
 
-    let delta = 0;
-    const isInflow =
-      t.type === TransactionType.INCOME ||
-      t.type === TransactionType.ACCOUNT_OPENING ||
-      (t.type === TransactionType.ADJUSTMENT && t.amount >= 0) ||
-      (t.type === TransactionType.TRANSFER && t.transferDirection === "IN");
+  const sourceDelta = computeSourceAccountDelta(t, acc, usdRate, factor);
+  accountDeltas.set(t.accountId, (accountDeltas.get(t.accountId) || 0) + sourceDelta);
 
-    if (isInflow) {
-      const addedAmount =
-        t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
-          ? amt - fee
-          : amt;
-      delta = addedAmount * factor;
-    } else {
-      const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
-      delta = -removedAmount * factor;
-    }
-    accountDeltas.set(t.accountId, (accountDeltas.get(t.accountId) || 0) + delta);
-
-    if (
-      t.type === TransactionType.TRANSFER &&
-      t.toAccountId &&
-      !t.transferDirection &&
-      !t.linkedTransactionId
-    ) {
-      const toAcc = accounts.find((a) => a.id === t.toAccountId);
-      if (toAcc) {
-        const toAmt = convertAmount(t.amount, t.currency, toAcc.currency, usdRate);
-        const toFee = t.fee ? convertAmount(t.fee, t.currency, toAcc.currency, usdRate) : 0;
-        const addedAmount = feeType === "EXCLUSIVE" ? toAmt - toFee : toAmt;
-        accountDeltas.set(
-          t.toAccountId,
-          (accountDeltas.get(t.toAccountId) || 0) + addedAmount * factor,
-        );
-      }
-    }
+  const counterDelta = computeUnlinkedTransferCounterDelta(t, accounts, usdRate, factor);
+  if (counterDelta !== null && t.toAccountId) {
+    accountDeltas.set(
+      t.toAccountId,
+      (accountDeltas.get(t.toAccountId) || 0) + counterDelta,
+    );
   }
 
   return accountDeltas;
 }
+
+const isInflowTransaction = (t: Transaction): boolean => {
+  if (t.type === TransactionType.INCOME) return true;
+  if (t.type === TransactionType.ACCOUNT_OPENING) return true;
+  if (t.type === TransactionType.ADJUSTMENT && t.amount >= 0) return true;
+  if (t.type === TransactionType.TRANSFER && t.transferDirection === "IN") return true;
+  return false;
+};
+
+const computeSourceAccountDelta = (
+  t: Transaction,
+  acc: Account,
+  usdRate: number,
+  factor: 1 | -1,
+): number => {
+  const amt = convertAmount(t.amount, t.currency, acc.currency, usdRate);
+  const fee = t.fee ? convertAmount(t.fee, t.currency, acc.currency, usdRate) : 0;
+  const feeType = t.feeType || "INCLUSIVE";
+
+  if (isInflowTransaction(t)) {
+    const addedAmount =
+      t.type === TransactionType.TRANSFER && feeType === "EXCLUSIVE"
+        ? amt - fee
+        : amt;
+    return addedAmount * factor;
+  }
+  const removedAmount = feeType === "INCLUSIVE" ? amt + fee : amt;
+  return -removedAmount * factor;
+};
+
+const isUnlinkedSingleRecordTransfer = (t: Transaction): boolean =>
+  t.type === TransactionType.TRANSFER &&
+  !!t.toAccountId &&
+  !t.transferDirection &&
+  !t.linkedTransactionId;
+
+const computeUnlinkedTransferCounterDelta = (
+  t: Transaction,
+  accounts: Account[],
+  usdRate: number,
+  factor: 1 | -1,
+): number | null => {
+  if (!isUnlinkedSingleRecordTransfer(t) || !t.toAccountId) return null;
+  const toAcc = accounts.find((a) => a.id === t.toAccountId);
+  if (!toAcc) return null;
+  const toAmt = convertAmount(t.amount, t.currency, toAcc.currency, usdRate);
+  const toFee = t.fee ? convertAmount(t.fee, t.currency, toAcc.currency, usdRate) : 0;
+  const feeType = t.feeType || "INCLUSIVE";
+  const addedAmount = feeType === "EXCLUSIVE" ? toAmt - toFee : toAmt;
+  return addedAmount * factor;
+};

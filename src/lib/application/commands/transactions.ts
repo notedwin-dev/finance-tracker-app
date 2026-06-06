@@ -6,7 +6,7 @@ import {
   materializeDeltas,
   mergeDeltas,
 } from "../../domain/balance.engine";
-import { isCrossCurrency, computeTransactionDeltas } from "../../domain/transaction";
+import { isCrossCurrency } from "../../domain/transaction";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
 import { generateId } from "./helpers";
@@ -18,6 +18,26 @@ import {
 } from "../../../../helpers/transactions.helper";
 import { logger } from "../../infrastructure/logger";
 import { buildPartnerLeg, buildNewSubscription, bumpSubscriptionNextDate, syncTransactionToCloud, persistTransactionChanges, rollbackTransactionChanges, applyTransactionUpdatesToStore, PersistSnapshots } from "./transactions.helpers";
+
+const mergePartnerLegForEdit = (
+  storeTransactions: Transaction[],
+  txWithUser: Transaction,
+  partnerLeg: Transaction | null,
+  partnerIdToDelete: string | undefined,
+): Transaction[] => {
+  let next = storeTransactions.map((t) => (t.id === txWithUser.id ? txWithUser : t));
+  if (partnerLeg) {
+    if (next.some((t) => t.id === partnerLeg.id)) {
+      next = next.map((t) => (t.id === partnerLeg.id ? partnerLeg : t));
+    } else {
+      next = [...next, partnerLeg];
+    }
+  }
+  if (partnerIdToDelete) {
+    next = next.filter((t) => t.id !== partnerIdToDelete);
+  }
+  return next;
+};
 
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
@@ -52,89 +72,48 @@ export async function submitTransaction(
     return;
   }
 
-  const accountUpdates = new Map<string, number>();
-  const potUpdates = new Map<string, number>();
-  const pocketUpdates = new Map<string, number>();
-
-  const applyDeltas = (t: Transaction, factor: 1 | -1) => {
-    const { accountDeltas, potDeltas, pocketDeltas } = computeTransactionDeltas(
-      t,
-      factor,
-      accounts,
-      pots,
-      pockets,
-      usdRate,
-    );
-    for (const [id, delta] of accountDeltas) {
-      accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of potDeltas) {
-      potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of pocketDeltas) {
-      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
-    }
-  };
-
-  if (existingTx) applyDeltas(existingTx, -1);
-  if (partnerTx) applyDeltas(partnerTx, -1);
-
   const txWithUser: Transaction = {
     ...tx,
     userId,
     id: tx.id || generateId(),
     createdAt: tx.createdAt || new Date().toISOString(),
   };
-  applyDeltas(txWithUser, 1);
-
   const partnerLeg = buildPartnerLeg(tx, txWithUser, isDestHistorical);
-  if (partnerLeg) applyDeltas(partnerLeg, 1);
+
+  const reversalTxs: Transaction[] = [];
+  if (existingTx) reversalTxs.push(existingTx);
+  if (partnerTx) reversalTxs.push(partnerTx);
+  const forwardTxs: Transaction[] = [txWithUser];
+  if (partnerLeg) forwardTxs.push(partnerLeg);
+
+  const accountUpdates = new Map<string, number>();
+  const potUpdates = new Map<string, number>();
+  const pocketUpdates = new Map<string, number>();
+
+  const accumulated = mergeDeltas(
+    accumulateDeltas(reversalTxs, accounts, pots, pockets, -1, usdRate),
+    accumulateDeltas(forwardTxs, accounts, pots, pockets, 1, usdRate),
+  );
+  for (const [id, delta] of accumulated.accountDeltas) accountUpdates.set(id, delta);
+  for (const [id, delta] of accumulated.potDeltas) potUpdates.set(id, delta);
+  for (const [id, delta] of accumulated.pocketDeltas) pocketUpdates.set(id, delta);
 
   let updatedTransactions: Transaction[];
   if (isEdit) {
-    updatedTransactions = store.transactions.map((t: Transaction) =>
-      t.id === txWithUser.id ? txWithUser : t,
+    updatedTransactions = mergePartnerLegForEdit(
+      store.transactions,
+      txWithUser,
+      partnerLeg ?? null,
+      partnerIdToDelete,
     );
-    if (partnerLeg) {
-      if (updatedTransactions.some((t: Transaction) => t.id === partnerLeg.id)) {
-        updatedTransactions = updatedTransactions.map((t: Transaction) =>
-          t.id === partnerLeg.id ? (partnerLeg as Transaction) : t,
-        );
-      } else {
-        updatedTransactions.push(partnerLeg);
-      }
-    }
-    if (partnerIdToDelete) {
-      updatedTransactions = updatedTransactions.filter(
-        (t: Transaction) => t.id !== partnerIdToDelete,
-      );
-    }
   } else {
     updatedTransactions = [...store.transactions, txWithUser];
     if (partnerLeg) updatedTransactions.push(partnerLeg);
   }
 
   const now = new Date().toISOString();
-  const updatedAccounts = accounts.map((a) => {
-    const delta = accountUpdates.get(a.id);
-    return delta !== undefined ? { ...a, balance: a.balance + delta, updatedAt: now } : a;
-  });
-  const updatedPots = pots.map((p) => {
-    const delta = potUpdates.get(p.id);
-    if (delta !== undefined) {
-      const newUsedAmount = Math.max(0, p.usedAmount + delta);
-      return { ...p, usedAmount: newUsedAmount, amountLeft: p.limitAmount - newUsedAmount, updatedAt: now };
-    }
-    return p;
-  });
-  const updatedPockets = pockets.map((p) => {
-    const delta = pocketUpdates.get(p.id);
-    if (delta !== undefined) {
-      const newCurrentAmount = Math.max(0, p.currentAmount + delta);
-      return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
-    }
-    return p;
-  });
+  const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
+    materializeDeltas(accounts, pots, pockets, accumulated, now);
 
   let snapshots: PersistSnapshots | null = null;
   try {
@@ -432,57 +411,62 @@ export async function batchEditTransactions(
   );
 
   const sharedTransferFields = ["amount", "currency", "date", "fee", "feeType", "note", "shopName"] as const;
+  const nullifyFieldsForThis = ["potId", "savingPocketId", "toSavingPocketId", "toAccountId", "subscriptionId"] as const;
+
+  const shouldSyncPartner = (
+    tx: Transaction,
+    nullified: string[],
+    clean: Partial<Transaction>,
+    shared: readonly string[],
+  ): boolean => {
+    if (!tx.linkedTransactionId) return false;
+    if (nullified.includes("potId")) return true;
+    if (nullified.includes("savingPocketId")) return true;
+    if (nullified.includes("toSavingPocketId")) return true;
+    if (clean.accountId !== undefined) return true;
+    if (clean.toAccountId !== undefined) return true;
+    if (clean.savingPocketId !== undefined) return true;
+    if (clean.toSavingPocketId !== undefined) return true;
+    if (nullified.some((f) => (shared as readonly string[]).includes(f))) return true;
+    if (Object.keys(clean).some((k) => (shared as readonly string[]).includes(k))) return true;
+    return false;
+  };
+
+  const buildPartnerUpdates = (
+    clean: Partial<Transaction>,
+    shared: readonly string[],
+  ): Record<string, unknown> => {
+    const partner: Record<string, unknown> = { ...clean };
+    if (clean.accountId !== undefined) partner.toAccountId = clean.accountId;
+    if (clean.toAccountId !== undefined) partner.accountId = clean.toAccountId;
+    if (clean.savingPocketId !== undefined) partner.toSavingPocketId = clean.savingPocketId;
+    if (clean.toSavingPocketId !== undefined) partner.savingPocketId = clean.toSavingPocketId;
+    for (const field of shared) {
+      if (clean[field as keyof Partial<Transaction>] !== undefined) {
+        partner[field] = clean[field as keyof Partial<Transaction>];
+      }
+    }
+    partner.updatedAt = new Date().toISOString();
+    return partner;
+  };
 
   ids.forEach((id) => {
     const originalTx = txMap.get(id);
     if (!originalTx) return;
 
-    const thisUpdates: any = { ...cleanUpdates };
-    if (nullifiedFields.includes("potId")) thisUpdates.potId = undefined;
-    if (nullifiedFields.includes("savingPocketId")) thisUpdates.savingPocketId = undefined;
-    if (nullifiedFields.includes("toSavingPocketId")) thisUpdates.toSavingPocketId = undefined;
-    if (nullifiedFields.includes("toAccountId")) thisUpdates.toAccountId = undefined;
-    if (nullifiedFields.includes("subscriptionId")) thisUpdates.subscriptionId = undefined;
-
+    const thisUpdates: Record<string, unknown> = { ...cleanUpdates };
+    for (const field of nullifyFieldsForThis) {
+      if (nullifiedFields.includes(field)) thisUpdates[field] = undefined;
+    }
     thisUpdates.updatedAt = new Date().toISOString();
-    finalUpdatesMap.set(id, thisUpdates);
+    finalUpdatesMap.set(id, thisUpdates as Partial<Transaction>);
     affectedTransactionIds.add(id);
 
-    if (
-      originalTx.linkedTransactionId &&
-      (nullifiedFields.includes("potId") ||
-        nullifiedFields.includes("savingPocketId") ||
-        nullifiedFields.includes("toSavingPocketId") ||
-        cleanUpdates.accountId !== undefined ||
-        cleanUpdates.toAccountId !== undefined ||
-        cleanUpdates.savingPocketId !== undefined ||
-        cleanUpdates.toSavingPocketId !== undefined ||
-        nullifiedFields.some((f) => (sharedTransferFields as readonly string[]).includes(f)) ||
-        Object.keys(cleanUpdates).some((k) => (sharedTransferFields as readonly string[]).includes(k)))
-    ) {
+    if (shouldSyncPartner(originalTx, nullifiedFields, cleanUpdates, sharedTransferFields)) {
       const partner = transactions.find((t) => t.id === originalTx.linkedTransactionId);
       if (partner) {
-        const partnerUpdates: any = { ...cleanUpdates };
-        if (cleanUpdates.accountId !== undefined) {
-          partnerUpdates.toAccountId = cleanUpdates.accountId;
-        }
-        if (cleanUpdates.toAccountId !== undefined) {
-          partnerUpdates.accountId = cleanUpdates.toAccountId;
-        }
-        if (cleanUpdates.savingPocketId !== undefined) {
-          partnerUpdates.toSavingPocketId = cleanUpdates.savingPocketId;
-        }
-        if (cleanUpdates.toSavingPocketId !== undefined) {
-          partnerUpdates.savingPocketId = cleanUpdates.toSavingPocketId;
-        }
-        const sharedFields = sharedTransferFields;
-        for (const field of sharedFields) {
-          if (cleanUpdates[field as keyof typeof cleanUpdates] !== undefined) {
-            partnerUpdates[field] = cleanUpdates[field as keyof typeof cleanUpdates];
-          }
-        }
-        partnerUpdates.updatedAt = new Date().toISOString();
-        finalUpdatesMap.set(partner.id, partnerUpdates);
+        const partnerUpdates = buildPartnerUpdates(cleanUpdates, sharedTransferFields);
+        finalUpdatesMap.set(partner.id, partnerUpdates as Partial<Transaction>);
         affectedTransactionIds.add(partner.id);
       }
     }

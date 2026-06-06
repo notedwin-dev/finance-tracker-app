@@ -10,6 +10,7 @@ import {
 } from "../types";
 import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
 import { logger } from "../src/lib/application/logger";
+import { migrateLegacyPot } from "../src/lib/domain/pot-migration";
 
 declare global {
 	interface Window {
@@ -1290,35 +1291,7 @@ export const loadFromGoogleSheets = async (
 	}
 
 	// Perform migration for Pots if needed
-	const pots = (result.pots || []).map((p: any) => {
-		// Migration from old naming: targetAmount -> limitAmount, currentAmount -> amountLeft
-		const migratedPot = { ...p };
-		if (
-			migratedPot.limitAmount === undefined &&
-			migratedPot.targetAmount !== undefined
-		) {
-			migratedPot.limitAmount = Number(migratedPot.targetAmount);
-		}
-		if (
-			migratedPot.amountLeft === undefined &&
-			migratedPot.currentAmount !== undefined
-		) {
-			migratedPot.amountLeft = Number(migratedPot.currentAmount);
-		}
-		// Ensure usedAmount is calculated if missing
-		if (migratedPot.usedAmount === undefined) {
-			if (
-				migratedPot.limitAmount !== undefined &&
-				migratedPot.amountLeft !== undefined
-			) {
-				migratedPot.usedAmount =
-					migratedPot.limitAmount - migratedPot.amountLeft;
-			} else {
-				migratedPot.usedAmount = 0;
-			}
-		}
-		return migratedPot;
-	});
+	const pots = (result.pots || []).map((p: any) => migrateLegacyPot(p));
 
 	return {
 		accounts: result.accounts || [],

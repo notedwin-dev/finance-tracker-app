@@ -12,6 +12,7 @@ import {
 import * as SheetService from "./sheets.services";
 import { getKey as getBaseKey } from "../helpers/storage.helper";
 import { logger } from "../src/lib/application/logger";
+import { migrateLegacyPot } from "../src/lib/domain/pot-migration";
 
 export const KEYS = {
   ACCOUNTS: "zenfinance_accounts_v2",
@@ -305,35 +306,8 @@ export const getStoredPots = (): Pot[] => {
   const stored = localStorage.getItem(getKey(KEYS.POTS));
   if (!stored) return [];
 
-  const pots = JSON.parse(stored);
-  return pots.map((p: any) => {
-    // Migration logic for Pots
-    const migratedPot = { ...p };
-    if (
-      migratedPot.limitAmount === undefined &&
-      migratedPot.targetAmount !== undefined
-    ) {
-      migratedPot.limitAmount = Number(migratedPot.targetAmount);
-    }
-    if (
-      migratedPot.amountLeft === undefined &&
-      migratedPot.currentAmount !== undefined
-    ) {
-      migratedPot.amountLeft = Number(migratedPot.currentAmount);
-    }
-    if (migratedPot.usedAmount === undefined) {
-      if (
-        migratedPot.limitAmount !== undefined &&
-        migratedPot.amountLeft !== undefined
-      ) {
-        migratedPot.usedAmount =
-          migratedPot.limitAmount - migratedPot.amountLeft;
-      } else {
-        migratedPot.usedAmount = 0;
-      }
-    }
-    return migratedPot;
-  });
+  const pots: Record<string, unknown>[] = JSON.parse(stored);
+  return pots.map((p) => migrateLegacyPot(p));
 };
 
 export const savePots = async (pots: Pot[]) => {

@@ -21,3 +21,19 @@ export function convertAmount(
     `Unsupported conversion: ${fromCurrency} → ${toCurrency}. Supported: USD↔MYR.`,
   );
 }
+
+export function convertToDisplayCurrency(
+  amount: number,
+  accountCurrency: string,
+  displayCurrency: "MYR" | "USD",
+  usdRate: number,
+  cryptoPrices: { BTC: number; ETH: number } = { BTC: 0, ETH: 0 },
+): number {
+  if (accountCurrency === "MYR") {
+    return displayCurrency === "MYR" ? amount : amount / usdRate;
+  }
+  let valInUSD = amount;
+  if (accountCurrency === "BTC") valInUSD = amount * cryptoPrices.BTC;
+  else if (accountCurrency === "ETH") valInUSD = amount * cryptoPrices.ETH;
+  return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
+}

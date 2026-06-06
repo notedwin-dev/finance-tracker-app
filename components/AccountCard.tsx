@@ -10,6 +10,7 @@ import {
 import { SparklineChart } from "./Charts";
 import { useMask } from "../helpers/useMask";
 import { groupTransactions } from "../helpers/transactions.helper";
+import { convertToDisplayCurrency } from "../src/lib/domain/currency";
 
 interface Props {
 	account: Account;
@@ -42,19 +43,13 @@ const AccountCard: React.FC<Props> = ({
 
 	// Convert balance for display
 	const displayBalance = React.useMemo(() => {
-		if (account.currency === "MYR") {
-			return displayCurrency === "MYR"
-				? account.balance
-				: account.balance / usdRate;
-		}
-
-		let valInUSD = account.balance;
-		if (account.currency === "BTC")
-			valInUSD = account.balance * cryptoPrices.BTC;
-		else if (account.currency === "ETH")
-			valInUSD = account.balance * cryptoPrices.ETH;
-
-		return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
+		return convertToDisplayCurrency(
+			account.balance,
+			account.currency,
+			displayCurrency,
+			usdRate,
+			cryptoPrices,
+		);
 	}, [
 		account.balance,
 		account.currency,
@@ -64,19 +59,13 @@ const AccountCard: React.FC<Props> = ({
 	]);
 
 	const displayPotsBalance = React.useMemo(() => {
-		if (account.currency === "MYR") {
-			return displayCurrency === "MYR"
-				? availableBalance
-				: availableBalance / usdRate;
-		}
-
-		let valInUSD = availableBalance;
-		if (account.currency === "BTC")
-			valInUSD = availableBalance * cryptoPrices.BTC;
-		else if (account.currency === "ETH")
-			valInUSD = availableBalance * cryptoPrices.ETH;
-
-		return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
+		return convertToDisplayCurrency(
+			availableBalance,
+			account.currency,
+			displayCurrency,
+			usdRate,
+			cryptoPrices,
+		);
 	}, [
 		availableBalance,
 		account.currency,

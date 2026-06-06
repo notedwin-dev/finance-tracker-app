@@ -15,6 +15,71 @@ import {
 } from "../../domain/subscriptions";
 import { logger } from "../../infrastructure/logger";
 
+type SyncEntity = "categories" | "transactions" | "goals" | "subscriptions" | "pots" | "pockets" | "chatSessions";
+
+const STORAGE_SAVERS: Record<SyncEntity, (data: any) => Promise<void> | void> = {
+  categories: (d) => StorageService.saveCategories(d),
+  transactions: (d) => StorageService.saveTransactions(d),
+  goals: (d) => StorageService.saveGoals(d),
+  subscriptions: (d) => StorageService.saveSubscriptions(d),
+  pots: (d) => StorageService.savePots(d),
+  pockets: (d) => StorageService.savePockets(d),
+  chatSessions: (d) => StorageService.saveChatSessions(d),
+};
+
+const STORE_SETTERS: Record<SyncEntity, (state: any, data: any) => void> = {
+  categories: (s, d) => s.setCategories(d),
+  transactions: (s, d) => s.setTransactions(d),
+  goals: (s, d) => s.setGoals(d),
+  subscriptions: (s, d) => s.setSubscriptions(d),
+  pots: (s, d) => s.setPots(d),
+  pockets: (s, d) => s.setPockets(d),
+  chatSessions: (s, d) => s.setChatSessions(d),
+};
+
+const mergeAndPersist = <T extends { id: string; updatedAt?: any }>(
+  local: T[],
+  cloud: T[] | undefined,
+  trustCloud: boolean,
+  entity: SyncEntity,
+  store: ReturnType<typeof useFinanceStore.getState>,
+): T[] => {
+  const merged = mergeEntities(local, cloud ?? [], trustCloud);
+  STORE_SETTERS[entity](store, merged);
+  STORAGE_SAVERS[entity](merged);
+  return merged;
+};
+
+const hasAnyData = (...counts: number[]): boolean => counts.some((c) => c > 0);
+
+const decideMergeAuthority = (
+  cloudData: Awaited<ReturnType<typeof SheetService.loadFromGoogleSheets>>,
+  profile: UserProfile,
+): boolean => {
+  const hasCloudData = hasAnyData(
+    cloudData.accounts?.length || 0,
+    cloudData.transactions?.length || 0,
+    cloudData.categories?.length || 0,
+  );
+  const hasLocalData = hasAnyData(
+    StorageService.getStoredAccounts().length,
+    StorageService.getStoredTransactions().length,
+    StorageService.getStoredCategories().length,
+  );
+
+  if (!hasCloudData || !hasLocalData || !cloudData.profile) return true;
+
+  const cloudLastUpdated = toTimestamp(cloudData.profile.lastUpdatedAt);
+  const localLastSynced = toTimestamp(profile.lastSyncAt);
+
+  if (localLastSynced > cloudLastUpdated) {
+    logger.log("Re-linking: Local data is newer than cloud. Local will update cloud.");
+    return false;
+  }
+  logger.log("Re-linking: Cloud data is newer or equal. Cloud is authoritative.");
+  return true;
+};
+
 export async function migrateData(): Promise<void> {
   const { showToast } = useSyncStore.getState();
   const findings = StorageService.rescueScatteredData();
@@ -334,150 +399,103 @@ export async function syncData(
 
     useSyncStore.getState().showToast("Syncing with Google Sheets...", "info");
     const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
-    if (cloudData) {
-      const hasCloudData =
-        (cloudData.accounts && cloudData.accounts.length > 0) ||
-        (cloudData.transactions && cloudData.transactions.length > 0) ||
-        (cloudData.categories && cloudData.categories.length > 0);
-
-      const hasLocalData =
-        StorageService.getStoredAccounts().length > 0 ||
-        StorageService.getStoredTransactions().length > 0 ||
-        StorageService.getStoredCategories().length > 0;
-
-      let useCloudAsAuthority = true;
-
-      if (hasCloudData && hasLocalData && cloudData.profile) {
-        const cloudLastUpdated = toTimestamp(cloudData.profile.lastUpdatedAt);
-        const localLastSynced = toTimestamp(profile.lastSyncAt);
-
-        if (localLastSynced > cloudLastUpdated) {
-          logger.log("Re-linking: Local data is newer than cloud. Local will update cloud.");
-          useCloudAsAuthority = false;
-        } else {
-          logger.log("Re-linking: Cloud data is newer or equal. Cloud is authoritative.");
-          useCloudAsAuthority = true;
-        }
-      }
-
-      const activeProfile = mergeProfile({ ...profile }, cloudData.profile);
-      if (cloudData.profile && activeProfile !== profile) {
-        logger.log("Updating local profile from cloud merge", activeProfile);
-      }
-
-      const merge = <T extends { id: string; updatedAt?: any }>(
-        local: T[],
-        cloud: T[],
-        trustCloud: boolean = true,
-      ): T[] => mergeEntities(local, cloud, trustCloud);
-
-      const cloudAccounts: Account[] = cloudData.accounts || [];
-      const localAccounts: Account[] = StorageService.getStoredAccounts();
-
-      const mergedAccounts = merge(localAccounts, cloudAccounts, useCloudAsAuthority)
-        .map(stripVaultFromAccount);
-      const store = useFinanceStore.getState();
-      store.setAccounts(mergedAccounts);
-      await StorageService.saveAccounts(mergedAccounts);
-
-      const mergedCategories = merge(
-        StorageService.getStoredCategories(),
-        cloudData.categories,
-        useCloudAsAuthority,
-      );
-      store.setCategories(mergedCategories);
-      StorageService.saveCategories(mergedCategories);
-
-      const mergedTransactions = merge(
-        StorageService.getStoredTransactions(),
-        cloudData.transactions,
-        useCloudAsAuthority,
-      );
-      store.setTransactions(mergedTransactions);
-      StorageService.saveTransactions(mergedTransactions);
-
-      const mergedGoals = merge(
-        StorageService.getStoredGoals(),
-        cloudData.goals,
-        useCloudAsAuthority,
-      );
-      store.setGoals(mergedGoals);
-      StorageService.saveGoals(mergedGoals);
-
-      const mergedSubs = merge(
-        StorageService.getStoredSubscriptions(),
-        cloudData.subscriptions || [],
-        useCloudAsAuthority,
-      );
-      store.setSubscriptions(mergedSubs);
-      StorageService.saveSubscriptions(mergedSubs);
-
-      const mergedPots = merge(
-        StorageService.getStoredPots(),
-        cloudData.pots || [],
-        useCloudAsAuthority,
-      );
-      store.setPots(mergedPots);
-      StorageService.savePots(mergedPots);
-
-      const mergedPockets = merge(
-        StorageService.getStoredPockets(),
-        cloudData.pockets || [],
-        useCloudAsAuthority,
-      );
-      store.setPockets(mergedPockets);
-      StorageService.savePockets(mergedPockets);
-
-      const mergedChatSessions = merge(
-        StorageService.getStoredChatSessions(),
-        cloudData.chatSessions || [],
-        useCloudAsAuthority,
-      );
-      store.setChatSessions(mergedChatSessions);
-      StorageService.saveChatSessions(mergedChatSessions);
-
-      const syncTimestamp = new Date().toISOString();
-
-      processSubscriptions(store.accounts, store.usdRate, { persist: false });
-
-      const storeAfterSubs = useFinanceStore.getState();
-      const postSubAccounts = storeAfterSubs.accounts.map(stripVaultFromAccount);
-      const postSubTxs = storeAfterSubs.transactions;
-      const postSubSubs = storeAfterSubs.subscriptions;
-
-      await StorageService.saveAccounts(postSubAccounts);
-      await StorageService.saveTransactions(postSubTxs);
-      await StorageService.saveSubscriptions(postSubSubs);
-
-      await SheetService.syncWithGoogleSheets(
-        postSubAccounts,
-        postSubTxs,
-        mergedCategories,
-        mergedGoals,
-        postSubSubs,
-        mergedPots,
-        mergedPockets,
-        activeProfile.syncChatToSheets ? mergedChatSessions : undefined,
-        {
-          ...activeProfile,
-          lastSyncAt: syncTimestamp,
-          lastUpdatedAt: syncTimestamp,
-        },
-      );
-
-      updateProfile(
-        {
-          ...activeProfile,
-          lastSyncAt: syncTimestamp,
-          updatedAt: syncTimestamp,
-        },
-        true,
-      );
-
-      useSyncStore.getState().showToast("Cloud sync complete", "success");
-    } else {
+    if (!cloudData) {
       useSyncStore.getState().dismissToast();
+      return;
     }
+
+    const useCloudAsAuthority = decideMergeAuthority(cloudData, profile);
+
+    const activeProfile = mergeProfile({ ...profile }, cloudData.profile);
+    if (cloudData.profile && activeProfile !== profile) {
+      logger.log("Updating local profile from cloud merge", activeProfile);
+    }
+
+    const store = useFinanceStore.getState();
+
+    const cloudAccounts: Account[] = cloudData.accounts || [];
+    const localAccounts: Account[] = StorageService.getStoredAccounts();
+    const mergedAccounts = mergeEntities(localAccounts, cloudAccounts, useCloudAsAuthority)
+      .map(stripVaultFromAccount);
+    store.setAccounts(mergedAccounts);
+    await StorageService.saveAccounts(mergedAccounts);
+
+    const mergedCategories = mergeAndPersist(
+      StorageService.getStoredCategories(),
+      cloudData.categories,
+      useCloudAsAuthority,
+      "categories",
+      store,
+    );
+    const mergedTransactions = mergeAndPersist(
+      StorageService.getStoredTransactions(),
+      cloudData.transactions,
+      useCloudAsAuthority,
+      "transactions",
+      store,
+    );
+    const mergedGoals = mergeAndPersist(
+      StorageService.getStoredGoals(),
+      cloudData.goals,
+      useCloudAsAuthority,
+      "goals",
+      store,
+    );
+    const mergedSubs = mergeAndPersist(
+      StorageService.getStoredSubscriptions(),
+      cloudData.subscriptions || [],
+      useCloudAsAuthority,
+      "subscriptions",
+      store,
+    );
+    const mergedPots = mergeAndPersist(
+      StorageService.getStoredPots(),
+      cloudData.pots || [],
+      useCloudAsAuthority,
+      "pots",
+      store,
+    );
+    const mergedPockets = mergeAndPersist(
+      StorageService.getStoredPockets(),
+      cloudData.pockets || [],
+      useCloudAsAuthority,
+      "pockets",
+      store,
+    );
+    const mergedChatSessions = mergeAndPersist(
+      StorageService.getStoredChatSessions(),
+      cloudData.chatSessions || [],
+      useCloudAsAuthority,
+      "chatSessions",
+      store,
+    );
+
+    const syncTimestamp = new Date().toISOString();
+    processSubscriptions(store.accounts, store.usdRate, { persist: false });
+
+    const storeAfterSubs = useFinanceStore.getState();
+    const postSubAccounts = storeAfterSubs.accounts.map(stripVaultFromAccount);
+    const postSubTxs = storeAfterSubs.transactions;
+    const postSubSubs = storeAfterSubs.subscriptions;
+
+    await StorageService.saveAccounts(postSubAccounts);
+    await StorageService.saveTransactions(postSubTxs);
+    await StorageService.saveSubscriptions(postSubSubs);
+
+    await SheetService.syncWithGoogleSheets(
+      postSubAccounts,
+      postSubTxs,
+      mergedCategories,
+      mergedGoals,
+      postSubSubs,
+      mergedPots,
+      mergedPockets,
+      activeProfile.syncChatToSheets ? mergedChatSessions : undefined,
+      { ...activeProfile, lastSyncAt: syncTimestamp, lastUpdatedAt: syncTimestamp },
+    );
+
+    updateProfile({ ...activeProfile, lastSyncAt: syncTimestamp, updatedAt: syncTimestamp }, true);
+    useSyncStore.getState().showToast("Cloud sync complete", "success");
   } catch (e: any) {
     logger.error("Sync failed", e);
     if (e?.status === 401) {

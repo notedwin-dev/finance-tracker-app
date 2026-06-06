@@ -203,71 +203,77 @@ export const setSheetUser = (userId: string) => {
 	}
 };
 
+const isGapiClientReady = (): boolean =>
+  !!window.gapi?.client?.drive && !!window.gapi?.client?.sheets;
+
+const handleAuthError = (err: any, action: string): never | null => {
+  if (err?.status === 401) {
+    logger.warn(`Unauthorized in ${action}, clearing token`);
+    clearGapiAccessToken();
+    throw err;
+  }
+  return null;
+};
+
+const verifySavedSheetId = async (savedId: string): Promise<string | null> => {
+  try {
+    await window.gapi.client.drive.files.get({ fileId: savedId, fields: "id" });
+    return savedId;
+  } catch (e: any) {
+    handleAuthError(e, "verifySavedSheetId");
+    logger.warn("Saved spreadsheet ID is no longer accessible", e);
+    localStorage.removeItem("zenfinance_selected_sheet_id");
+    return null;
+  }
+};
+
+const findExistingSheetByTitle = async (): Promise<string | null> => {
+  try {
+    const response = await window.gapi.client.drive.files.list({
+      q: `name = '${currentSheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
+      fields: "files(id, name)",
+    });
+    const files = response.result.files;
+    if (files && files.length > 0) return files[0].id;
+    return null;
+  } catch (err: any) {
+    handleAuthError(err, "getSpreadsheetId");
+    logger.error("Error finding sheet", err);
+    return null;
+  }
+};
+
+const createNewSheet = async (): Promise<string | null> => {
+  try {
+    const createResponse = await window.gapi.client.sheets.spreadsheets.create({
+      properties: { title: currentSheetTitle },
+    });
+    return createResponse.result.spreadsheetId;
+  } catch (err: any) {
+    handleAuthError(err, "creating sheet");
+    logger.error("Error creating sheet", err);
+    return null;
+  }
+};
+
 // Helper to get or create the spreadsheet ID
 const getSpreadsheetId = async (): Promise<string | null> => {
-	if (!gapiInited || !hasAccessToken) return null;
+  if (!gapiInited || !hasAccessToken) return null;
+  if (!isGapiClientReady()) {
+    logger.warn("GAPI client libraries (drive/sheets) not fully loaded");
+    return null;
+  }
 
-	// Defensive check for gapi client libraries
-	if (!window.gapi?.client?.drive || !window.gapi?.client?.sheets) {
-		logger.warn("GAPI client libraries (drive/sheets) not fully loaded");
-		return null;
-	}
+  const savedId = localStorage.getItem("zenfinance_selected_sheet_id");
+  if (savedId) {
+    const verified = await verifySavedSheetId(savedId);
+    if (verified) return verified;
+  }
 
-	// 1. Check if the user has manually selected a file via the picker before
-	const savedId = localStorage.getItem("zenfinance_selected_sheet_id");
-	if (savedId) {
-		try {
-			// Verify it still exists and we have access
-			await window.gapi.client.drive.files.get({
-				fileId: savedId,
-				fields: "id",
-			});
-			return savedId;
-		} catch (e: any) {
-			if (e?.status === 401) {
-				clearGapiAccessToken();
-				throw e;
-			}
-			logger.warn("Saved spreadsheet ID is no longer accessible", e);
-			localStorage.removeItem("zenfinance_selected_sheet_id");
-		}
-	}
+  const existing = await findExistingSheetByTitle();
+  if (existing) return existing;
 
-	// 2. Find the file using search (works only for files CREATED by this app under drive.file scope)
-	try {
-		const response = await window.gapi.client.drive.files.list({
-			q: `name = '${currentSheetTitle}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-			fields: "files(id, name)",
-		});
-		const files = response.result.files;
-		if (files && files.length > 0) {
-			return files[0].id;
-		}
-	} catch (err: any) {
-		if (err?.status === 401) {
-			logger.warn("Unauthorized in getSpreadsheetId, clearing token");
-			clearGapiAccessToken();
-			throw err;
-		}
-		logger.error("Error finding sheet", err);
-		return null;
-	}
-
-	// Create if not exists
-	try {
-		const createResponse = await window.gapi.client.sheets.spreadsheets.create({
-			properties: { title: currentSheetTitle },
-		});
-		return createResponse.result.spreadsheetId;
-	} catch (err: any) {
-		if (err?.status === 401) {
-			logger.warn("Unauthorized in creating sheet, clearing token");
-			clearGapiAccessToken();
-			throw err;
-		}
-		logger.error("Error creating sheet", err);
-		return null;
-	}
+  return createNewSheet();
 };
 
 const getSheetNames = async (

@@ -550,196 +550,34 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		const fileId = await getSpreadsheetId();
 		if (!fileId) return;
 
-		// Check if sheet exists
-		const existingSheets = await getSheetNames(fileId);
+		await ensureSheetExists(fileId, sheetName);
 
-		if (!existingSheets || !existingSheets.includes(sheetName)) {
-			try {
-				await window.gapi.client.sheets.spreadsheets.batchUpdate({
-					spreadsheetId: fileId,
-					resource: {
-						requests: [{ addSheet: { properties: { title: sheetName } } }],
-					},
-				});
-			} catch (e) {
-				/* ignore if exists race condition */
-			}
-		}
+		const { existingData, rows, totalExistingRows } = await fetchSheetData(fileId, sheetName);
+		const { otherUsersData } = partitionByUser(existingData, data, currentUserId);
+		const combinedData = mergeById(otherUsersData, data);
 
-		// Optimization: If it's a small dataset, just write it.
-		// If it's a large dataset (like Transactions), we might want to be smarter,
-		// but the most efficient way to maintain multi-user consistency is still
-		// fetching existing data once and merging locally.
-
-		// To speed up: We'll skip the 'clear' call and use 'update' with a range that overwrites.
-		// If the new data is shorter, we'll clear ONLY the remaining rows.
-
-		// 1. Fetch ALL existing data (still needed for multi-user merge)
-		let existingData: any[] = [];
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A:Z`,
-			valueRenderOption: "UNFORMATTED_VALUE",
-		});
-
-		const rows = res.result.values || [];
-		const totalExistingRows = rows.length;
-
-		if (totalExistingRows > 1) {
-			const headers = rows[0] as string[];
-			const dataRows = rows.slice(1);
-			existingData = dataRows.map((row: any[]) => {
-				const obj: any = {};
-				headers.forEach((header, index) => {
-					let val = coerceStringValue(row[index]);
-
-					// Convert numeric fields (exclude date fields - they use ISO strings)
-					const numericFields = [
-						"amount",
-						"balance",
-						"limit",
-						"targetAmount",
-						"currentAmount",
-						"usedAmount",
-						"limitAmount",
-						"amountLeft",
-					];
-					if (
-						typeof val === "string" &&
-						val.trim() !== "" &&
-						numericFields.includes(header)
-					) {
-						const num = Number(val);
-						if (!isNaN(num)) val = num;
-					}
-
-					if (val !== undefined) obj[header] = val;
-				});
-				return obj;
-			});
-		}
-
-		// 2. Filter out CURRENT user's data (keeping other users')
-		const targetUserId =
-			currentUserId || data.find((d) => !/^c\d+$/.test(d.id))?.userId || null;
-
-		let otherUsersData: any[] = [];
-		if (targetUserId) {
-			otherUsersData = existingData.filter((d) => {
-				return d.userId !== targetUserId;
-			});
-		} else {
-			otherUsersData = existingData;
-		}
-
-		// 3. Merge
-		const mergedMap = new Map<string, any>();
-		otherUsersData.forEach((item) => {
-			if (item.id) mergedMap.set(String(item.id), item);
-		});
-		data.forEach((item) => {
-			if (item.id) mergedMap.set(String(item.id), item);
-		});
-
-		const combinedData = Array.from(mergedMap.values());
-
-		// Safety: If combined data is empty but we have existing data, something went wrong
-		// Don't clear the sheet unless we're sure we want to delete everything
-		if (combinedData.length === 0) {
-			if (existingData.length > 0 && data.length > 0) {
-				// This is suspicious - we had data to save AND existing data, but merge resulted in nothing
-				logger.error(
-					`Sync safety check failed for ${sheetName}: Merge resulted in 0 items when existingData=${existingData.length} and newData=${data.length}. Aborting to prevent data loss.`,
-				);
-				throw new Error(
-					`Prevented clearing ${sheetName} sheet - merge logic produced empty result`,
-				);
-			}
-
-			// Only clear if we intentionally passed empty data array
-			if (data.length === 0 && totalExistingRows > 0) {
-				await window.gapi.client.sheets.spreadsheets.values.clear({
-					spreadsheetId: fileId,
-					range: `'${sheetName}'!A:Z`,
-				});
-			}
+		if (
+			await handleEmptyMerge(fileId, sheetName, {
+				combinedData,
+				existingData,
+				data,
+				totalExistingRows,
+			})
+		) {
 			return;
 		}
 
-		// Strip legacy v1 sensitive fields before building headers/rows so removed columns are not reintroduced
-		const sensitiveFields = new Set([
-			"details",
-			"isEncrypted",
-			"accountNumber",
-			"cardNumber",
-			"holderName",
-			"expiry",
-			"cvv",
-		]);
-		const sanitizedItems = combinedData.map((item) => {
-			const sanitized: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(item)) {
-				if (!sensitiveFields.has(key)) sanitized[key] = value;
-			}
-			return sanitized;
+		const sanitizedItems = stripSensitiveFields(combinedData);
+		const headers = collectHeaders(sanitizedItems);
+		const values = serializeRows(sanitizedItems, headers);
+
+		await writeSheetData(fileId, sheetName, values);
+		await clearRemainders(fileId, sheetName, {
+			totalExistingRows,
+			newRowCount: values.length,
+			oldColCount: (rows[0] || []).length,
+			newColCount: headers.length,
 		});
-
-		// Generate headers from all items to ensure no fields are lost (migration support)
-		const headerSet = new Set<string>();
-		// Force 'id' to be the first column if it exists in any item
-		const hasId = sanitizedItems.some((item) => item.id !== undefined);
-		if (hasId) headerSet.add("id");
-
-		sanitizedItems.forEach((item) => {
-			Object.keys(item).forEach((key) => {
-				headerSet.add(key);
-			});
-		});
-		const headers = Array.from(headerSet);
-
-		const rowsToUpdate = sanitizedItems.map((item) => {
-			return headers.map((header) => {
-				const val = item[header];
-				return serializeCellValue(val) ?? "";
-			});
-		});
-
-		const values = [headers, ...rowsToUpdate];
-
-		// Security: If we are saving Accounts, we want to make sure old sensitive columns are wiped.
-		// If headers decreased in width, we should clear the wider range.
-		const maxCols = Math.max(headers.length, (rows[0] || []).length);
-		const clearRange = `'${sheetName}'!A1:${getColumnLetter(maxCols - 1)}${Math.max(totalExistingRows, values.length)}`;
-
-		// Write new data starting from A1
-		await window.gapi.client.sheets.spreadsheets.values.update({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A1`,
-			valueInputOption: "USER_ENTERED",
-			resource: { values },
-		});
-
-		// If new data is shorter or narrower than old data, clear the remainders
-		if (
-			totalExistingRows > values.length ||
-			(rows[0] || []).length > headers.length
-		) {
-			// Clear anything from the end of our new data to the end of the old data range
-			// This is a bit complex with A1 notation, so we'll just clear the specific rows/cols if needed.
-			if (totalExistingRows > values.length) {
-				await window.gapi.client.sheets.spreadsheets.values.clear({
-					spreadsheetId: fileId,
-					range: `'${sheetName}'!A${values.length + 1}:${getColumnLetter(maxCols - 1)}${totalExistingRows + 10}`,
-				});
-			}
-			if ((rows[0] || []).length > headers.length) {
-				// Clear columns to the right
-				await window.gapi.client.sheets.spreadsheets.values.clear({
-					spreadsheetId: fileId,
-					range: `'${sheetName}'!${getColumnLetter(headers.length)}1:${getColumnLetter(maxCols - 1)}${values.length}`,
-				});
-			}
-		}
 
 		logger.log(`Saved ${sheetName} to Google Sheets`);
 	} catch (err: any) {
@@ -865,6 +703,203 @@ const coerceStringValue = (val: unknown): unknown => {
 	if (lower === "true") return true;
 	if (lower === "false") return false;
 	return val;
+};
+
+const NUMERIC_FIELDS = new Set([
+	"amount",
+	"balance",
+	"limit",
+	"targetAmount",
+	"currentAmount",
+	"usedAmount",
+	"limitAmount",
+	"amountLeft",
+]);
+
+const SENSITIVE_FIELDS = new Set([
+	"details",
+	"isEncrypted",
+	"accountNumber",
+	"cardNumber",
+	"holderName",
+	"expiry",
+	"cvv",
+]);
+
+const parseSheetRow = (headers: string[], row: unknown[]): any => {
+	const obj: any = {};
+	headers.forEach((header, index) => {
+		let val = coerceStringValue(row[index]);
+		if (
+			typeof val === "string" &&
+			val.trim() !== "" &&
+			NUMERIC_FIELDS.has(header)
+		) {
+			const num = Number(val);
+			if (!isNaN(num)) val = num;
+		}
+		if (val !== undefined) obj[header] = val;
+	});
+	return obj;
+};
+
+const partitionByUser = (
+	existingData: any[],
+	data: any[],
+	currentUserId: string | null,
+): { otherUsersData: any[]; targetUserId: string | null } => {
+	const targetUserId =
+		currentUserId || data.find((d) => !/^c\d+$/.test(d.id))?.userId || null;
+	const otherUsersData = targetUserId
+		? existingData.filter((d) => d.userId !== targetUserId)
+		: existingData;
+	return { otherUsersData, targetUserId };
+};
+
+const mergeById = (otherUsersData: any[], data: any[]): any[] => {
+	const mergedMap = new Map<string, any>();
+	otherUsersData.forEach((item) => {
+		if (item.id) mergedMap.set(String(item.id), item);
+	});
+	data.forEach((item) => {
+		if (item.id) mergedMap.set(String(item.id), item);
+	});
+	return Array.from(mergedMap.values());
+};
+
+const stripSensitiveFields = (items: any[]): any[] => {
+	return items.map((item) => {
+		const sanitized: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(item)) {
+			if (!SENSITIVE_FIELDS.has(key)) sanitized[key] = value;
+		}
+		return sanitized;
+	});
+};
+
+const collectHeaders = (items: any[]): string[] => {
+	const headerSet = new Set<string>();
+	const hasId = items.some((item) => item.id !== undefined);
+	if (hasId) headerSet.add("id");
+	items.forEach((item) => {
+		Object.keys(item).forEach((key) => headerSet.add(key));
+	});
+	return Array.from(headerSet);
+};
+
+const ensureSheetExists = async (fileId: string, sheetName: string) => {
+	const existingSheets = await getSheetNames(fileId);
+	if (!existingSheets || !existingSheets.includes(sheetName)) {
+		try {
+			await window.gapi.client.sheets.spreadsheets.batchUpdate({
+				spreadsheetId: fileId,
+				resource: {
+					requests: [{ addSheet: { properties: { title: sheetName } } }],
+				},
+			});
+		} catch {
+			/* ignore race condition */
+		}
+	}
+};
+
+const fetchSheetData = async (
+	fileId: string,
+	sheetName: string,
+): Promise<{ existingData: any[]; rows: any[][]; totalExistingRows: number }> => {
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!A:Z`,
+		valueRenderOption: "UNFORMATTED_VALUE",
+	});
+	const rows = res.result.values || [];
+	const totalExistingRows = rows.length;
+	if (totalExistingRows <= 1) {
+		return { existingData: [], rows, totalExistingRows };
+	}
+	const headers = rows[0] as string[];
+	const dataRows = rows.slice(1);
+	const existingData = dataRows.map((row) => parseSheetRow(headers, row));
+	return { existingData, rows, totalExistingRows };
+};
+
+const handleEmptyMerge = async (
+	fileId: string,
+	sheetName: string,
+	state: {
+		combinedData: any[];
+		existingData: any[];
+		data: any[];
+		totalExistingRows: number;
+	},
+): Promise<boolean> => {
+	const { combinedData, existingData, data, totalExistingRows } = state;
+	if (combinedData.length !== 0) return false;
+
+	if (existingData.length > 0 && data.length > 0) {
+		logger.error(
+			`Sync safety check failed for ${sheetName}: Merge resulted in 0 items when existingData=${existingData.length} and newData=${data.length}. Aborting to prevent data loss.`,
+		);
+		throw new Error(
+			`Prevented clearing ${sheetName} sheet - merge logic produced empty result`,
+		);
+	}
+
+	if (data.length === 0 && totalExistingRows > 0) {
+		await window.gapi.client.sheets.spreadsheets.values.clear({
+			spreadsheetId: fileId,
+			range: `'${sheetName}'!A:Z`,
+		});
+	}
+	return true;
+};
+
+const serializeRows = (items: any[], headers: string[]): any[][] => {
+	const rowsToUpdate = items.map((item) =>
+		headers.map((header) => serializeCellValue(item[header]) ?? ""),
+	);
+	return [headers, ...rowsToUpdate];
+};
+
+const writeSheetData = async (
+	fileId: string,
+	sheetName: string,
+	values: any[][],
+) => {
+	await window.gapi.client.sheets.spreadsheets.values.update({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!A1`,
+		valueInputOption: "USER_ENTERED",
+		resource: { values },
+	});
+};
+
+const clearRemainders = async (
+	fileId: string,
+	sheetName: string,
+	state: {
+		totalExistingRows: number;
+		newRowCount: number;
+		oldColCount: number;
+		newColCount: number;
+	},
+) => {
+	const { totalExistingRows, newRowCount, oldColCount, newColCount } = state;
+	if (totalExistingRows <= newRowCount && oldColCount <= newColCount) return;
+
+	const maxCols = Math.max(newColCount, oldColCount);
+	if (totalExistingRows > newRowCount) {
+		await window.gapi.client.sheets.spreadsheets.values.clear({
+			spreadsheetId: fileId,
+			range: `'${sheetName}'!A${newRowCount + 1}:${getColumnLetter(maxCols - 1)}${totalExistingRows + 10}`,
+		});
+	}
+	if (oldColCount > newColCount) {
+		await window.gapi.client.sheets.spreadsheets.values.clear({
+			spreadsheetId: fileId,
+			range: `'${sheetName}'!${getColumnLetter(newColCount)}1:${getColumnLetter(maxCols - 1)}${newRowCount}`,
+		});
+	}
 };
 
 /**

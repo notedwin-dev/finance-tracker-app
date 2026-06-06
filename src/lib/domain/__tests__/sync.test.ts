@@ -75,7 +75,7 @@ describe("mergeEntities", () => {
 
   it("fills in a missing updatedAt with the current time", () => {
     const result = mergeEntities([], [{ id: "1", label: "no-date" }]);
-    expect(result[0].updatedAt).toBeTruthy();
+    expect((result[0] as { updatedAt?: string }).updatedAt).toBeTruthy();
   });
 });
 

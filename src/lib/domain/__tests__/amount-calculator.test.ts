@@ -1,5 +1,45 @@
 import { describe, it, expect } from "vitest";
-import { formatCalculatorAmount } from "../../../../helpers/amount-calculator";
+import {
+	formatCalculatorAmount,
+	formatAccountBalance,
+	isValidCryptoAmount,
+} from "../../../../helpers/amount-calculator";
+
+describe("formatAccountBalance", () => {
+	it("returns empty for empty input regardless of currency", () => {
+		expect(formatAccountBalance("", "100.00", "MYR")).toBe("");
+		expect(formatAccountBalance("", "1.5", "BTC")).toBe("");
+	});
+
+	it("accepts a free-form decimal for BTC", () => {
+		expect(formatAccountBalance("0.00012", "0.00011", "BTC")).toBe("0.00012");
+		expect(formatAccountBalance("1.5", "1.0", "ETH")).toBe("1.5");
+	});
+
+	it("rejects non-decimal input for crypto and keeps the current value", () => {
+		expect(formatAccountBalance("abc", "1.5", "BTC")).toBe("1.5");
+		expect(formatAccountBalance("1.2.3", "1.0", "ETH")).toBe("1.0");
+	});
+
+	it("delegates fiat currencies to formatCalculatorAmount", () => {
+		expect(formatAccountBalance(".", "0.00", "MYR")).toBe("0.");
+		expect(formatAccountBalance("123", "", "USD")).toBe("1.23");
+	});
+});
+
+describe("isValidCryptoAmount", () => {
+	it("accepts empty, digits with optional single dot", () => {
+		expect(isValidCryptoAmount("")).toBe(true);
+		expect(isValidCryptoAmount("0.5")).toBe(true);
+		expect(isValidCryptoAmount("123")).toBe(true);
+	});
+
+	it("rejects non-numeric, multiple dots, or trailing chars", () => {
+		expect(isValidCryptoAmount("abc")).toBe(false);
+		expect(isValidCryptoAmount("1.2.3")).toBe(false);
+		expect(isValidCryptoAmount("1.5x")).toBe(false);
+	});
+});
 
 describe("formatCalculatorAmount", () => {
 	it("returns empty string for empty input", () => {

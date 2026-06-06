@@ -5,6 +5,7 @@ import {
   ChevronUpDownIcon,
 } from "@heroicons/react/24/outline";
 import Modal from "./Modal";
+import { formatAccountBalance } from "../helpers/amount-calculator";
 
 interface Props {
   initialAccount?: Account;
@@ -60,46 +61,7 @@ const AccountForm: React.FC<Props> = ({
   });
 
   const handleBalanceChange = (val: string) => {
-    if (!val) {
-      setBalance("");
-      return;
-    }
-
-    if (currency === "BTC" || currency === "ETH") {
-      if (/^\d*\.?\d*$/.test(val)) {
-        setBalance(val);
-      }
-      return;
-    }
-
-    if (val.endsWith(".") && !balance.endsWith(".")) {
-      const d = balance.replace(/\D/g, "");
-      setBalance(parseInt(d || "0", 10).toString() + ".");
-      return;
-    }
-
-    if (balance.endsWith(".") || balance.match(/\.\d$/)) {
-      const parts = balance.split(".");
-      const newChar = val.length > balance.length ? val.slice(-1) : "";
-      if (/\d/.test(newChar)) {
-        if (parts[1] === "") {
-          setBalance(parts[0] + "." + newChar);
-          return;
-        }
-        if (parts[1].length === 1) {
-          setBalance(parts[0] + "." + parts[1] + newChar);
-          return;
-        }
-      }
-    }
-
-    const digits = val.replace(/\D/g, "");
-    if (!digits) {
-      setBalance("");
-      return;
-    }
-    const cents = parseInt(digits, 10);
-    setBalance((cents / 100).toFixed(2));
+    setBalance(formatAccountBalance(val, balance, currency));
   };
 
   const loadAccountData = (acc: Account) => {

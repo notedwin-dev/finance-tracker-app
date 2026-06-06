@@ -143,10 +143,9 @@ describe("reconstructAccountHistory", () => {
 	});
 
 	it("sorts by date+createdAt when dates are equal", () => {
-		const t1 = tx({ id: "1", amount: 100, type: TransactionType.EXPENSE, createdAt: 1000 });
-		const t2 = tx({ id: "2", amount: 50, type: TransactionType.EXPENSE, createdAt: 2000 });
+		const t1 = tx({ id: "1", amount: 100, type: TransactionType.EXPENSE, createdAt: "1000" });
+		const t2 = tx({ id: "2", amount: 50, type: TransactionType.EXPENSE, createdAt: "2000" });
 		const result = reconstructAccountHistory([t1, t2], acc({ balance: 800 }), 12);
-		// t2 (newer, createdAt 2000) is processed first: 800 + 50 = 850. Then t1: 850 + 100 = 950.
 		expect(result).toEqual([950, 850, 800]);
 	});
 });

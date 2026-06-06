@@ -31,3 +31,20 @@ export const formatCalculatorAmount = (
 	const cents = parseInt(digits, 10);
 	return (cents / 100).toFixed(2);
 };
+
+const CRYPTO_AMOUNT_PATTERN = /^\d*\.?\d*$/;
+
+export const isValidCryptoAmount = (val: string): boolean =>
+	CRYPTO_AMOUNT_PATTERN.test(val);
+
+export const formatAccountBalance = (
+	val: string,
+	currentVal: string,
+	currency: string,
+): string => {
+	if (!val) return "";
+	if (currency === "BTC" || currency === "ETH") {
+		return isValidCryptoAmount(val) ? val : currentVal;
+	}
+	return formatCalculatorAmount(val, currentVal);
+};

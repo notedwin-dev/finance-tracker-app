@@ -7,6 +7,5 @@ export { saveChatSession, deleteChatSession } from "./commands/chat-sessions";
 export { savePot, deletePot } from "./commands/pots";
 export { saveSavingPocket, deleteSavingPocket } from "./commands/pockets";
 export { recalculateBalances, recalculateBalances as recalculateBalancesCommand } from "./commands/balance";
-export { generateId } from "./commands/helpers";
-export { migrateData, resetAndSync, selectExistingSheet, loadData, syncData, processSubscriptions } from "./commands/sync";
+export { migrateData, loadData, syncData, processSubscriptions } from "./commands/sync";
 export { runVaultSchemaMigration } from "./commands/migration";

@@ -23,6 +23,7 @@ import { needsV1Migration } from "../src/lib/domain/migration";
 import { useMask } from "../helpers/useMask";
 import { useMaskStore } from "../src/stores/mask.store";
 import Modal from "./Modal";
+import ConfirmationModal, { ConfirmationModalState } from "./ConfirmationModal";
 import DatePicker from "./DatePicker";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
 import { logger } from "../src/lib/application/logger";
@@ -75,14 +76,7 @@ const Profile: React.FC<Props> = ({
 	const [showExportModal, setShowExportModal] = useState(false);
 	const [exportStartDate, setExportStartDate] = useState("");
 	const [exportEndDate, setExportEndDate] = useState("");
-	const [confirmationModal, setConfirmationModal] = useState<{
-		isOpen: boolean;
-		title: string;
-		description: string;
-		onConfirm: () => void;
-		confirmLabel: string;
-		isDestructive?: boolean;
-	}>({
+	const [confirmationModal, setConfirmationModal] = useState<ConfirmationModalState>({
 		isOpen: false,
 		title: "",
 		description: "",
@@ -351,6 +345,7 @@ const Profile: React.FC<Props> = ({
 													"Disconnect from Google Sheets? Your data will remain on this device but won't sync to the cloud until re-linked.",
 												confirmLabel: "Disconnect",
 												isDestructive: true,
+												icon: ArrowRightOnRectangleIcon,
 												onConfirm: () => {
 													if (onUnlinkCloud) onUnlinkCloud();
 												},
@@ -602,49 +597,12 @@ const Profile: React.FC<Props> = ({
 				</div>
 			)}
 
-			<Modal
-				isOpen={confirmationModal.isOpen}
+			<ConfirmationModal
+				state={confirmationModal}
 				onClose={() =>
 					setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
 				}
-				title={confirmationModal.title}
-				description={confirmationModal.description}
-				icon={
-					confirmationModal.isDestructive
-						? ArrowRightOnRectangleIcon
-						: undefined
-				}
-				iconColor={
-					confirmationModal.isDestructive ? "text-rose-400" : "text-primary"
-				}
-				iconBgColor={
-					confirmationModal.isDestructive ? "bg-rose-500/10" : "bg-primary/10"
-				}
-			>
-				<div className="grid grid-cols-2 gap-3">
-					<button
-						onClick={() =>
-							setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
-						}
-						className="py-3 px-4 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10 text-gray-400 transition-colors"
-					>
-						Cancel
-					</button>
-					<button
-						onClick={() => {
-							confirmationModal.onConfirm();
-							setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
-						}}
-						className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors shadow-lg ${
-							confirmationModal.isDestructive
-								? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20 text-white"
-								: "bg-primary hover:bg-primary-600 shadow-primary/20 text-white"
-						}`}
-					>
-						{confirmationModal.confirmLabel}
-					</button>
-				</div>
-			</Modal>
+			/>
 		</div>
 	);
 };

@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import History from "../components/History";
-import Modal from "../components/Modal";
 import BulkImportModal from "../components/BulkImportModal";
 import { useMask } from "../helpers/useMask";
 import { useMaskStore } from "../src/stores/mask.store";
@@ -73,20 +72,6 @@ const AccountPage: React.FC = () => {
 	} = useOutletContext<any>();
 
 	const [showImportModal, setShowImportModal] = useState(false);
-	const [confirmationModal, setConfirmationModal] = useState<{
-		isOpen: boolean;
-		title: string;
-		description: string;
-		onConfirm: () => void;
-		confirmLabel: string;
-		isDestructive?: boolean;
-	}>({
-		isOpen: false,
-		title: "",
-		description: "",
-		onConfirm: () => {},
-		confirmLabel: "Confirm",
-	});
 
 	const boundLoadData = (forceUnlock?: boolean) => loadData(profile, forceUnlock);
 
@@ -628,45 +613,6 @@ const AccountPage: React.FC = () => {
 				</div>
 			</div>
 
-
-			<Modal
-				isOpen={confirmationModal.isOpen}
-				onClose={() =>
-					setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
-				}
-				title={confirmationModal.title}
-				description={confirmationModal.description}
-				iconColor={
-					confirmationModal.isDestructive ? "text-rose-400" : "text-primary"
-				}
-				iconBgColor={
-					confirmationModal.isDestructive ? "bg-rose-500/10" : "bg-primary/10"
-				}
-			>
-				<div className="grid grid-cols-2 gap-3">
-					<button
-						onClick={() =>
-							setConfirmationModal((prev) => ({ ...prev, isOpen: false }))
-						}
-						className="py-3 px-4 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10 text-gray-400 transition-colors"
-					>
-						Cancel
-					</button>
-					<button
-						onClick={() => {
-							confirmationModal.onConfirm();
-							setConfirmationModal((prev) => ({ ...prev, isOpen: false }));
-						}}
-						className={`py-3 px-4 rounded-xl font-bold text-sm transition-colors shadow-lg ${
-							confirmationModal.isDestructive
-								? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20 text-white"
-								: "bg-primary hover:bg-primary-600 shadow-primary/20 text-white"
-						}`}
-					>
-						{confirmationModal.confirmLabel}
-					</button>
-				</div>
-			</Modal>
 
 			<BulkImportModal
 				isOpen={showImportModal}

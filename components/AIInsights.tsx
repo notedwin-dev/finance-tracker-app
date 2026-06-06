@@ -286,6 +286,54 @@ out center ${safeLimit * 3};`;
 		};
 	};
 
+	const buildAiMessage = (
+		result: { text: string; functionCall?: any },
+		timestamp: string,
+	): ChatMessage => ({
+		role: "model",
+		content: result.text,
+		timestamp,
+		functionCall: result.functionCall,
+		status: result.functionCall ? "pending" : undefined,
+	});
+
+	const buildErrorMessage = (err: any, timestamp: string): ChatMessage => ({
+		role: "model",
+		content: `🚨 **AI Error**\n\n${
+			err?.message || "I encountered an unexpected issue."
+		}\n\n*Please ensure your API Key is correct or try again in a few moments.*`,
+		timestamp,
+	});
+
+	const isFirstExchange = (
+		session: ChatSession,
+		includeUserMessage: boolean,
+	): boolean =>
+		includeUserMessage &&
+		session.title === "New Chat" &&
+		session.messages.length === 1;
+
+	const appendModelResponse = (
+		session: ChatSession,
+		result: { text: string; functionCall?: any },
+	): ChatSession => {
+		const aiMessage = buildAiMessage(result, new Date().toISOString());
+		return {
+			...session,
+			messages: [...session.messages, aiMessage],
+			updatedAt: new Date().toISOString(),
+		};
+	};
+
+	const appendErrorResponse = (session: ChatSession, err: any): ChatSession => {
+		const errorMessage = buildErrorMessage(err, new Date().toISOString());
+		return {
+			...session,
+			messages: [...session.messages, errorMessage],
+			updatedAt: new Date().toISOString(),
+		};
+	};
+
 	const handleAsk = async (
 		e?: React.FormEvent,
 		overrideQuery?: string,
@@ -330,10 +378,8 @@ out center ${safeLimit * 3};`;
 		if (!sessionForTurn) onSelectSession(currentSession.id);
 
 		try {
-			let fullResponse = "";
 			const history = currentSession.messages;
-
-			const aiResponsePromise = streamFinancialAdvice(
+			const result = await streamFinancialAdvice(
 				apiKey || "",
 				accounts,
 				transactions,
@@ -347,53 +393,21 @@ out center ${safeLimit * 3};`;
 				},
 			);
 
-			const result = await aiResponsePromise;
+			let updatedSession = appendModelResponse(currentSession, result);
 
-			const aiMessage: ChatMessage = {
-				role: "model",
-				content: result.text,
-				timestamp: new Date().toISOString(),
-				functionCall: result.functionCall,
-				status: result.functionCall ? "pending" : undefined,
-			};
-
-			const updatedSession = {
-				...currentSession,
-				messages: [...currentSession.messages, aiMessage],
-				updatedAt: new Date().toISOString(),
-			};
-
-			// Auto-titling if it's the first exchange
-			if (
-				includeUserMessage &&
-				currentSession.title === "New Chat" &&
-				currentSession.messages.length === 1 &&
-				result.text
-			) {
-				const title = await generateChatTitle(
+			if (isFirstExchange(currentSession, includeUserMessage) && result.text) {
+				updatedSession.title = await generateChatTitle(
 					apiKey || "",
 					userQuery,
 					result.text,
 				);
-				updatedSession.title = title;
 			}
 
 			onSaveSession(updatedSession);
 			setStreamingText("");
 		} catch (err: any) {
 			logger.error(err);
-			const errorMessage: ChatMessage = {
-				role: "model",
-				content: `🚨 **AI Error**\n\n${
-					err?.message || "I encountered an unexpected issue."
-				}\n\n*Please ensure your API Key is correct or try again in a few moments.*`,
-				timestamp: new Date().toISOString(),
-			};
-			onSaveSession({
-				...currentSession,
-				messages: [...currentSession.messages, errorMessage],
-				updatedAt: new Date().toISOString(),
-			});
+			onSaveSession(appendErrorResponse(currentSession, err));
 		} finally {
 			setLoading(false);
 		}

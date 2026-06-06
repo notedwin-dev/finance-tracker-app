@@ -4,7 +4,7 @@ import * as StorageService from "../../../../services/storage.services";
 import * as SheetService from "../../../../services/sheets.services";
 import { useFinanceStore } from "../../../stores/finance.store";
 
-export function bumpSubscriptionNextDate(
+export function advanceSubscriptionNextDate(
   sub: Subscription,
   txDate: string,
 ): string {
@@ -18,7 +18,7 @@ export function bumpSubscriptionNextDate(
   return d.toLocaleDateString("en-CA");
 }
 
-export function buildPartnerLeg(
+export function buildLinkedTransferRecord(
   tx: Omit<Transaction, "userId">,
   txWithUser: Transaction,
   isDestHistorical: boolean | undefined,
@@ -46,7 +46,7 @@ export function buildNewSubscription(
     userId,
     updatedAt: now,
   };
-  sub.nextPaymentDate = bumpSubscriptionNextDate(
+  sub.nextPaymentDate = advanceSubscriptionNextDate(
     { ...sub, nextPaymentDate: sub.nextPaymentDate },
     sub.nextPaymentDate,
   );
@@ -55,26 +55,26 @@ export function buildNewSubscription(
 
 export async function syncTransactionToCloud(
   txWithUser: Transaction,
-  partnerLeg: Transaction | null,
-  partnerIdToDelete: string | undefined,
+  linkedRecord: Transaction | null,
+  linkedIdToDelete: string | undefined,
   isEdit: boolean,
   existingTransactions: Transaction[],
 ): Promise<void> {
   if (isEdit) {
     await SheetService.updateOne("Transactions", txWithUser.id, txWithUser);
-    if (partnerLeg) {
-      if (existingTransactions.some((t) => t.id === partnerLeg.id)) {
-        await SheetService.updateOne("Transactions", partnerLeg.id, partnerLeg);
+    if (linkedRecord) {
+      if (existingTransactions.some((t) => t.id === linkedRecord.id)) {
+        await SheetService.updateOne("Transactions", linkedRecord.id, linkedRecord);
       } else {
-        await SheetService.insertOne("Transactions", partnerLeg);
+        await SheetService.insertOne("Transactions", linkedRecord);
       }
     }
-    if (partnerIdToDelete) {
-      await SheetService.deleteOne("Transactions", partnerIdToDelete);
+    if (linkedIdToDelete) {
+      await SheetService.deleteOne("Transactions", linkedIdToDelete);
     }
   } else {
     await SheetService.insertOne("Transactions", txWithUser);
-    if (partnerLeg) await SheetService.insertOne("Transactions", partnerLeg);
+    if (linkedRecord) await SheetService.insertOne("Transactions", linkedRecord);
   }
 }
 
@@ -90,9 +90,9 @@ export async function persistTransactionChanges(
   updatedAccounts: Account[],
   updatedPots: Pot[],
   updatedPockets: SavingPocket[],
-  accountUpdates: Map<string, number>,
-  potUpdates: Map<string, number>,
-  pocketUpdates: Map<string, number>,
+  accountChanges: Map<string, number>,
+  potChanges: Map<string, number>,
+  pocketChanges: Map<string, number>,
 ): Promise<PersistSnapshots> {
   const snapshots: PersistSnapshots = {
     transactions: StorageService.getStoredTransactions(),
@@ -102,9 +102,9 @@ export async function persistTransactionChanges(
   };
 
   await StorageService.saveTransactions(updatedTransactions);
-  if (accountUpdates.size > 0) await StorageService.saveAccounts(updatedAccounts);
-  if (potUpdates.size > 0) await StorageService.savePots(updatedPots);
-  if (pocketUpdates.size > 0) await StorageService.savePockets(updatedPockets);
+  if (accountChanges.size > 0) await StorageService.saveAccounts(updatedAccounts);
+  if (potChanges.size > 0) await StorageService.savePots(updatedPots);
+  if (pocketChanges.size > 0) await StorageService.savePockets(updatedPockets);
 
   return snapshots;
 }
@@ -121,13 +121,13 @@ export function applyTransactionUpdatesToStore(
   updatedAccounts: Account[],
   updatedPots: Pot[],
   updatedPockets: SavingPocket[],
-  accountUpdates: Map<string, number>,
-  potUpdates: Map<string, number>,
-  pocketUpdates: Map<string, number>,
+  accountChanges: Map<string, number>,
+  potChanges: Map<string, number>,
+  pocketChanges: Map<string, number>,
 ): void {
   const store = useFinanceStore.getState();
   store.setTransactions(updatedTransactions);
-  if (accountUpdates.size > 0) store.setAccounts(updatedAccounts);
-  if (potUpdates.size > 0) store.setPots(updatedPots);
-  if (pocketUpdates.size > 0) store.setPockets(updatedPockets);
+  if (accountChanges.size > 0) store.setAccounts(updatedAccounts);
+  if (potChanges.size > 0) store.setPots(updatedPots);
+  if (pocketChanges.size > 0) store.setPockets(updatedPockets);
 }

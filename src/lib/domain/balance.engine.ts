@@ -2,72 +2,80 @@ import { Transaction, TransactionType, Account, Pot, SavingPocket } from "../../
 import { normalizeDate } from "./dates";
 import { convertAmount } from "./currency";
 
-export interface AccumulatedDeltas {
-  accountDeltas: Map<string, number>;
-  potDeltas: Map<string, number>;
-  pocketDeltas: Map<string, number>;
+export interface AccumulatedChanges {
+  accountChanges: Map<string, number>;
+  potChanges: Map<string, number>;
+  pocketChanges: Map<string, number>;
 }
 
-export function accumulateDeltas(
+export function sumChanges(
   txs: Transaction[],
   accounts: Account[],
   pots: Pot[],
   pockets: SavingPocket[],
   factor: 1 | -1,
   usdRate: number,
-): AccumulatedDeltas {
-  const accountDeltas = new Map<string, number>();
-  const potDeltas = new Map<string, number>();
-  const pocketDeltas = new Map<string, number>();
+): AccumulatedChanges {
+  const accountChanges = new Map<string, number>();
+  const potChanges = new Map<string, number>();
+  const pocketChanges = new Map<string, number>();
 
   for (const t of txs) {
-    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
-      accountDeltas.set(id, (accountDeltas.get(id) || 0) + delta);
+    for (const [id, change] of computeAccountChange(t, factor, accounts, usdRate)) {
+      accountChanges.set(id, (accountChanges.get(id) || 0) + change);
     }
-    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
-      potDeltas.set(id, (potDeltas.get(id) || 0) + delta);
+    for (const [id, change] of computePotChange(t, factor, pots)) {
+      potChanges.set(id, (potChanges.get(id) || 0) + change);
     }
-    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
-      pocketDeltas.set(id, (pocketDeltas.get(id) || 0) + delta);
+    for (const [id, change] of computePocketChange(t, factor, pockets)) {
+      pocketChanges.set(id, (pocketChanges.get(id) || 0) + change);
     }
   }
 
-  return { accountDeltas, potDeltas, pocketDeltas };
+  return { accountChanges, potChanges, pocketChanges };
 }
 
-export function mergeDeltas(...groups: AccumulatedDeltas[]): AccumulatedDeltas {
-  const accountDeltas = new Map<string, number>();
-  const potDeltas = new Map<string, number>();
-  const pocketDeltas = new Map<string, number>();
+export function addChanges(...groups: AccumulatedChanges[]): AccumulatedChanges {
+  const accountChanges = new Map<string, number>();
+  const potChanges = new Map<string, number>();
+  const pocketChanges = new Map<string, number>();
   for (const g of groups) {
-    for (const [id, d] of g.accountDeltas) accountDeltas.set(id, (accountDeltas.get(id) || 0) + d);
-    for (const [id, d] of g.potDeltas) potDeltas.set(id, (potDeltas.get(id) || 0) + d);
-    for (const [id, d] of g.pocketDeltas) pocketDeltas.set(id, (pocketDeltas.get(id) || 0) + d);
+    for (const [id, change] of g.accountChanges) {
+      accountChanges.set(id, (accountChanges.get(id) || 0) + change);
+    }
+    for (const [id, change] of g.potChanges) {
+      potChanges.set(id, (potChanges.get(id) || 0) + change);
+    }
+    for (const [id, change] of g.pocketChanges) {
+      pocketChanges.set(id, (pocketChanges.get(id) || 0) + change);
+    }
   }
-  return { accountDeltas, potDeltas, pocketDeltas };
+  return { accountChanges, potChanges, pocketChanges };
 }
 
-export function materializeDeltas(
+export function applyChanges(
   accounts: Account[],
   pots: Pot[],
   pockets: SavingPocket[],
-  deltas: AccumulatedDeltas,
+  changes: AccumulatedChanges,
   now: string,
 ): { accounts: Account[]; pots: Pot[]; pockets: SavingPocket[] } {
   const updatedAccounts =
-    deltas.accountDeltas.size > 0
+    changes.accountChanges.size > 0
       ? accounts.map((a) => {
-          const d = deltas.accountDeltas.get(a.id);
-          return d !== undefined ? { ...a, balance: a.balance + d, updatedAt: now } : a;
+          const change = changes.accountChanges.get(a.id);
+          return change !== undefined
+            ? { ...a, balance: a.balance + change, updatedAt: now }
+            : a;
         })
       : accounts;
 
   const updatedPots =
-    deltas.potDeltas.size > 0
+    changes.potChanges.size > 0
       ? pots.map((p) => {
-          const d = deltas.potDeltas.get(p.id);
-          if (d === undefined) return p;
-          const newUsedAmount = Math.max(0, p.usedAmount + d);
+          const change = changes.potChanges.get(p.id);
+          if (change === undefined) return p;
+          const newUsedAmount = Math.max(0, p.usedAmount + change);
           return {
             ...p,
             usedAmount: newUsedAmount,
@@ -78,11 +86,11 @@ export function materializeDeltas(
       : pots;
 
   const updatedPockets =
-    deltas.pocketDeltas.size > 0
+    changes.pocketChanges.size > 0
       ? pockets.map((p) => {
-          const d = deltas.pocketDeltas.get(p.id);
-          if (d === undefined) return p;
-          const newCurrentAmount = Math.max(0, p.currentAmount + d);
+          const change = changes.pocketChanges.get(p.id);
+          if (change === undefined) return p;
+          const newCurrentAmount = Math.max(0, p.currentAmount + change);
           return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
         })
       : pockets;
@@ -90,14 +98,14 @@ export function materializeDeltas(
   return { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets };
 }
 
-export function computeBudgetConsumption(
+export function computePotChange(
   t: Transaction,
   factor: 1 | -1,
   pots: Pot[],
 ): Map<string, number> {
-  const potDeltas = new Map<string, number>();
+  const potChanges = new Map<string, number>();
 
-  if (t.isHistorical) return potDeltas;
+  if (t.isHistorical) return potChanges;
 
   if (t.potId) {
     const potId = String(t.potId);
@@ -107,42 +115,37 @@ export function computeBudgetConsumption(
       pot && (!pot.resetDate || txDateStr >= normalizeDate(pot.resetDate));
 
     if (isAfterPotReset) {
-      let potDelta = 0;
-      if (
-        t.type === TransactionType.INCOME ||
-        t.type === TransactionType.ACCOUNT_OPENING
-      ) {
-        potDelta = -t.amount * factor;
-      } else {
-        potDelta = t.amount * factor;
-      }
-      potDeltas.set(potId, (potDeltas.get(potId) || 0) + potDelta);
+      const consumesBudget =
+        t.type !== TransactionType.INCOME &&
+        t.type !== TransactionType.ACCOUNT_OPENING;
+      const change = consumesBudget ? t.amount * factor : -t.amount * factor;
+      potChanges.set(potId, (potChanges.get(potId) || 0) + change);
     }
   }
 
-  return potDeltas;
+  return potChanges;
 }
 
-export function computeSavingsMovement(
+export function computePocketChange(
   t: Transaction,
   factor: 1 | -1,
   pockets: SavingPocket[],
 ): Map<string, number> {
-  const pocketDeltas = new Map<string, number>();
+  const pocketChanges = new Map<string, number>();
 
-  if (t.isHistorical) return pocketDeltas;
+  if (t.isHistorical) return pocketChanges;
 
   if (t.savingPocketId) {
     const txDateStr = normalizeDate(t.date);
-    const isAfterPocketReset = isActivePocket(t.savingPocketId, pockets, txDateStr);
-    if (isAfterPocketReset) {
-      const isSourcePocketAdd =
+    const isAfterReset = isActivePocket(t.savingPocketId, pockets, txDateStr);
+    if (isAfterReset) {
+      const addsToPocket =
         t.type === TransactionType.INCOME ||
         t.type === TransactionType.ACCOUNT_OPENING;
-      const delta = isSourcePocketAdd ? t.amount * factor : -t.amount * factor;
-      pocketDeltas.set(
+      const change = addsToPocket ? t.amount * factor : -t.amount * factor;
+      pocketChanges.set(
         t.savingPocketId,
-        (pocketDeltas.get(t.savingPocketId) || 0) + delta,
+        (pocketChanges.get(t.savingPocketId) || 0) + change,
       );
     }
   }
@@ -154,47 +157,46 @@ export function computeSavingsMovement(
     !t.linkedTransactionId
   ) {
     const txDateStr = normalizeDate(t.date);
-    const isAfterPocketReset = isActivePocket(t.toSavingPocketId, pockets, txDateStr);
-    if (isAfterPocketReset) {
+    const isAfterReset = isActivePocket(t.toSavingPocketId, pockets, txDateStr);
+    if (isAfterReset) {
       const fee = t.fee || 0;
       const feeType = t.feeType || "INCLUSIVE";
-      const targetAmount =
-        feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-      pocketDeltas.set(
+      const targetAmount = feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+      pocketChanges.set(
         t.toSavingPocketId,
-        (pocketDeltas.get(t.toSavingPocketId) || 0) + targetAmount * factor,
+        (pocketChanges.get(t.toSavingPocketId) || 0) + targetAmount * factor,
       );
     }
   }
 
-  return pocketDeltas;
+  return pocketChanges;
 }
 
-export function computeAccountTransactionAmount(
+export function computeAccountChange(
   t: Transaction,
   factor: 1 | -1,
   accounts: Account[],
   usdRate: number,
 ): Map<string, number> {
-  const accountDeltas = new Map<string, number>();
+  const accountChanges = new Map<string, number>();
 
-  if (t.isHistorical) return accountDeltas;
+  if (t.isHistorical) return accountChanges;
 
   const acc = accounts.find((a) => a.id === t.accountId);
-  if (!acc) return accountDeltas;
+  if (!acc) return accountChanges;
 
-  const sourceDelta = computeSourceAccountDelta(t, acc, usdRate, factor);
-  accountDeltas.set(t.accountId, (accountDeltas.get(t.accountId) || 0) + sourceDelta);
+  const sourceChange = computeSourceAccountChange(t, acc, usdRate, factor);
+  accountChanges.set(t.accountId, (accountChanges.get(t.accountId) || 0) + sourceChange);
 
-  const counterDelta = computeUnlinkedTransferCounterDelta(t, accounts, usdRate, factor);
-  if (counterDelta !== null && t.toAccountId) {
-    accountDeltas.set(
+  const counterChange = computeSingleRecordTransferCounterChange(t, accounts, usdRate, factor);
+  if (counterChange !== null && t.toAccountId) {
+    accountChanges.set(
       t.toAccountId,
-      (accountDeltas.get(t.toAccountId) || 0) + counterDelta,
+      (accountChanges.get(t.toAccountId) || 0) + counterChange,
     );
   }
 
-  return accountDeltas;
+  return accountChanges;
 }
 
 const isInflowTransaction = (t: Transaction): boolean => {
@@ -216,7 +218,7 @@ const isActivePocket = (
   return txDateStr >= normalizeDate(pocket.resetDate);
 };
 
-const computeSourceAccountDelta = (
+const computeSourceAccountChange = (
   t: Transaction,
   acc: Account,
   usdRate: number,
@@ -237,19 +239,19 @@ const computeSourceAccountDelta = (
   return -removedAmount * factor;
 };
 
-const isUnlinkedSingleRecordTransfer = (t: Transaction): boolean =>
+const isSingleRecordTransfer = (t: Transaction): boolean =>
   t.type === TransactionType.TRANSFER &&
   !!t.toAccountId &&
   !t.transferDirection &&
   !t.linkedTransactionId;
 
-const computeUnlinkedTransferCounterDelta = (
+const computeSingleRecordTransferCounterChange = (
   t: Transaction,
   accounts: Account[],
   usdRate: number,
   factor: 1 | -1,
 ): number | null => {
-  if (!isUnlinkedSingleRecordTransfer(t) || !t.toAccountId) return null;
+  if (!isSingleRecordTransfer(t) || !t.toAccountId) return null;
   const toAcc = accounts.find((a) => a.id === t.toAccountId);
   if (!toAcc) return null;
   const toAmt = convertAmount(t.amount, t.currency, toAcc.currency, usdRate);

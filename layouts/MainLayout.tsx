@@ -127,7 +127,7 @@ const MainLayout: React.FC = () => {
   ) => {
     const store = useFinanceStore.getState();
     const existingTx = store.transactions.find((t) => t.id === tx.id);
-    const partnerTx = existingTx?.linkedTransactionId
+    const linkedRecord = existingTx?.linkedTransactionId
       ? store.transactions.find((t) => t.id === existingTx.linkedTransactionId)
       : null;
 
@@ -140,7 +140,7 @@ const MainLayout: React.FC = () => {
       profile.id || "local",
       isCloudEnabled,
       existingTx,
-      partnerTx,
+      linkedRecord,
       undefined,
       newSubscription,
       store.subscriptions,

@@ -2,9 +2,9 @@ import {
   Account, Transaction, Pot, SavingPocket, Subscription,
 } from "../../../../types";
 import {
-  accumulateDeltas,
-  materializeDeltas,
-  mergeDeltas,
+  sumChanges,
+  applyChanges,
+  addChanges,
 } from "../../domain/balance.engine";
 import { isCrossCurrency } from "../../domain/transaction";
 import { useFinanceStore } from "../../../stores/finance.store";
@@ -17,24 +17,24 @@ import {
   parseDateSafe,
 } from "../../../../helpers/transactions.helper";
 import { logger } from "../../infrastructure/logger";
-import { buildPartnerLeg, buildNewSubscription, bumpSubscriptionNextDate, syncTransactionToCloud, persistTransactionChanges, rollbackTransactionChanges, applyTransactionUpdatesToStore, PersistSnapshots } from "./transactions.helpers";
+import { buildLinkedTransferRecord, buildNewSubscription, advanceSubscriptionNextDate, syncTransactionToCloud, persistTransactionChanges, rollbackTransactionChanges, applyTransactionUpdatesToStore, PersistSnapshots } from "./transactions.helpers";
 
-const mergePartnerLegForEdit = (
+const mergeLinkedTransferForEdit = (
   storeTransactions: Transaction[],
   txWithUser: Transaction,
-  partnerLeg: Transaction | null,
-  partnerIdToDelete: string | undefined,
+  linkedRecord: Transaction | null,
+  linkedIdToDelete: string | undefined,
 ): Transaction[] => {
   let next = storeTransactions.map((t) => (t.id === txWithUser.id ? txWithUser : t));
-  if (partnerLeg) {
-    if (next.some((t) => t.id === partnerLeg.id)) {
-      next = next.map((t) => (t.id === partnerLeg.id ? partnerLeg : t));
+  if (linkedRecord) {
+    if (next.some((t) => t.id === linkedRecord.id)) {
+      next = next.map((t) => (t.id === linkedRecord.id ? linkedRecord : t));
     } else {
-      next = [...next, partnerLeg];
+      next = [...next, linkedRecord];
     }
   }
-  if (partnerIdToDelete) {
-    next = next.filter((t) => t.id !== partnerIdToDelete);
+  if (linkedIdToDelete) {
+    next = next.filter((t) => t.id !== linkedIdToDelete);
   }
   return next;
 };
@@ -48,8 +48,8 @@ export async function submitTransaction(
   profileId: string,
   isCloudEnabled: boolean,
   existingTx?: Transaction,
-  partnerTx?: Transaction | null,
-  partnerIdToDelete?: string,
+  linkedRecord?: Transaction | null,
+  linkedIdToDelete?: string,
   newSubscription?: Omit<Subscription, "userId" | "id">,
   subscriptions?: Subscription[],
   isDestHistorical?: boolean,
@@ -78,42 +78,35 @@ export async function submitTransaction(
     id: tx.id || generateId(),
     createdAt: tx.createdAt || new Date().toISOString(),
   };
-  const partnerLeg = buildPartnerLeg(tx, txWithUser, isDestHistorical);
+  const linkedTransfer = buildLinkedTransferRecord(tx, txWithUser, isDestHistorical);
 
   const reversalTxs: Transaction[] = [];
   if (existingTx) reversalTxs.push(existingTx);
-  if (partnerTx) reversalTxs.push(partnerTx);
+  if (linkedRecord) reversalTxs.push(linkedRecord);
   const forwardTxs: Transaction[] = [txWithUser];
-  if (partnerLeg) forwardTxs.push(partnerLeg);
+  if (linkedTransfer) forwardTxs.push(linkedTransfer);
 
-  const accountUpdates = new Map<string, number>();
-  const potUpdates = new Map<string, number>();
-  const pocketUpdates = new Map<string, number>();
-
-  const accumulated = mergeDeltas(
-    accumulateDeltas(reversalTxs, accounts, pots, pockets, -1, usdRate),
-    accumulateDeltas(forwardTxs, accounts, pots, pockets, 1, usdRate),
+  const totalChanges = addChanges(
+    sumChanges(reversalTxs, accounts, pots, pockets, -1, usdRate),
+    sumChanges(forwardTxs, accounts, pots, pockets, 1, usdRate),
   );
-  for (const [id, delta] of accumulated.accountDeltas) accountUpdates.set(id, delta);
-  for (const [id, delta] of accumulated.potDeltas) potUpdates.set(id, delta);
-  for (const [id, delta] of accumulated.pocketDeltas) pocketUpdates.set(id, delta);
 
   let updatedTransactions: Transaction[];
   if (isEdit) {
-    updatedTransactions = mergePartnerLegForEdit(
+    updatedTransactions = mergeLinkedTransferForEdit(
       store.transactions,
       txWithUser,
-      partnerLeg ?? null,
-      partnerIdToDelete,
+      linkedTransfer ?? null,
+      linkedIdToDelete,
     );
   } else {
     updatedTransactions = [...store.transactions, txWithUser];
-    if (partnerLeg) updatedTransactions.push(partnerLeg);
+    if (linkedTransfer) updatedTransactions.push(linkedTransfer);
   }
 
   const now = new Date().toISOString();
   const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
-    materializeDeltas(accounts, pots, pockets, accumulated, now);
+    applyChanges(accounts, pots, pockets, totalChanges, now);
 
   let snapshots: PersistSnapshots | null = null;
   try {
@@ -122,18 +115,18 @@ export async function submitTransaction(
       updatedAccounts,
       updatedPots,
       updatedPockets,
-      accountUpdates,
-      potUpdates,
-      pocketUpdates,
+      totalChanges.accountChanges,
+      totalChanges.potChanges,
+      totalChanges.pocketChanges,
     );
     applyTransactionUpdatesToStore(
       updatedTransactions,
       updatedAccounts,
       updatedPots,
       updatedPockets,
-      accountUpdates,
-      potUpdates,
-      pocketUpdates,
+      totalChanges.accountChanges,
+      totalChanges.potChanges,
+      totalChanges.pocketChanges,
     );
   } catch (saveError) {
     logger.error("submitTransaction: save failed, rolling back localStorage", saveError);
@@ -144,8 +137,8 @@ export async function submitTransaction(
   if (isCloudEnabled) {
     await syncTransactionToCloud(
       txWithUser,
-      partnerLeg,
-      partnerIdToDelete,
+      linkedTransfer,
+      linkedIdToDelete,
       isEdit,
       store.transactions,
     );
@@ -189,7 +182,7 @@ const handleSubscriptionSideEffects = async (
   if (!txWithUser.subscriptionId || newSubscription || !subscriptions) return;
   const sub = subscriptions.find((s) => s.id === txWithUser.subscriptionId);
   if (!sub) return;
-  const nextDateStr = bumpSubscriptionNextDate(sub, normalizeDate(txDate));
+  const nextDateStr = advanceSubscriptionNextDate(sub, normalizeDate(txDate));
   if (nextDateStr === sub.nextPaymentDate) return;
   const updatedSub = { ...sub, nextPaymentDate: nextDateStr, updatedAt: now };
   const updatedSubsList = subscriptions.map((s) => (s.id === sub.id ? updatedSub : s));
@@ -217,17 +210,17 @@ export async function deleteTransaction(
   const txsToProcess = [tx];
 
   if (tx.linkedTransactionId) {
-    const partner = transactions.find((t) => t.id === tx.linkedTransactionId);
-    if (partner) {
-      idsToDelete.push(partner.id);
-      txsToProcess.push(partner);
+    const linked = transactions.find((t) => t.id === tx.linkedTransactionId);
+    if (linked) {
+      idsToDelete.push(linked.id);
+      txsToProcess.push(linked);
     }
   }
 
   const now = new Date().toISOString();
-  const deltas = accumulateDeltas(txsToProcess, accounts, pots, pockets, -1, usdRate);
+  const reversalChanges = sumChanges(txsToProcess, accounts, pots, pockets, -1, usdRate);
   const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
-    materializeDeltas(accounts, pots, pockets, deltas, now);
+    applyChanges(accounts, pots, pockets, reversalChanges, now);
 
   if (updatedAccounts !== accounts) {
     await StorageService.saveAccounts(updatedAccounts);
@@ -275,10 +268,10 @@ export async function batchDeleteTransaction(
     if (tx) {
       txsToProcess.push(tx);
       if (tx.linkedTransactionId && !idsToDeleteSet.has(tx.linkedTransactionId)) {
-        const partner = transactions.find((t) => t.id === tx.linkedTransactionId);
-        if (partner) {
-          idsToDeleteSet.add(partner.id);
-          txsToProcess.push(partner);
+        const linked = transactions.find((t) => t.id === tx.linkedTransactionId);
+        if (linked) {
+          idsToDeleteSet.add(linked.id);
+          txsToProcess.push(linked);
         }
       }
     }
@@ -287,9 +280,9 @@ export async function batchDeleteTransaction(
   if (txsToProcess.length === 0) return;
 
   const now = new Date().toISOString();
-  const deltas = accumulateDeltas(txsToProcess, accounts, pots, pockets, -1, usdRate);
+  const reversalChanges = sumChanges(txsToProcess, accounts, pots, pockets, -1, usdRate);
   const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
-    materializeDeltas(accounts, pots, pockets, deltas, now);
+    applyChanges(accounts, pots, pockets, reversalChanges, now);
 
   if (updatedAccounts !== accounts) {
     await StorageService.saveAccounts(updatedAccounts);
@@ -351,7 +344,7 @@ export async function bulkImportTransactions(
     transactionsToInsert.push(mainTx);
 
     if (mainTx.type === "TRANSFER" && mainTx.toAccountId) {
-      const partnerLeg: Transaction = {
+      const linkedRecord: Transaction = {
         ...mainTx,
         id: crypto.randomUUID(),
         accountId: mainTx.toAccountId,
@@ -359,8 +352,8 @@ export async function bulkImportTransactions(
         transferDirection: "IN" as const,
         linkedTransactionId: mainTx.id,
       };
-      mainTx.linkedTransactionId = partnerLeg.id;
-      transactionsToInsert.push(partnerLeg);
+      mainTx.linkedTransactionId = linkedRecord.id;
+      transactionsToInsert.push(linkedRecord);
     }
   });
 
@@ -373,7 +366,7 @@ export async function bulkImportTransactions(
   }
 
   if (adjustBalance && !isHistorical) {
-    const { accountDeltas } = accumulateDeltas(
+    const { accountChanges } = sumChanges(
       transactionsToInsert,
       accounts,
       pots,
@@ -382,13 +375,13 @@ export async function bulkImportTransactions(
       usdRate,
     );
 
-    if (accountDeltas.size > 0) {
+    if (accountChanges.size > 0) {
       const now = new Date().toISOString();
       const updatedAccounts = accounts.map((a) => {
-        if (accountDeltas.has(a.id)) {
+        if (accountChanges.has(a.id)) {
           return {
             ...a,
-            balance: a.balance + (accountDeltas.get(a.id) || 0),
+            balance: a.balance + (accountChanges.get(a.id) || 0),
             updatedAt: now,
           };
         }
@@ -432,7 +425,7 @@ export async function batchEditTransactions(
   const sharedTransferFields = ["amount", "currency", "date", "fee", "feeType", "note", "shopName"] as const;
   const nullifyFieldsForThis = ["potId", "savingPocketId", "toSavingPocketId", "toAccountId", "subscriptionId"] as const;
 
-  const shouldSyncPartner = (
+  const shouldSyncLinked = (
     tx: Transaction,
     nullified: string[],
     clean: Partial<Transaction>,
@@ -451,22 +444,22 @@ export async function batchEditTransactions(
     return false;
   };
 
-  const buildPartnerUpdates = (
+  const buildLinkedUpdates = (
     clean: Partial<Transaction>,
     shared: readonly string[],
   ): Record<string, unknown> => {
-    const partner: Record<string, unknown> = { ...clean };
-    if (clean.accountId !== undefined) partner.toAccountId = clean.accountId;
-    if (clean.toAccountId !== undefined) partner.accountId = clean.toAccountId;
-    if (clean.savingPocketId !== undefined) partner.toSavingPocketId = clean.savingPocketId;
-    if (clean.toSavingPocketId !== undefined) partner.savingPocketId = clean.toSavingPocketId;
+    const linked: Record<string, unknown> = { ...clean };
+    if (clean.accountId !== undefined) linked.toAccountId = clean.accountId;
+    if (clean.toAccountId !== undefined) linked.accountId = clean.toAccountId;
+    if (clean.savingPocketId !== undefined) linked.toSavingPocketId = clean.savingPocketId;
+    if (clean.toSavingPocketId !== undefined) linked.savingPocketId = clean.toSavingPocketId;
     for (const field of shared) {
       if (clean[field as keyof Partial<Transaction>] !== undefined) {
-        partner[field] = clean[field as keyof Partial<Transaction>];
+        linked[field] = clean[field as keyof Partial<Transaction>];
       }
     }
-    partner.updatedAt = new Date().toISOString();
-    return partner;
+    linked.updatedAt = new Date().toISOString();
+    return linked;
   };
 
   ids.forEach((id) => {
@@ -481,12 +474,12 @@ export async function batchEditTransactions(
     finalUpdatesMap.set(id, thisUpdates as Partial<Transaction>);
     affectedTransactionIds.add(id);
 
-    if (shouldSyncPartner(originalTx, nullifiedFields, cleanUpdates, sharedTransferFields)) {
-      const partner = transactions.find((t) => t.id === originalTx.linkedTransactionId);
-      if (partner) {
-        const partnerUpdates = buildPartnerUpdates(cleanUpdates, sharedTransferFields);
-        finalUpdatesMap.set(partner.id, partnerUpdates as Partial<Transaction>);
-        affectedTransactionIds.add(partner.id);
+    if (shouldSyncLinked(originalTx, nullifiedFields, cleanUpdates, sharedTransferFields)) {
+      const linked = transactions.find((t) => t.id === originalTx.linkedTransactionId);
+      if (linked) {
+        const linkedUpdates = buildLinkedUpdates(cleanUpdates, sharedTransferFields);
+        finalUpdatesMap.set(linked.id, linkedUpdates as Partial<Transaction>);
+        affectedTransactionIds.add(linked.id);
       }
     }
   });
@@ -508,38 +501,38 @@ export async function batchEditTransactions(
     }
   }
 
-  const oldTxsForDeltas: Transaction[] = [];
-  const newTxsForDeltas: Transaction[] = [];
+  const oldTxsForChanges: Transaction[] = [];
+  const newTxsForChanges: Transaction[] = [];
   affectedTransactionIds.forEach((txId) => {
     const newTx = updatedTransactionsList.find((t) => t.id === txId);
     const oldTx = transactions.find((t) => t.id === txId);
     if (oldTx && newTx) {
-      oldTxsForDeltas.push(oldTx);
-      newTxsForDeltas.push(newTx);
+      oldTxsForChanges.push(oldTx);
+      newTxsForChanges.push(newTx);
     }
   });
 
-  const withdrawals = accumulateDeltas(oldTxsForDeltas, accounts, pots, pockets, -1, usdRate);
-  const deposits = accumulateDeltas(newTxsForDeltas, accounts, pots, pockets, 1, usdRate);
-  const deltas = mergeDeltas(withdrawals, deposits);
+  const reversals = sumChanges(oldTxsForChanges, accounts, pots, pockets, -1, usdRate);
+  const applications = sumChanges(newTxsForChanges, accounts, pots, pockets, 1, usdRate);
+  const netChanges = addChanges(reversals, applications);
 
   const now = new Date().toISOString();
   const { accounts: updatedAccountList, pots: updatedPotList, pockets: updatedPocketList } =
-    materializeDeltas(accounts, pots, pockets, deltas, now);
+    applyChanges(accounts, pots, pockets, netChanges, now);
 
-  if (deltas.potDeltas.size > 0) {
+  if (netChanges.potChanges.size > 0) {
     store.setPots(updatedPotList);
-    const affectedPots = updatedPotList.filter((p) => deltas.potDeltas.has(p.id));
+    const affectedPots = updatedPotList.filter((p) => netChanges.potChanges.has(p.id));
     StorageService.savePots(updatedPotList);
     if (isCloudEnabled && affectedPots.length > 0) {
       await SheetService.updateMany("Pots", affectedPots);
     }
   }
 
-  if (deltas.pocketDeltas.size > 0) {
+  if (netChanges.pocketChanges.size > 0) {
     store.setPockets(updatedPocketList);
     const affectedPockets = updatedPocketList.filter((p) =>
-      deltas.pocketDeltas.has(p.id),
+      netChanges.pocketChanges.has(p.id),
     );
     StorageService.savePockets(updatedPocketList);
     if (isCloudEnabled && affectedPockets.length > 0) {
@@ -547,12 +540,12 @@ export async function batchEditTransactions(
     }
   }
 
-  if (deltas.accountDeltas.size > 0) {
+  if (netChanges.accountChanges.size > 0) {
     await StorageService.saveAccounts(updatedAccountList);
     store.setAccounts(updatedAccountList);
     if (isCloudEnabled) {
       const affectedAccounts = updatedAccountList.filter((a) =>
-        deltas.accountDeltas.has(a.id),
+        netChanges.accountChanges.has(a.id),
       );
       if (affectedAccounts.length > 0) {
         await SheetService.updateMany("Accounts", affectedAccounts);

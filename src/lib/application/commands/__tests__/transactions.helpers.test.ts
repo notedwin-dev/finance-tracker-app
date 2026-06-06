@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildPartnerLeg,
-  bumpSubscriptionNextDate,
+  buildLinkedTransferRecord,
+  advanceSubscriptionNextDate,
   syncTransactionToCloud,
 } from "../transactions.helpers";
 import { Subscription, SubscriptionFrequency, Transaction, TransactionType } from "../../../../../types";
@@ -26,35 +26,35 @@ const baseTxWithUser: Transaction = {
   userId: "u1",
 };
 
-describe("buildPartnerLeg", () => {
+describe("buildLinkedTransferRecord", () => {
   it("returns null when no linkedTransactionId", () => {
     const tx = { ...baseTx, linkedTransactionId: undefined };
-    expect(buildPartnerLeg(tx, baseTxWithUser, false)).toBeNull();
+    expect(buildLinkedTransferRecord(tx, baseTxWithUser, false)).toBeNull();
   });
 
   it("returns null when transferDirection is not OUT", () => {
     const tx = { ...baseTx, transferDirection: "IN" as const };
-    expect(buildPartnerLeg(tx, baseTxWithUser, false)).toBeNull();
+    expect(buildLinkedTransferRecord(tx, baseTxWithUser, false)).toBeNull();
   });
 
-  it("returns the partner leg for a transfer with linkedTransactionId and direction OUT", () => {
-    const leg = buildPartnerLeg(baseTx, baseTxWithUser, true);
-    expect(leg).not.toBeNull();
-    expect(leg!.id).toBe("t2");
-    expect(leg!.accountId).toBe("a2");
-    expect(leg!.toAccountId).toBeUndefined();
-    expect(leg!.transferDirection).toBe("IN");
-    expect(leg!.linkedTransactionId).toBe("t1");
-    expect(leg!.isHistorical).toBe(true);
+  it("returns the linked record for a transfer with linkedTransactionId and direction OUT", () => {
+    const linked = buildLinkedTransferRecord(baseTx, baseTxWithUser, true);
+    expect(linked).not.toBeNull();
+    expect(linked!.id).toBe("t2");
+    expect(linked!.accountId).toBe("a2");
+    expect(linked!.toAccountId).toBeUndefined();
+    expect(linked!.transferDirection).toBe("IN");
+    expect(linked!.linkedTransactionId).toBe("t1");
+    expect(linked!.isHistorical).toBe(true);
   });
 
   it("preserves isHistorical=false", () => {
-    const leg = buildPartnerLeg(baseTx, baseTxWithUser, false);
-    expect(leg!.isHistorical).toBe(false);
+    const linked = buildLinkedTransferRecord(baseTx, baseTxWithUser, false);
+    expect(linked!.isHistorical).toBe(false);
   });
 });
 
-describe("bumpSubscriptionNextDate", () => {
+describe("advanceSubscriptionNextDate", () => {
   const baseSub: Subscription = {
     id: "s1",
     userId: "u1",
@@ -71,26 +71,26 @@ describe("bumpSubscriptionNextDate", () => {
   };
 
   it("returns the original date when txDate is before the next payment date", () => {
-    expect(bumpSubscriptionNextDate(baseSub, "2026-06-20")).toBe("2026-07-15");
+    expect(advanceSubscriptionNextDate(baseSub, "2026-06-20")).toBe("2026-07-15");
   });
 
-  it("bumps MONTHLY to the same day next month", () => {
-    expect(bumpSubscriptionNextDate(baseSub, "2026-07-20")).toBe("2026-08-20");
+  it("advances MONTHLY to the same day next month", () => {
+    expect(advanceSubscriptionNextDate(baseSub, "2026-07-20")).toBe("2026-08-20");
   });
 
-  it("bumps WEEKLY by 7 days", () => {
+  it("advances WEEKLY by 7 days", () => {
     const sub = { ...baseSub, frequency: "WEEKLY" as SubscriptionFrequency };
-    expect(bumpSubscriptionNextDate(sub, "2026-07-20")).toBe("2026-07-27");
+    expect(advanceSubscriptionNextDate(sub, "2026-07-20")).toBe("2026-07-27");
   });
 
-  it("bumps YEARLY by 1 year", () => {
+  it("advances YEARLY by 1 year", () => {
     const sub = { ...baseSub, frequency: "YEARLY" as SubscriptionFrequency };
-    expect(bumpSubscriptionNextDate(sub, "2026-07-20")).toBe("2027-07-20");
+    expect(advanceSubscriptionNextDate(sub, "2026-07-20")).toBe("2027-07-20");
   });
 
-  it("bumps DAILY by 1 day", () => {
+  it("advances DAILY by 1 day", () => {
     const sub = { ...baseSub, frequency: "DAILY" as SubscriptionFrequency };
-    expect(bumpSubscriptionNextDate(sub, "2026-07-20")).toBe("2026-07-21");
+    expect(advanceSubscriptionNextDate(sub, "2026-07-20")).toBe("2026-07-21");
   });
 });
 

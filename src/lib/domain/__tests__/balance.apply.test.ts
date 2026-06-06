@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { accumulateDeltas, materializeDeltas, mergeDeltas } from "../balance.engine";
+import { sumChanges, applyChanges, addChanges } from "../balance.engine";
 import { Transaction, TransactionType, Account, Pot, SavingPocket } from "../../../../types";
 
 const tx = (overrides: Partial<Transaction>): Transaction => ({
@@ -57,70 +57,70 @@ const pocket = (overrides: Partial<SavingPocket>): SavingPocket => ({
 
 const NOW = "2026-06-15T12:00:00.000Z";
 
-describe("accumulateDeltas", () => {
+describe("sumChanges", () => {
   it("returns empty maps for an empty tx list", () => {
-    const r = accumulateDeltas([], [account({})], [pot({})], [pocket({})], 1, 4.45);
-    expect(r.accountDeltas.size).toBe(0);
-    expect(r.potDeltas.size).toBe(0);
-    expect(r.pocketDeltas.size).toBe(0);
+    const r = sumChanges([], [account({})], [pot({})], [pocket({})], 1, 4.45);
+    expect(r.accountChanges.size).toBe(0);
+    expect(r.potChanges.size).toBe(0);
+    expect(r.pocketChanges.size).toBe(0);
   });
 
-  it("accumulates positive deltas with factor=+1", () => {
+  it("sums changes with factor=+1", () => {
     const txs = [tx({ type: TransactionType.EXPENSE, amount: 100 })];
-    const r = accumulateDeltas(txs, [account({})], [], [], 1, 4.45);
-    expect(r.accountDeltas.get("a1")).toBe(-100);
+    const r = sumChanges(txs, [account({})], [], [], 1, 4.45);
+    expect(r.accountChanges.get("a1")).toBe(-100);
   });
 
-  it("accumulates negative deltas with factor=-1", () => {
+  it("sums changes with factor=-1", () => {
     const txs = [tx({ type: TransactionType.EXPENSE, amount: 100 })];
-    const r = accumulateDeltas(txs, [account({})], [], [], -1, 4.45);
-    expect(r.accountDeltas.get("a1")).toBe(100);
+    const r = sumChanges(txs, [account({})], [], [], -1, 4.45);
+    expect(r.accountChanges.get("a1")).toBe(100);
   });
 
-  it("accumulates pot and pocket deltas", () => {
+  it("sums pot and pocket changes", () => {
     const txs = [tx({ potId: "p1", savingPocketId: "pk1", type: TransactionType.EXPENSE, amount: 50 })];
-    const r = accumulateDeltas(txs, [account({})], [pot({})], [pocket({})], 1, 4.45);
-    expect(r.accountDeltas.get("a1")).toBe(-50);
-    expect(r.potDeltas.get("p1")).toBe(50);
-    expect(r.pocketDeltas.get("pk1")).toBe(-50);
+    const r = sumChanges(txs, [account({})], [pot({})], [pocket({})], 1, 4.45);
+    expect(r.accountChanges.get("a1")).toBe(-50);
+    expect(r.potChanges.get("p1")).toBe(50);
+    expect(r.pocketChanges.get("pk1")).toBe(-50);
   });
 });
 
-describe("mergeDeltas", () => {
-  it("sums delta maps across groups", () => {
-    const g1 = { accountDeltas: new Map([["a1", 10]]), potDeltas: new Map(), pocketDeltas: new Map() };
-    const g2 = { accountDeltas: new Map([["a1", 5], ["a2", 7]]), potDeltas: new Map(), pocketDeltas: new Map() };
-    const r = mergeDeltas(g1, g2);
-    expect(r.accountDeltas.get("a1")).toBe(15);
-    expect(r.accountDeltas.get("a2")).toBe(7);
+describe("addChanges", () => {
+  it("adds change maps across groups", () => {
+    const g1 = { accountChanges: new Map([["a1", 10]]), potChanges: new Map(), pocketChanges: new Map() };
+    const g2 = { accountChanges: new Map([["a1", 5], ["a2", 7]]), potChanges: new Map(), pocketChanges: new Map() };
+    const r = addChanges(g1, g2);
+    expect(r.accountChanges.get("a1")).toBe(15);
+    expect(r.accountChanges.get("a2")).toBe(7);
   });
 
   it("merges pot and pocket maps independently", () => {
-    const g1 = { accountDeltas: new Map(), potDeltas: new Map([["p1", 1]]), pocketDeltas: new Map() };
-    const g2 = { accountDeltas: new Map(), potDeltas: new Map(), pocketDeltas: new Map([["pk1", 2]]) };
-    const r = mergeDeltas(g1, g2);
-    expect(r.potDeltas.get("p1")).toBe(1);
-    expect(r.pocketDeltas.get("pk1")).toBe(2);
+    const g1 = { accountChanges: new Map(), potChanges: new Map([["p1", 1]]), pocketChanges: new Map() };
+    const g2 = { accountChanges: new Map(), potChanges: new Map(), pocketChanges: new Map([["pk1", 2]]) };
+    const r = addChanges(g1, g2);
+    expect(r.potChanges.get("p1")).toBe(1);
+    expect(r.pocketChanges.get("pk1")).toBe(2);
   });
 });
 
-describe("materializeDeltas", () => {
-  it("returns the same arrays when no deltas", () => {
+describe("applyChanges", () => {
+  it("returns the same arrays when no changes", () => {
     const accounts = [account({})];
     const pots = [pot({})];
     const pockets = [pocket({})];
-    const r = materializeDeltas(accounts, pots, pockets, { accountDeltas: new Map(), potDeltas: new Map(), pocketDeltas: new Map() }, NOW);
+    const r = applyChanges(accounts, pots, pockets, { accountChanges: new Map(), potChanges: new Map(), pocketChanges: new Map() }, NOW);
     expect(r.accounts).toBe(accounts);
     expect(r.pots).toBe(pots);
     expect(r.pockets).toBe(pockets);
   });
 
-  it("applies account deltas with new balance and updatedAt", () => {
-    const r = materializeDeltas(
+  it("applies account changes with new balance and updatedAt", () => {
+    const r = applyChanges(
       [account({ balance: 1000 })],
       [],
       [],
-      { accountDeltas: new Map([["a1", -250]]), potDeltas: new Map(), pocketDeltas: new Map() },
+      { accountChanges: new Map([["a1", -250]]), potChanges: new Map(), pocketChanges: new Map() },
       NOW,
     );
     expect(r.accounts[0].balance).toBe(750);
@@ -128,11 +128,11 @@ describe("materializeDeltas", () => {
   });
 
   it("clamps pot usedAmount to 0 and recomputes amountLeft", () => {
-    const r = materializeDeltas(
+    const r = applyChanges(
       [],
       [pot({ usedAmount: 50, amountLeft: 450 })],
       [],
-      { accountDeltas: new Map(), potDeltas: new Map([["p1", -100]]), pocketDeltas: new Map() },
+      { accountChanges: new Map(), potChanges: new Map([["p1", -100]]), pocketChanges: new Map() },
       NOW,
     );
     expect(r.pots[0].usedAmount).toBe(0);
@@ -140,11 +140,11 @@ describe("materializeDeltas", () => {
   });
 
   it("clamps pocket currentAmount to 0", () => {
-    const r = materializeDeltas(
+    const r = applyChanges(
       [],
       [],
       [pocket({ currentAmount: 100 })],
-      { accountDeltas: new Map(), potDeltas: new Map(), pocketDeltas: new Map([["pk1", -200]]) },
+      { accountChanges: new Map(), potChanges: new Map(), pocketChanges: new Map([["pk1", -200]]) },
       NOW,
     );
     expect(r.pockets[0].currentAmount).toBe(0);

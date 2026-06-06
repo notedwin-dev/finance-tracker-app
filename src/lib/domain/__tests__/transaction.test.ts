@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isCrossCurrency, computeTransactionDeltas } from "../transaction";
+import { isCrossCurrency, computeTransactionChanges } from "../transaction";
 import { TransactionType, Account, Pot, SavingPocket, Transaction } from "../../../../types";
 
 const makeAcc = (overrides: Partial<Account> = {}): Account => ({
@@ -78,9 +78,9 @@ describe("isCrossCurrency", () => {
   });
 });
 
-describe("computeTransactionDeltas", () => {
-  it("account-only expense produces one account delta, zero pot/pocket", () => {
-    const result = computeTransactionDeltas(
+describe("computeTransactionChanges", () => {
+  it("account-only expense produces one account change, zero pot/pocket", () => {
+    const result = computeTransactionChanges(
       makeTx({ type: TransactionType.EXPENSE, amount: 50 }),
       1,
       [makeAcc({ id: "acc1" })],
@@ -88,13 +88,13 @@ describe("computeTransactionDeltas", () => {
       [makePocket()],
       4.45,
     );
-    expect(result.accountDeltas.get("acc1")).toBe(-50);
-    expect(result.potDeltas.size).toBe(0);
-    expect(result.pocketDeltas.size).toBe(0);
+    expect(result.accountChanges.get("acc1")).toBe(-50);
+    expect(result.potChanges.size).toBe(0);
+    expect(result.pocketChanges.size).toBe(0);
   });
 
-  it("pot expense produces a pot delta", () => {
-    const result = computeTransactionDeltas(
+  it("pot expense produces a pot change", () => {
+    const result = computeTransactionChanges(
       makeTx({ type: TransactionType.EXPENSE, potId: "pot1", amount: 30 }),
       1,
       [makeAcc({ id: "acc1" })],
@@ -102,11 +102,11 @@ describe("computeTransactionDeltas", () => {
       [makePocket()],
       4.45,
     );
-    expect(result.potDeltas.get("pot1")).toBe(30);
+    expect(result.potChanges.get("pot1")).toBe(30);
   });
 
-  it("pocket income produces a pocket delta", () => {
-    const result = computeTransactionDeltas(
+  it("pocket income produces a pocket change", () => {
+    const result = computeTransactionChanges(
       makeTx({ type: TransactionType.INCOME, savingPocketId: "pocket1", amount: 75 }),
       1,
       [makeAcc({ id: "acc1" })],
@@ -114,11 +114,11 @@ describe("computeTransactionDeltas", () => {
       [makePocket({ id: "pocket1" })],
       4.45,
     );
-    expect(result.pocketDeltas.get("pocket1")).toBe(75);
+    expect(result.pocketChanges.get("pocket1")).toBe(75);
   });
 
-  it("factor -1 flips the signs of all deltas", () => {
-    const result = computeTransactionDeltas(
+  it("factor -1 flips the signs of all changes", () => {
+    const result = computeTransactionChanges(
       makeTx({ type: TransactionType.EXPENSE, amount: 50 }),
       -1,
       [makeAcc({ id: "acc1" })],
@@ -126,11 +126,11 @@ describe("computeTransactionDeltas", () => {
       [makePocket()],
       4.45,
     );
-    expect(result.accountDeltas.get("acc1")).toBe(50);
+    expect(result.accountChanges.get("acc1")).toBe(50);
   });
 
-  it("historical transactions produce empty deltas", () => {
-    const result = computeTransactionDeltas(
+  it("historical transactions produce empty changes", () => {
+    const result = computeTransactionChanges(
       makeTx({ type: TransactionType.EXPENSE, amount: 50, isHistorical: true }),
       1,
       [makeAcc({ id: "acc1" })],
@@ -138,8 +138,8 @@ describe("computeTransactionDeltas", () => {
       [makePocket()],
       4.45,
     );
-    expect(result.accountDeltas.size).toBe(0);
-    expect(result.potDeltas.size).toBe(0);
-    expect(result.pocketDeltas.size).toBe(0);
+    expect(result.accountChanges.size).toBe(0);
+    expect(result.potChanges.size).toBe(0);
+    expect(result.pocketChanges.size).toBe(0);
   });
 });

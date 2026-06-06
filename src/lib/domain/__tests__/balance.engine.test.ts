@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { TransactionType } from "../../../../types";
 import type { Transaction, Account, Pot, SavingPocket } from "../../../../types";
 import {
-  computeAccountTransactionAmount,
-  computeBudgetConsumption,
-  computeSavingsMovement,
+  computeAccountChange,
+  computePotChange,
+  computePocketChange,
 } from "../balance.engine";
 
 const makeTx = (overrides: Partial<Transaction> = {}): Transaction => ({
@@ -58,9 +58,9 @@ const makePocket = (overrides: Partial<SavingPocket> = {}): SavingPocket => ({
   ...overrides,
 });
 
-describe("computeAccountTransactionAmount", () => {
+describe("computeAccountChange", () => {
   it("returns empty map for historical transactions", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ isHistorical: true }),
       1,
       [makeAcc()],
@@ -70,7 +70,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("decreases account balance for expense", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.EXPENSE }),
       1,
       [makeAcc()],
@@ -80,7 +80,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("increases account balance for income", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.INCOME }),
       1,
       [makeAcc()],
@@ -90,7 +90,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("reverses with factor -1", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.EXPENSE }),
       -1,
       [makeAcc()],
@@ -100,7 +100,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("converts USD amount to MYR account", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.EXPENSE, amount: 100, currency: "USD" }),
       1,
       [makeAcc({ currency: "MYR" })],
@@ -110,7 +110,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("handles transfer IN direction as inflow", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({
         type: TransactionType.TRANSFER,
         transferDirection: "IN",
@@ -124,7 +124,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("handles transfer OUT direction as outflow", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({
         type: TransactionType.TRANSFER,
         transferDirection: "OUT",
@@ -138,7 +138,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("includes fee INCLUSIVE as additional outflow", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({
         type: TransactionType.TRANSFER,
         transferDirection: "OUT",
@@ -154,7 +154,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("deducts fee EXCLUSIVE from target amount on transfer OUT", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({
         type: TransactionType.TRANSFER,
         transferDirection: "OUT",
@@ -170,7 +170,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("applies legacy single-record transfer to both accounts", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({
         type: TransactionType.TRANSFER,
         toAccountId: "acc2",
@@ -186,7 +186,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("handles ACCOUNT_OPENING as inflow", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.ACCOUNT_OPENING }),
       1,
       [makeAcc()],
@@ -196,7 +196,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("handles ADJUSTMENT with positive amount as inflow", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.ADJUSTMENT, amount: 50 }),
       1,
       [makeAcc()],
@@ -206,7 +206,7 @@ describe("computeAccountTransactionAmount", () => {
   });
 
   it("handles ADJUSTMENT with negative amount as inflow (reversal)", () => {
-    const result = computeAccountTransactionAmount(
+    const result = computeAccountChange(
       makeTx({ type: TransactionType.ADJUSTMENT, amount: -30 }),
       1,
       [makeAcc()],
@@ -216,9 +216,9 @@ describe("computeAccountTransactionAmount", () => {
   });
 });
 
-describe("computeBudgetConsumption", () => {
-  it("consumes budget for expense", () => {
-    const result = computeBudgetConsumption(
+describe("computePotChange", () => {
+  it("adds to pot usage for expense", () => {
+    const result = computePotChange(
       makeTx({ type: TransactionType.EXPENSE, potId: "pot1" }),
       1,
       [makePot()],
@@ -226,8 +226,8 @@ describe("computeBudgetConsumption", () => {
     expect(result.get("pot1")).toBe(100);
   });
 
-  it("reverses budget consumption for income", () => {
-    const result = computeBudgetConsumption(
+  it("reverses pot usage for income", () => {
+    const result = computePotChange(
       makeTx({ type: TransactionType.INCOME, potId: "pot1" }),
       1,
       [makePot()],
@@ -236,7 +236,7 @@ describe("computeBudgetConsumption", () => {
   });
 
   it("returns empty map when no potId", () => {
-    const result = computeBudgetConsumption(
+    const result = computePotChange(
       makeTx({ type: TransactionType.EXPENSE }),
       1,
       [makePot()],
@@ -245,7 +245,7 @@ describe("computeBudgetConsumption", () => {
   });
 
   it("reverses with factor -1", () => {
-    const result = computeBudgetConsumption(
+    const result = computePotChange(
       makeTx({ type: TransactionType.EXPENSE, potId: "pot1" }),
       -1,
       [makePot()],
@@ -253,8 +253,8 @@ describe("computeBudgetConsumption", () => {
     expect(result.get("pot1")).toBe(-100);
   });
 
-  it("skips consumption when transaction is before pot reset date", () => {
-    const result = computeBudgetConsumption(
+  it("skips pot usage when transaction is before pot reset date", () => {
+    const result = computePotChange(
       makeTx({ type: TransactionType.EXPENSE, potId: "pot1", date: "2025-01-01" }),
       1,
       [makePot({ resetDate: "2026-01-01" })],
@@ -263,7 +263,7 @@ describe("computeBudgetConsumption", () => {
   });
 
   it("returns empty map for historical transactions", () => {
-    const result = computeBudgetConsumption(
+    const result = computePotChange(
       makeTx({ type: TransactionType.EXPENSE, potId: "pot1", isHistorical: true }),
       1,
       [makePot()],
@@ -272,9 +272,9 @@ describe("computeBudgetConsumption", () => {
   });
 });
 
-describe("computeSavingsMovement", () => {
+describe("computePocketChange", () => {
   it("adds savings for income", () => {
-    const result = computeSavingsMovement(
+    const result = computePocketChange(
       makeTx({ type: TransactionType.INCOME, savingPocketId: "pocket1" }),
       1,
       [makePocket()],
@@ -283,7 +283,7 @@ describe("computeSavingsMovement", () => {
   });
 
   it("consumes savings for expense", () => {
-    const result = computeSavingsMovement(
+    const result = computePocketChange(
       makeTx({ type: TransactionType.EXPENSE, savingPocketId: "pocket1" }),
       1,
       [makePocket()],
@@ -292,7 +292,7 @@ describe("computeSavingsMovement", () => {
   });
 
   it("returns empty map when no savingPocketId", () => {
-    const result = computeSavingsMovement(
+    const result = computePocketChange(
       makeTx({ type: TransactionType.EXPENSE }),
       1,
       [makePocket()],
@@ -301,7 +301,7 @@ describe("computeSavingsMovement", () => {
   });
 
   it("reverses with factor -1", () => {
-    const result = computeSavingsMovement(
+    const result = computePocketChange(
       makeTx({ type: TransactionType.EXPENSE, savingPocketId: "pocket1" }),
       -1,
       [makePocket()],
@@ -310,7 +310,7 @@ describe("computeSavingsMovement", () => {
   });
 
   it("skips savings when transaction is before pocket reset date", () => {
-    const result = computeSavingsMovement(
+    const result = computePocketChange(
       makeTx({ type: TransactionType.INCOME, savingPocketId: "pocket1", date: "2025-01-01" }),
       1,
       [makePocket({ resetDate: "2026-01-01" })],
@@ -319,7 +319,7 @@ describe("computeSavingsMovement", () => {
   });
 
   it("returns empty map for historical transactions", () => {
-    const result = computeSavingsMovement(
+    const result = computePocketChange(
       makeTx({ type: TransactionType.INCOME, savingPocketId: "pocket1", isHistorical: true }),
       1,
       [makePocket()],

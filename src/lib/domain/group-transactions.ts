@@ -16,18 +16,18 @@ const isSymmetricTransfer = (
 	);
 };
 
-const findExplicitPartner = (
+const findLinked = (
 	t: Transaction,
 	transactions: Transaction[],
 	processedIds: Set<string>,
 ): Transaction | null => {
 	if (!t.linkedTransactionId) return null;
-	const partner = transactions.find((p) => p.id === t.linkedTransactionId);
-	if (!partner || processedIds.has(partner.id)) return null;
-	return partner;
+	const linked = transactions.find((p) => p.id === t.linkedTransactionId);
+	if (!linked || processedIds.has(linked.id)) return null;
+	return linked;
 };
 
-const findFuzzyTransferPartner = (
+const findFuzzyLinkedTransfer = (
 	t: Transaction,
 	transactions: Transaction[],
 	processedIds: Set<string>,
@@ -49,7 +49,7 @@ const findFuzzyTransferPartner = (
 	);
 };
 
-const buildVirtualPartner = (t: Transaction): Transaction => ({
+const buildVirtualLinkedIn = (t: Transaction): Transaction => ({
 	...t,
 	id: `${t.id}_virtual_in`,
 	accountId: t.toAccountId || t.accountId,
@@ -60,13 +60,13 @@ const buildVirtualPartner = (t: Transaction): Transaction => ({
 
 const pickMainAndLinked = (
 	t: Transaction,
-	partner: Transaction,
+	linked: Transaction,
 ): { main: Transaction; linked: Transaction } => {
 	const tIsOut =
 		t.transferDirection === "OUT" || t.type === TransactionType.EXPENSE;
-	const main = tIsOut ? t : partner;
-	const linked = main === t ? partner : t;
-	return { main, linked };
+	const main = tIsOut ? t : linked;
+	const linkedResult = main === t ? linked : t;
+	return { main, linked: linkedResult };
 };
 
 export const groupTransactions = (
@@ -93,7 +93,7 @@ export const groupTransactions = (
 	for (const t of sorted) {
 		if (processedIds.has(t.id)) continue;
 
-		const explicit = findExplicitPartner(t, transactions, processedIds);
+		const explicit = findLinked(t, transactions, processedIds);
 		if (explicit) {
 			const { main, linked } = pickMainAndLinked(t, explicit);
 			grouped.push({ ...main, linkedTransaction: linked });
@@ -103,7 +103,7 @@ export const groupTransactions = (
 		}
 
 		if (t.type === TransactionType.TRANSFER) {
-			const fuzzy = findFuzzyTransferPartner(t, transactions, processedIds);
+			const fuzzy = findFuzzyLinkedTransfer(t, transactions, processedIds);
 			if (fuzzy) {
 				const { main, linked } = pickMainAndLinked(t, fuzzy);
 				grouped.push({ ...main, linkedTransaction: linked });
@@ -117,11 +117,11 @@ export const groupTransactions = (
 				t.accountId !== t.toAccountId &&
 				!t.transferDirection
 			) {
-				const partner = buildVirtualPartner(t);
+				const linked = buildVirtualLinkedIn(t);
 				const main = {
 					...t,
 					transferDirection: "OUT" as const,
-					linkedTransaction: partner,
+					linkedTransaction: linked,
 				};
 				grouped.push(main);
 				processedIds.add(t.id);

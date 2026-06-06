@@ -113,11 +113,7 @@ const AccountCard: React.FC<Props> = ({
 				const fee = tx.fee || 0;
 				const feeType = tx.feeType || "INCLUSIVE";
 
-				// Handle backtracking for each leg of the transfer.
-				// For Transfer "OUT" from Account A to Account B:
-				// Record 1 (Account A): Submits -1000. Backtracking must +1000.
-				// Record 2 (Account B): Submits +1000. Backtracking must -1000.
-				const processLeg = (t: Transaction) => {
+				const processTransferRecord = (t: Transaction) => {
 					if (t.accountId === account.id) {
 						const actualOutflow =
 							feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
@@ -129,7 +125,7 @@ const AccountCard: React.FC<Props> = ({
 					}
 				};
 
-				processLeg(tx);
+				processTransferRecord(tx);
 			}
 
 			balancePoints.push(runningBalance);

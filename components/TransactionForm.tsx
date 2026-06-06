@@ -899,7 +899,7 @@ const TransactionForm: React.FC<Props> = ({
 
 						<p className="text-[10px] text-amber-200/60 leading-relaxed font-medium pl-7">
 							{type === TransactionType.TRANSFER
-								? "Historical legs will not change the balance of their respective accounts. You can set this individually for each side of the transfer."
+								? "Historical transfers will not change the balance of their respective accounts. You can set this individually for each side of the transfer."
 								: "This will add the transaction to your history without affecting your current account balance. Perfect for old records."}
 						</p>
 					</div>

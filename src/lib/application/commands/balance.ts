@@ -1,8 +1,8 @@
 import { Account, Pot, SavingPocket, Transaction } from "../../../../types";
 import {
-  computeAccountTransactionAmount,
-  computeBudgetConsumption,
-  computeSavingsMovement,
+  computeAccountChange,
+  computePotChange,
+  computePocketChange,
 } from "../../domain/balance.engine";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
@@ -37,14 +37,14 @@ export async function recalculateBalances(
     if (startDate && txDateStr < normalizeDate(startDate)) return;
     if (endDate && txDateStr > normalizeDate(endDate)) return;
 
-    for (const [id, delta] of computeAccountTransactionAmount(t, 1, accounts, usdRate)) {
-      accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
+    for (const [id, change] of computeAccountChange(t, 1, accounts, usdRate)) {
+      accountUpdates.set(id, (accountUpdates.get(id) || 0) + change);
     }
-    for (const [id, delta] of computeBudgetConsumption(t, 1, pots)) {
-      potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
+    for (const [id, change] of computePotChange(t, 1, pots)) {
+      potUpdates.set(id, (potUpdates.get(id) || 0) + change);
     }
-    for (const [id, delta] of computeSavingsMovement(t, 1, pockets)) {
-      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
+    for (const [id, change] of computePocketChange(t, 1, pockets)) {
+      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + change);
     }
   });
 

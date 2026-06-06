@@ -1,8 +1,8 @@
 import { Account, Transaction, Pot, SavingPocket } from "../../../types";
 import {
-  computeAccountTransactionAmount,
-  computeBudgetConsumption,
-  computeSavingsMovement,
+  computeAccountChange,
+  computePotChange,
+  computePocketChange,
 } from "./balance.engine";
 
 export const isCrossCurrency = (
@@ -15,7 +15,7 @@ export const isCrossCurrency = (
   return ["USD", "MYR"].includes(acc.currency);
 };
 
-export const computeTransactionDeltas = (
+export const computeTransactionChanges = (
   tx: Transaction,
   factor: 1 | -1,
   accounts: Account[],
@@ -23,11 +23,11 @@ export const computeTransactionDeltas = (
   pockets: SavingPocket[],
   usdRate: number,
 ): {
-  accountDeltas: Map<string, number>;
-  potDeltas: Map<string, number>;
-  pocketDeltas: Map<string, number>;
+  accountChanges: Map<string, number>;
+  potChanges: Map<string, number>;
+  pocketChanges: Map<string, number>;
 } => ({
-  accountDeltas: new Map(computeAccountTransactionAmount(tx, factor, accounts, usdRate)),
-  potDeltas: new Map(computeBudgetConsumption(tx, factor, pots)),
-  pocketDeltas: new Map(computeSavingsMovement(tx, factor, pockets)),
+  accountChanges: new Map(computeAccountChange(tx, factor, accounts, usdRate)),
+  potChanges: new Map(computePotChange(tx, factor, pots)),
+  pocketChanges: new Map(computePocketChange(tx, factor, pockets)),
 });

@@ -45,7 +45,7 @@ describe("groupTransactions", () => {
     expect(result[0].linkedTransaction).toBeDefined();
   });
 
-  it("creates a virtual IN partner for a single-record transfer", () => {
+  it("creates a virtual IN record for a single-record transfer", () => {
     const t = tx({ id: "1", type: TransactionType.TRANSFER, accountId: "a1", toAccountId: "a2", amount: 50 });
     const result = groupTransactions([t]);
     expect(result).toHaveLength(1);

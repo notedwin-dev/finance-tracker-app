@@ -4,12 +4,12 @@ import { GroupedTransaction } from "../../helpers/transactions.helper";
 function getTransferEditPayload(
   t: GroupedTransaction,
   transactions: Transaction[],
-): { baseTx: Transaction; partnerTx?: Transaction } {
+): { baseTx: Transaction; linkedRecord?: Transaction } {
   let baseTx: Transaction = t;
-  let partnerTx: Transaction | undefined = t.linkedTransaction;
+  let linkedRecord: Transaction | undefined = t.linkedTransaction;
 
-  if (t.type === TransactionType.TRANSFER && !partnerTx) {
-    partnerTx = transactions.find(
+  if (t.type === TransactionType.TRANSFER && !linkedRecord) {
+    linkedRecord = transactions.find(
       (pt) =>
         pt.linkedTransactionId === t.id ||
         (t.linkedTransactionId === pt.id &&
@@ -19,9 +19,9 @@ function getTransferEditPayload(
   }
 
   if (t.type === TransactionType.TRANSFER && t.transferDirection === "IN") {
-    if (partnerTx) {
-      baseTx = partnerTx;
-      partnerTx = t;
+    if (linkedRecord) {
+      baseTx = linkedRecord;
+      linkedRecord = t;
     } else {
       baseTx = {
         ...t,
@@ -32,22 +32,22 @@ function getTransferEditPayload(
         toSavingPocketId: t.savingPocketId,
         isHistorical: false,
       };
-      partnerTx = t;
+      linkedRecord = t;
     }
   }
 
-  return { baseTx, partnerTx };
+  return { baseTx, linkedRecord };
 }
 
 export function prepareTransactionForEdit(
   t: Transaction,
   transactions: Transaction[],
 ): any {
-  const { baseTx, partnerTx } = getTransferEditPayload(t, transactions);
+  const { baseTx, linkedRecord } = getTransferEditPayload(t, transactions);
   const txToEdit = { ...baseTx } as any;
-  if (partnerTx) {
-    txToEdit.isToAccountHistorical = partnerTx.isHistorical;
-    txToEdit.linkedTransaction = partnerTx;
+  if (linkedRecord) {
+    txToEdit.isToAccountHistorical = linkedRecord.isHistorical;
+    txToEdit.linkedTransaction = linkedRecord;
   }
   return txToEdit;
 }

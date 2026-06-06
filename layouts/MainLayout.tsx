@@ -7,24 +7,18 @@ import {
   PlusIcon,
   UserIcon,
   Squares2X2Icon,
-  SparklesIcon,
   ChatBubbleBottomCenterIcon,
-  EyeSlashIcon,
-  EyeIcon,
-  LinkSlashIcon,
 } from "@heroicons/react/24/outline";
 import {
   HomeIcon as HomeIconSolid,
   ClockIcon as ClockIconSolid,
   ChartBarIcon as ChartBarIconSolid,
   UserIcon as UserIconSolid,
-  SparklesIcon as SparklesIconSolid,
 } from "@heroicons/react/24/solid";
 import { useAuth } from "../services/auth.services";
 import * as SheetService from "../services/sheets.services";
 import { useSyncStore } from "../src/stores/sync.store";
 import { useMaskStore } from "../src/stores/mask.store";
-import { syncData } from "../src/lib/application/commands";
 import { useFinanceStore } from "../src/stores/finance.store";
 import AIInsights from "../components/AIInsights";
 import TransactionForm from "../components/TransactionForm";
@@ -33,13 +27,14 @@ import CategoryManager from "../components/CategoryManager";
 import SubscriptionManager from "../components/SubscriptionManager";
 import {
   saveCategory, deleteCategory,
-  saveGoal, deleteGoal,
   addSubscription, deleteSubscription,
   saveChatSession, deleteChatSession,
   saveAccount, deleteAccount,
   submitTransaction,
 } from "../src/lib/application/commands";
 import { Transaction, Account, TransactionType, Subscription } from "../types";
+import { useOnlineStatus, OfflineBanner } from "./connection-status";
+import { MaskModeToggle } from "./mask-mode-toggle";
 
 const buildSubscriptionPaymentDraft = (sub: Subscription, profileId: string | undefined): Transaction => ({
   id: crypto.randomUUID(),
@@ -58,9 +53,8 @@ const buildSubscriptionPaymentDraft = (sub: Subscription, profileId: string | un
 const zenLogo = "/images/ZenFinance.svg";
 
 const MainLayout: React.FC = () => {
-  const { profile, logout, updateProfile, loginWithGoogle } = useAuth();
+  const { profile, logout } = useAuth();
   const toast = useSyncStore((s) => s.toast);
-  const isSyncing = useSyncStore((s) => s.isSyncing);
   const maskMode = useMaskStore((s) => s.maskMode);
   const setMaskMode = useMaskStore((s) => s.setMaskMode);
 
@@ -73,23 +67,11 @@ const MainLayout: React.FC = () => {
   const pockets = useFinanceStore((s) => s.pockets);
   const storeTransactions = useFinanceStore((s) => s.transactions);
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  React.useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
+  const isOnline = useOnlineStatus();
 
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
@@ -163,34 +145,11 @@ const MainLayout: React.FC = () => {
           </h1>
         </div>
 
-        {!isOnline && (
-          <div className="mb-6 p-4 rounded-2xl bg-rose-500/5 border border-rose-500/10">
-            <div className="flex items-center gap-2 text-rose-500 mb-1">
-              <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
-              <span className="text-xs font-black uppercase tracking-widest">
-                No Connection
-              </span>
-            </div>
-            <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
-              You are currently disconnected from the internet. Changes will
-              sync when online.
-            </p>
-          </div>
-        )}
-
-        {isOnline && profile.offlineMode && (
-          <div className="mb-6 p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10">
-            <div className="flex items-center gap-2 text-amber-500 mb-1">
-              <LinkSlashIcon className="w-4 h-4" />
-              <span className="text-xs font-black uppercase tracking-widest">
-                Local Mode
-              </span>
-            </div>
-            <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
-              Data is saved only on this device. Cloud sync is disabled.
-            </p>
-          </div>
-        )}
+        <OfflineBanner
+          variant="block"
+          isOnline={isOnline}
+          offlineMode={profile.offlineMode}
+        />
 
         <nav className="flex-1 space-y-2">
           <SidebarLink
@@ -226,54 +185,17 @@ const MainLayout: React.FC = () => {
         </nav>
 
         <div className="mt-auto space-y-3 pt-6 border-t border-gray-800" aria-label="Mask mode toggle">
-          {!isOnline && (
-            <div className="flex items-center gap-3 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-              <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">
-                No Connection
-              </span>
-            </div>
-          )}
+          <OfflineBanner
+            variant="chip"
+            isOnline={isOnline}
+            offlineMode={profile.offlineMode}
+          />
 
-          {isOnline && profile.offlineMode && (
-            <div className="flex items-center gap-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-              <LinkSlashIcon className="w-4 h-4 text-amber-500" />
-              <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">
-                Local Only Mode
-              </span>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setMaskMode(!maskMode)}
-            aria-pressed={maskMode}
-            className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/50 hover:bg-gray-800/50 border border-gray-800/50 transition-all group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="text-gray-400 group-hover:text-indigo-400 transition-colors">
-                {maskMode ? (
-                  <EyeSlashIcon className="w-5 h-5" />
-                ) : (
-                  <EyeIcon className="w-5 h-5" />
-                )}
-              </div>
-              <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors">
-                Mask Mode
-              </span>
-            </div>
-            <div
-              className={`w-8 h-4 rounded-full relative transition-colors ${
-                maskMode ? "bg-indigo-500" : "bg-gray-700"
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
-                  maskMode ? "right-1" : "left-1"
-                }`}
-              />
-            </div>
-          </button>
+          <MaskModeToggle
+            maskMode={maskMode}
+            onToggle={() => setMaskMode(!maskMode)}
+            variant="sidebar"
+          />
         </div>
       </aside>
 
@@ -291,35 +213,16 @@ const MainLayout: React.FC = () => {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            {!isOnline && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[10px] font-black uppercase tracking-wider">
-                <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />
-                No Connection
-              </div>
-            )}
-            {isOnline && profile.offlineMode && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-wider">
-                <LinkSlashIcon className="w-3.5 h-3.5" />
-                Offline
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setMaskMode(!maskMode)}
-              aria-label="Toggle mask mode"
-              aria-pressed={maskMode}
-              className={`p-2 rounded-xl transition-all ${
-                maskMode
-                  ? "bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]"
-                  : "bg-surface border border-gray-800 text-gray-400"
-              }`}
-            >
-              {maskMode ? (
-                <EyeSlashIcon className="w-5 h-5" />
-              ) : (
-                <EyeIcon className="w-5 h-5" />
-              )}
-            </button>
+            <OfflineBanner
+              variant="chip"
+              isOnline={isOnline}
+              offlineMode={profile.offlineMode}
+            />
+            <MaskModeToggle
+              maskMode={maskMode}
+              onToggle={() => setMaskMode(!maskMode)}
+              variant="header"
+            />
             <Link to="/app/profile" className="relative group">
               {profile.photoUrl ? (
                 <div className="w-10 h-10 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-surface shadow-lg group-active:scale-90 transition-transform">

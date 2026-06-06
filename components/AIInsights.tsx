@@ -24,8 +24,8 @@ import {
 	TrashIcon,
 	ChatBubbleLeftRightIcon,
 	Bars3Icon,
-	ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
+import { MessageBubble } from "./ai-insights/MessageBubble";
 const neuralVault = "/images/neural-vault.png";
 
 interface Props {
@@ -702,133 +702,18 @@ out center ${safeLimit * 3};`;
 							m.role === "model" && m.content.includes("🚨 **AI Error**");
 
 						return (
-							<div
+							<MessageBubble
 								key={i}
-								className={`flex flex-col ${
-									m.role === "user" ? "items-end" : "items-start"
-								}`}
-							>
-								<div
-									className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 sm:p-5 ${
-										m.role === "user"
-											? "bg-primary text-white rounded-tr-none shadow-lg shadow-primary/10"
-											: isError
-												? "bg-red-500/10 border border-red-500/30 text-gray-200 rounded-tl-none"
-												: "bg-surface border border-gray-800 text-gray-200 rounded-tl-none"
-									}`}
-								>
-									{m.role === "user" ? (
-										<div className="text-sm sm:text-base whitespace-pre-wrap wrap-break-word">
-											{m.content}
-										</div>
-									) : (
-										<div
-											className={`prose prose-invert prose-sm max-w-none wrap-break-word prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black ${
-												isError
-													? "prose-strong:text-red-400"
-													: "prose-strong:text-primary"
-											} prose-strong:font-bold prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}
-										>
-											<ReactMarkdown remarkPlugins={[remarkGfm]}>
-												{cleanText}
-											</ReactMarkdown>
-										</div>
-									)}
-
-									{m.functionCall && (
-										<div className="mt-4 pt-4 border-t border-gray-800">
-											<div className="flex items-center gap-2 mb-3">
-												<ShieldCheckIcon className="w-4 h-4 text-primary" />
-												<span className="text-xs font-bold text-white uppercase tracking-wider">
-													Data Access Request
-												</span>
-											</div>
-											<div className="bg-black/20 rounded-xl p-3 mb-4">
-												<p className="text-xs text-gray-400 leading-relaxed mb-2">
-													AI would like to use the tool
-													<span className="text-primary font-bold mx-1">
-														{m.functionCall.name}
-													</span>
-													with these parameters:
-												</p>
-												<div className="space-y-1">
-													{Object.entries(m.functionCall.args || {}).map(
-														([k, v]) => (
-															<div
-																key={k}
-																className="flex items-center justify-between text-[10px]"
-															>
-																<span className="text-gray-500 font-medium">
-																	{k}:
-																</span>
-																<span className="text-primary font-bold">
-																	{String(v)}
-																</span>
-															</div>
-														),
-													)}
-												</div>
-											</div>
-
-											{m.status === "pending" ? (
-												<div className="flex gap-2">
-													<button
-														onClick={() => handleToolAction(i, true)}
-														className="flex-1 bg-primary hover:bg-primary-dark text-white text-xs font-bold py-2 rounded-lg transition-all active:scale-95"
-													>
-														Approve
-													</button>
-													<button
-														onClick={() => handleToolAction(i, false)}
-														className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold py-2 rounded-lg transition-all active:scale-95"
-													>
-														Reject
-													</button>
-												</div>
-											) : (
-												<div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
-													{m.status === "approved" ? (
-														<span className="text-emerald-500">✓ Approved</span>
-													) : (
-														<span className="text-red-500">✕ Rejected</span>
-													)}
-												</div>
-											)}
-										</div>
-									)}
-
-									<p
-										className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${
-											m.role === "user"
-												? "text-white/50"
-												: isError
-													? "text-red-500/50"
-													: "text-gray-600"
-										}`}
-									>
-										{new Date(m.timestamp).toLocaleTimeString([], {
-											hour: "2-digit",
-											minute: "2-digit",
-										})}
-									</p>
-								</div>
-
-								{/* AI Suggestions */}
-								{m.role === "model" && !isError && aiSuggestions.length > 0 && (
-									<div className="mt-3 flex flex-wrap gap-2 max-w-[85%] sm:max-w-[75%]">
-										{aiSuggestions.map((suggestion, idx) => (
-											<button
-												key={idx}
-												onClick={() => handleAsk(undefined, suggestion)}
-												className="text-xs bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 py-1.5 px-3 rounded-full transition-all flex items-center gap-1.5"
-											>
-												<PlusIcon className="w-3 h-3" />
-												{suggestion}
-											</button>
-										))}
-									</div>
-								)}
-							</div>
+								message={m}
+								isError={isError}
+								cleanText={cleanText}
+								suggestions={aiSuggestions}
+								onApproveTool={() => handleToolAction(i, true)}
+								onRejectTool={() => handleToolAction(i, false)}
+								onSuggestionClick={(suggestion) =>
+									handleAsk(undefined, suggestion)
+								}
+							/>
 						);
 					})}
 

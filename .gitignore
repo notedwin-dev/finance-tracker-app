@@ -7,3 +7,7 @@ build/
 # docs/
 opencode-power-pack/
 .DS_Store
+.mcp.json
+.claude/
+.codegraph/
+opencode.json

@@ -133,25 +133,16 @@ export function computeSavingsMovement(
   if (t.isHistorical) return pocketDeltas;
 
   if (t.savingPocketId) {
-    const pocket = pockets.find((p) => p.id === t.savingPocketId);
     const txDateStr = normalizeDate(t.date);
-    const isAfterPocketReset =
-      pocket && (!pocket.resetDate || txDateStr >= normalizeDate(pocket.resetDate));
-
+    const isAfterPocketReset = isActivePocket(t.savingPocketId, pockets, txDateStr);
     if (isAfterPocketReset) {
-      const sourceAmount = t.amount;
-      let pocketDelta = 0;
-      if (
+      const isSourcePocketAdd =
         t.type === TransactionType.INCOME ||
-        t.type === TransactionType.ACCOUNT_OPENING
-      ) {
-        pocketDelta = t.amount * factor;
-      } else {
-        pocketDelta = -sourceAmount * factor;
-      }
+        t.type === TransactionType.ACCOUNT_OPENING;
+      const delta = isSourcePocketAdd ? t.amount * factor : -t.amount * factor;
       pocketDeltas.set(
         t.savingPocketId,
-        (pocketDeltas.get(t.savingPocketId) || 0) + pocketDelta,
+        (pocketDeltas.get(t.savingPocketId) || 0) + delta,
       );
     }
   }
@@ -162,11 +153,8 @@ export function computeSavingsMovement(
     !t.transferDirection &&
     !t.linkedTransactionId
   ) {
-    const pocket = pockets.find((p) => p.id === t.toSavingPocketId);
     const txDateStr = normalizeDate(t.date);
-    const isAfterPocketReset =
-      pocket && (!pocket.resetDate || txDateStr >= normalizeDate(pocket.resetDate));
-
+    const isAfterPocketReset = isActivePocket(t.toSavingPocketId, pockets, txDateStr);
     if (isAfterPocketReset) {
       const fee = t.fee || 0;
       const feeType = t.feeType || "INCLUSIVE";
@@ -215,6 +203,17 @@ const isInflowTransaction = (t: Transaction): boolean => {
   if (t.type === TransactionType.ADJUSTMENT && t.amount >= 0) return true;
   if (t.type === TransactionType.TRANSFER && t.transferDirection === "IN") return true;
   return false;
+};
+
+const isActivePocket = (
+  pocketId: string,
+  pockets: SavingPocket[],
+  txDateStr: string,
+): boolean => {
+  const pocket = pockets.find((p) => p.id === pocketId);
+  if (!pocket) return false;
+  if (!pocket.resetDate) return true;
+  return txDateStr >= normalizeDate(pocket.resetDate);
 };
 
 const computeSourceAccountDelta = (

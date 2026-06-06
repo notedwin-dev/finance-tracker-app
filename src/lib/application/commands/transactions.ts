@@ -151,33 +151,52 @@ export async function submitTransaction(
     );
   }
 
+  await handleSubscriptionSideEffects(
+    txWithUser,
+    tx.date,
+    newSubscription,
+    isEdit,
+    subscriptions,
+    userId,
+    now,
+    isCloudEnabled,
+  );
+
+  showToast("Transaction saved", "success");
+}
+
+const handleSubscriptionSideEffects = async (
+  txWithUser: Transaction,
+  txDate: string,
+  newSubscription: Omit<Subscription, "userId" | "id"> | undefined,
+  isEdit: boolean,
+  subscriptions: Subscription[] | undefined,
+  userId: string,
+  now: string,
+  isCloudEnabled: boolean,
+): Promise<void> => {
+  const store = useFinanceStore.getState();
+
   if (newSubscription && !isEdit) {
     const sub = buildNewSubscription(newSubscription, userId, now);
     const updatedSubs = [...(subscriptions || []), sub];
     await StorageService.saveSubscriptions(updatedSubs);
     store.setSubscriptions(updatedSubs);
     if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
+    return;
   }
 
-  if (txWithUser.subscriptionId && !newSubscription && subscriptions) {
-    const sub = subscriptions.find((s: Subscription) => s.id === txWithUser.subscriptionId);
-    if (sub) {
-      const txDate = normalizeDate(tx.date);
-      const nextDateStr = bumpSubscriptionNextDate(sub, txDate);
-      if (nextDateStr !== sub.nextPaymentDate) {
-        const updatedSub = { ...sub, nextPaymentDate: nextDateStr, updatedAt: now };
-        const updatedSubsList = subscriptions.map((s: Subscription) =>
-          s.id === sub.id ? updatedSub : s,
-        );
-        await StorageService.saveSubscriptions(updatedSubsList);
-        store.setSubscriptions(updatedSubsList);
-        if (isCloudEnabled) await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
-      }
-    }
-  }
-
-  showToast("Transaction saved", "success");
-}
+  if (!txWithUser.subscriptionId || newSubscription || !subscriptions) return;
+  const sub = subscriptions.find((s) => s.id === txWithUser.subscriptionId);
+  if (!sub) return;
+  const nextDateStr = bumpSubscriptionNextDate(sub, normalizeDate(txDate));
+  if (nextDateStr === sub.nextPaymentDate) return;
+  const updatedSub = { ...sub, nextPaymentDate: nextDateStr, updatedAt: now };
+  const updatedSubsList = subscriptions.map((s) => (s.id === sub.id ? updatedSub : s));
+  await StorageService.saveSubscriptions(updatedSubsList);
+  store.setSubscriptions(updatedSubsList);
+  if (isCloudEnabled) await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
+};
 
 export async function deleteTransaction(
   id: string,

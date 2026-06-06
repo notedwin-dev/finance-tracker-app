@@ -11,6 +11,7 @@ import { SparklineChart } from "./Charts";
 import { useMask } from "../helpers/useMask";
 import { groupTransactions } from "../helpers/transactions.helper";
 import { convertToDisplayCurrency } from "../src/lib/domain/currency";
+import { reconstructAccountHistory } from "../src/lib/domain/account-trend";
 
 interface Props {
 	account: Account;
@@ -77,62 +78,7 @@ const AccountCard: React.FC<Props> = ({
 	// Real trend data for the account
 	const trendData = React.useMemo(() => {
 		const grouped = groupTransactions(transactions);
-		const accountTxs = grouped
-			.filter((t) => t.accountId === account.id || t.toAccountId === account.id)
-			.sort((a, b) => {
-				const dateA = new Date(a.date).getTime();
-				const dateB = new Date(b.date).getTime();
-				if (dateA !== dateB) return dateB - dateA;
-				return (b.createdAt || 0)
-					.toString()
-					.localeCompare((a.createdAt || 0).toString());
-			});
-
-		const balancePoints: number[] = [];
-		let runningBalance = account.balance;
-		balancePoints.push(runningBalance);
-
-		// grouped are sorted newest first, so iterating directly goes backwards in time
-		for (const tx of accountTxs) {
-			if (tx.isHistorical) continue;
-
-			// Reconstruct previous balance
-			if (
-				tx.type === TransactionType.INCOME ||
-				tx.type === TransactionType.ACCOUNT_OPENING
-			) {
-				if (tx.accountId === account.id) runningBalance -= tx.amount;
-			} else if (
-				tx.type === TransactionType.EXPENSE ||
-				tx.type === TransactionType.ACCOUNT_DELETE
-			) {
-				if (tx.accountId === account.id) runningBalance += tx.amount;
-			} else if (tx.type === TransactionType.ADJUSTMENT) {
-				if (tx.accountId === account.id) runningBalance -= tx.amount;
-			} else if (tx.type === TransactionType.TRANSFER) {
-				const fee = tx.fee || 0;
-				const feeType = tx.feeType || "INCLUSIVE";
-
-				const processTransferRecord = (t: Transaction) => {
-					if (t.accountId === account.id) {
-						const actualOutflow =
-							feeType === "INCLUSIVE" ? t.amount + fee : t.amount;
-						runningBalance += actualOutflow;
-					} else if (t.toAccountId === account.id) {
-						const actualInflow =
-							feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-						runningBalance -= actualInflow;
-					}
-				};
-
-				processTransferRecord(tx);
-			}
-
-			balancePoints.push(runningBalance);
-			if (balancePoints.length >= 12) break;
-		}
-
-		return balancePoints.reverse();
+		return reconstructAccountHistory(grouped, account, 12);
 	}, [account.id, account.balance, transactions]);
 
 	const lastPoint = trendData[trendData.length - 1];

@@ -100,7 +100,7 @@ describe("computeNextOccurrences", () => {
 describe("buildSubscriptionTransaction", () => {
   it("builds a Transaction with subscriptionId and deterministic id", () => {
     const sub = makeSub();
-    const tx = buildSubscriptionTransaction(sub, "2026-01-15", "u1");
+    const tx = buildSubscriptionTransaction(sub, "2026-01-15", "u1", "2026-01-15T08:00:00.000Z");
     expect(tx.id).toBe("sub-sub1-2026-01-15");
     expect(tx.userId).toBe("u1");
     expect(tx.accountId).toBe("acc1");
@@ -111,12 +111,12 @@ describe("buildSubscriptionTransaction", () => {
     expect(tx.shopName).toBe("Netflix (Subscription)");
     expect(tx.date).toBe("2026-01-15");
     expect(tx.subscriptionId).toBe("sub1");
-    expect(tx.createdAt).toBeDefined();
-    expect(tx.updatedAt).toBeDefined();
+    expect(tx.createdAt).toBe("2026-01-15T08:00:00.000Z");
+    expect(tx.updatedAt).toBe("2026-01-15T08:00:00.000Z");
   });
 
   it("uses provided date verbatim", () => {
-    const tx = buildSubscriptionTransaction(makeSub(), "2027-03-01", "u1");
+    const tx = buildSubscriptionTransaction(makeSub(), "2027-03-01", "u1", "2027-03-01T08:00:00.000Z");
     expect(tx.date).toBe("2027-03-01");
     expect(tx.id).toBe("sub-sub1-2027-03-01");
   });

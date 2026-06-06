@@ -176,7 +176,7 @@ export function processSubscriptions(
       logger.warn(`processSubscriptions: invalid nextPaymentDate for sub ${sub.id}, skipping`);
       return sub;
     }
-    const newSubTxs = generatedTxDates.map((d) => buildSubscriptionTransaction(sub, d, currentUserId));
+    const newSubTxs = generatedTxDates.map((d) => buildSubscriptionTransaction(sub, d, currentUserId, new Date().toISOString()));
     newTxs.push(...newSubTxs);
     if (bailed) {
       logger.warn(

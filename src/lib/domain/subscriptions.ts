@@ -39,6 +39,7 @@ export const buildSubscriptionTransaction = (
   sub: Subscription,
   date: string,
   userId: string,
+  now: string,
 ): Transaction => ({
   id: `sub-${sub.id}-${date}`,
   userId,
@@ -50,8 +51,8 @@ export const buildSubscriptionTransaction = (
   shopName: `${sub.name} (Subscription)`,
   date,
   subscriptionId: sub.id,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  createdAt: now,
+  updatedAt: now,
 });
 
 export const convertTransactionAmountForAccount = (

@@ -39,6 +39,105 @@ const mergeLinkedTransferForEdit = (
   return next;
 };
 
+const checkExchangeRateLoaded = (
+  tx: Omit<Transaction, "userId">,
+  accounts: Account[],
+  usdRate: number,
+  showToast: (msg: string, type: "alert" | "success") => void,
+): boolean => {
+  if (usdRate > 0) return true;
+  const txAccount = accounts.find((a) => a.id === tx.accountId);
+  const toAccount = tx.toAccountId
+    ? accounts.find((a) => a.id === tx.toAccountId)
+    : undefined;
+  if (isCrossCurrency(tx, txAccount) || isCrossCurrency(tx, toAccount)) {
+    showToast(
+      "Exchange rate not loaded. Please wait a moment and try again.",
+      "alert",
+    );
+    return false;
+  }
+  return true;
+};
+
+const buildTransactionWithUser = (
+  tx: Omit<Transaction, "userId">,
+  userId: string,
+): Transaction => ({
+  ...tx,
+  userId,
+  id: tx.id || generateId(),
+  createdAt: tx.createdAt || new Date().toISOString(),
+});
+
+const partitionForwardAndReversal = (
+  txWithUser: Transaction,
+  existingTx: Transaction | undefined,
+  linkedRecord: Transaction | null | undefined,
+  linkedTransfer: Transaction | null,
+): { reversalTxs: Transaction[]; forwardTxs: Transaction[] } => {
+  const reversalTxs: Transaction[] = [];
+  if (existingTx) reversalTxs.push(existingTx);
+  if (linkedRecord) reversalTxs.push(linkedRecord);
+  const forwardTxs: Transaction[] = [txWithUser];
+  if (linkedTransfer) forwardTxs.push(linkedTransfer);
+  return { reversalTxs, forwardTxs };
+};
+
+const buildUpdatedTransactionList = (
+  storeTransactions: Transaction[],
+  txWithUser: Transaction,
+  linkedTransfer: Transaction | null,
+  isEdit: boolean,
+  linkedIdToDelete: string | undefined,
+): Transaction[] => {
+  if (isEdit) {
+    return mergeLinkedTransferForEdit(
+      storeTransactions,
+      txWithUser,
+      linkedTransfer,
+      linkedIdToDelete,
+    );
+  }
+  const list = [...storeTransactions, txWithUser];
+  if (linkedTransfer) list.push(linkedTransfer);
+  return list;
+};
+
+const persistAndApplyOrRollback = async (
+  updatedTransactions: Transaction[],
+  updatedAccounts: Account[],
+  updatedPots: Pot[],
+  updatedPockets: SavingPocket[],
+  changes: { accountChanges: Map<string, number>; potChanges: Map<string, number>; pocketChanges: Map<string, number> },
+): Promise<void> => {
+  let snapshots: PersistSnapshots | null = null;
+  try {
+    snapshots = await persistTransactionChanges(
+      updatedTransactions,
+      updatedAccounts,
+      updatedPots,
+      updatedPockets,
+      changes.accountChanges,
+      changes.potChanges,
+      changes.pocketChanges,
+    );
+    applyTransactionUpdatesToStore(
+      updatedTransactions,
+      updatedAccounts,
+      updatedPots,
+      updatedPockets,
+      changes.accountChanges,
+      changes.potChanges,
+      changes.pocketChanges,
+    );
+  } catch (saveError) {
+    logger.error("submitTransaction: save failed, rolling back localStorage", saveError);
+    if (snapshots) await rollbackTransactionChanges(snapshots);
+    throw saveError;
+  }
+};
+
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
   accounts: Account[],
@@ -59,80 +158,41 @@ export async function submitTransaction(
   const userId = profileId || "local";
   const isEdit = !!existingTx;
 
-  const txAccount = accounts.find((a) => a.id === tx.accountId);
-  const toAccount = tx.toAccountId
-    ? accounts.find((a) => a.id === tx.toAccountId)
-    : undefined;
+  if (!checkExchangeRateLoaded(tx, accounts, usdRate, showToast)) return;
 
-  if (usdRate <= 0 && (isCrossCurrency(tx, txAccount) || isCrossCurrency(tx, toAccount))) {
-    showToast(
-      "Exchange rate not loaded. Please wait a moment and try again.",
-      "alert",
-    );
-    return;
-  }
-
-  const txWithUser: Transaction = {
-    ...tx,
-    userId,
-    id: tx.id || generateId(),
-    createdAt: tx.createdAt || new Date().toISOString(),
-  };
+  const txWithUser = buildTransactionWithUser(tx, userId);
   const linkedTransfer = buildLinkedTransferRecord(tx, txWithUser, isDestHistorical);
-
-  const reversalTxs: Transaction[] = [];
-  if (existingTx) reversalTxs.push(existingTx);
-  if (linkedRecord) reversalTxs.push(linkedRecord);
-  const forwardTxs: Transaction[] = [txWithUser];
-  if (linkedTransfer) forwardTxs.push(linkedTransfer);
+  const { reversalTxs, forwardTxs } = partitionForwardAndReversal(
+    txWithUser,
+    existingTx,
+    linkedRecord,
+    linkedTransfer,
+  );
 
   const totalChanges = addChanges(
     sumChanges(reversalTxs, accounts, pots, pockets, -1, usdRate),
     sumChanges(forwardTxs, accounts, pots, pockets, 1, usdRate),
   );
 
-  let updatedTransactions: Transaction[];
-  if (isEdit) {
-    updatedTransactions = mergeLinkedTransferForEdit(
-      store.transactions,
-      txWithUser,
-      linkedTransfer ?? null,
-      linkedIdToDelete,
-    );
-  } else {
-    updatedTransactions = [...store.transactions, txWithUser];
-    if (linkedTransfer) updatedTransactions.push(linkedTransfer);
-  }
+  const updatedTransactions = buildUpdatedTransactionList(
+    store.transactions,
+    txWithUser,
+    linkedTransfer,
+    isEdit,
+    linkedIdToDelete,
+  );
 
   const now = new Date().toISOString();
   const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
     applyChanges(accounts, pots, pockets, totalChanges, now);
 
-  let snapshots: PersistSnapshots | null = null;
-  try {
-    snapshots = await persistTransactionChanges(
-      updatedTransactions,
-      updatedAccounts,
-      updatedPots,
-      updatedPockets,
-      totalChanges.accountChanges,
-      totalChanges.potChanges,
-      totalChanges.pocketChanges,
-    );
-    applyTransactionUpdatesToStore(
-      updatedTransactions,
-      updatedAccounts,
-      updatedPots,
-      updatedPockets,
-      totalChanges.accountChanges,
-      totalChanges.potChanges,
-      totalChanges.pocketChanges,
-    );
-  } catch (saveError) {
-    logger.error("submitTransaction: save failed, rolling back localStorage", saveError);
-    if (snapshots) await rollbackTransactionChanges(snapshots);
-    throw saveError;
-  }
+  await persistAndApplyOrRollback(
+    updatedTransactions,
+    updatedAccounts,
+    updatedPots,
+    updatedPockets,
+    totalChanges,
+  );
 
   if (isCloudEnabled) {
     await syncTransactionToCloud(

@@ -19,6 +19,12 @@
       "skillPath": "skills/personal/edit-article/SKILL.md",
       "computedHash": "e0c50de6d64f528cb4ea32b142e2ec499e291efbc6996369ac4a1eea76d4870c"
     },
+    "fallow": {
+      "source": "fallow-rs/fallow-skills",
+      "sourceType": "github",
+      "skillPath": "fallow/skills/fallow/SKILL.md",
+      "computedHash": "6747bbde67597665d11d394617d1508d52a505f3325e13c87a13777642a56bda"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",

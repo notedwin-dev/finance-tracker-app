@@ -1,4 +1,4 @@
-import { format, isToday, isYesterday } from "date-fns";
+import { isToday, isYesterday } from "date-fns";
 import { parseDateSafe, formatDateReadable } from "../../helpers/transactions.helper";
 
 export function formatDateHeader(dateStr: string | number): string {
@@ -8,9 +8,4 @@ export function formatDateHeader(dateStr: string | number): string {
   if (isYesterday(date)) return "Yesterday";
 
   return formatDateReadable(date);
-}
-
-export function normalizeToDateKey(dateStr: string | number): string {
-  const date = parseDateSafe(dateStr);
-  return format(date, "yyyy-MM-dd");
 }

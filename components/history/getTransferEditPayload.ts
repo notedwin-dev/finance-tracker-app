@@ -1,7 +1,7 @@
 import { Transaction, TransactionType } from "../../types";
 import { GroupedTransaction } from "../../helpers/transactions.helper";
 
-export function getTransferEditPayload(
+function getTransferEditPayload(
   t: GroupedTransaction,
   transactions: Transaction[],
 ): { baseTx: Transaction; partnerTx?: Transaction } {

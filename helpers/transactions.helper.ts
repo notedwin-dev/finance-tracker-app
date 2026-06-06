@@ -150,25 +150,14 @@ export const normalizeDate = (date: string | number): string => {
 	return d.toLocaleDateString("en-CA");
 };
 
-export const getOrdinal = (n: number): string => {
-	if (n > 3 && n < 21) return "th";
-	switch (n % 10) {
-		case 1:
-			return "st";
-		case 2:
-			return "nd";
-		case 3:
-			return "rd";
-		default:
-			return "th";
-	}
-};
-
 export const formatDateReadable = (date: Date | string | number): string => {
 	const d = new Date(date);
 	if (isNaN(d.getTime())) return "Invalid Date";
 	const day = d.getDate();
+	const suffix = day > 3 && day < 21
+		? "th"
+		: ["th", "st", "nd", "rd"][day % 10] ?? "th";
 	const month = d.toLocaleDateString("en-US", { month: "short" });
 	const year = d.getFullYear();
-	return `${month} ${day}${getOrdinal(day)}, ${year}`;
+	return `${month} ${day}${suffix}, ${year}`;
 };

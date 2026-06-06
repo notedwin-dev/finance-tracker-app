@@ -591,24 +591,7 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 			existingData = dataRows.map((row: any[]) => {
 				const obj: any = {};
 				headers.forEach((header, index) => {
-					let val = row[index];
-					if (
-						typeof val === "string" &&
-						(val.trim().startsWith("{") || val.trim().startsWith("["))
-					) {
-						try {
-							val = JSON.parse(val);
-						} catch {
-							/* ignore */
-						}
-					}
-
-					// Convert booleans
-					if (typeof val === "string") {
-						const lower = val.toLowerCase();
-						if (lower === "true") val = true;
-						else if (lower === "false") val = false;
-					}
+					let val = coerceStringValue(row[index]);
 
 					// Convert numeric fields (exclude date fields - they use ISO strings)
 					const numericFields = [
@@ -875,6 +858,21 @@ const getColumnLetter = (index: number): string => {
 
 const serializeCellValue = (val: unknown): unknown => {
 	if (typeof val === "object" && val !== null) return JSON.stringify(val);
+	return val;
+};
+
+const coerceStringValue = (val: unknown): unknown => {
+	if (typeof val !== "string") return val;
+	if (val.trim().startsWith("{") || val.trim().startsWith("[")) {
+		try {
+			return JSON.parse(val);
+		} catch {
+			/* ignore */
+		}
+	}
+	const lower = val.toLowerCase();
+	if (lower === "true") return true;
+	if (lower === "false") return false;
 	return val;
 };
 
@@ -1232,23 +1230,7 @@ export const loadFromGoogleSheets = async (
 						if (header === "time" && typeof val === "number")
 							val = fromSerialTime(val);
 
-						if (
-							typeof val === "string" &&
-							(val.trim().startsWith("{") || val.trim().startsWith("["))
-						) {
-							try {
-								val = JSON.parse(val);
-							} catch {
-								/* ignore */
-							}
-						}
-
-						// Convert booleans
-						if (typeof val === "string") {
-							const lower = val.toLowerCase();
-							if (lower === "true") val = true;
-							else if (lower === "false") val = false;
-						}
+						val = coerceStringValue(val);
 
 						// Convert numeric fields
 						const numericFields = [

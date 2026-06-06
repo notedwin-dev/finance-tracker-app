@@ -34,8 +34,60 @@ import {
 } from "../src/lib/domain/dashboard-trend";
 import { TransactionType } from "../types";
 import DatePicker from "../components/DatePicker";
+import type { Account, Category } from "../types";
 
 type TimeFrame = "1D" | "1W" | "1M" | "YTD" | "ALL";
+
+const isRecentRowInflow = (t: GroupedTransaction): boolean =>
+  t.type === TransactionType.INCOME ||
+  (t.type === TransactionType.TRANSFER && t.transferDirection === "IN");
+
+const getRecentRowIcon = (t: GroupedTransaction, categories: Category[]): string => {
+  if (t.linkedTransaction) return "↔️";
+  return (
+    categories.find((c) => c.id === t.categoryId)?.icon ||
+    (t.type === TransactionType.TRANSFER ? "↔️" : "💰")
+  );
+};
+
+type MaskText = (s: string) => string | React.ReactNode;
+
+const getRecentRowTitle = (
+  t: GroupedTransaction,
+  accounts: Account[],
+  categories: Category[],
+  maskText: MaskText,
+): React.ReactNode => {
+  if (t.linkedTransaction) {
+    if (t.shopName) return maskText(t.shopName);
+    const from = maskText(accounts.find((a) => a.id === t.accountId)?.name || "???");
+    const to = maskText(accounts.find((a) => a.id === t.toAccountId)?.name || "???");
+    return (
+      <>
+        {from} → {to}
+      </>
+    );
+  }
+  return maskText(
+    t.shopName || categories.find((c) => c.id === t.categoryId)?.name || "UNTITLED",
+  );
+};
+
+const formatRecentRowAmount = (
+  t: GroupedTransaction,
+  displayCurrency: "MYR" | "USD",
+  usdRate: number,
+): number => {
+  if (displayCurrency === "MYR") {
+    return t.currency === "USD" ? t.amount * usdRate : t.amount;
+  }
+  return t.currency === "MYR" ? t.amount / usdRate : t.amount;
+};
+
+const getRecentRowAmountClass = (t: GroupedTransaction): string => {
+  if (t.linkedTransaction) return "text-indigo-400";
+  return isRecentRowInflow(t) ? "text-emerald-400" : "text-rose-400";
+};
 
 const DashboardPage: React.FC = () => {
 	const { profile } = useAuth();
@@ -596,41 +648,11 @@ const DashboardPage: React.FC = () => {
 																: "bg-gray-900 border border-gray-800"
 														}`}
 													>
-														{t.linkedTransaction
-															? "↔️"
-															: categories.find((c) => c.id === t.categoryId)
-																	?.icon ||
-																(t.type === TransactionType.TRANSFER && "↔️") ||
-																"💰"}
+														{getRecentRowIcon(t, categories)}
 													</div>
 													<div className="min-w-0">
 														<p className="text-[17px] font-extrabold text-white group-hover:text-indigo-400 transition-colors truncate tracking-tight">
-															{t.linkedTransaction ? (
-																t.shopName ? (
-																	maskText(t.shopName)
-																) : (
-																	<>
-																		{maskText(
-																			accounts.find((a) => a.id === t.accountId)
-																				?.name || "???",
-																		)}{" "}
-																		→{" "}
-																		{maskText(
-																			accounts.find(
-																				(a) => a.id === t.toAccountId,
-																			)?.name || "???",
-																		)}
-																	</>
-																)
-															) : (
-																maskText(
-																	t.shopName ||
-																		categories.find(
-																			(c) => c.id === t.categoryId,
-																		)?.name ||
-																		"UNTITLED",
-																)
-															)}
+															{getRecentRowTitle(t, accounts, categories, maskText)}
 														</p>
 														<p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">
 															{t.time || "??:??"} • {normalizeDate(t.date)}
@@ -655,32 +677,16 @@ const DashboardPage: React.FC = () => {
 												</div>
 												<div className="text-right shrink-0 ml-4">
 													<p
-														className={`font-black text-xl tracking-tighter ${
-															t.linkedTransaction
-																? "text-indigo-400"
-																: t.type === TransactionType.INCOME ||
-																	  (t.type === TransactionType.TRANSFER &&
-																			t.transferDirection === "IN")
-																	? "text-emerald-400"
-																	: "text-rose-400"
-														}`}
+														className={`font-black text-xl tracking-tighter ${getRecentRowAmountClass(t)}`}
 													>
 														{t.linkedTransaction
 															? ""
-															: t.type === TransactionType.INCOME ||
-																  (t.type === TransactionType.TRANSFER &&
-																		t.transferDirection === "IN")
+															: isRecentRowInflow(t)
 																? "+"
 																: "-"}
 														{maskAmount(
 															Math.abs(
-																displayCurrency === "MYR"
-																	? t.currency === "USD"
-																		? t.amount * usdRate
-																		: t.amount
-																	: t.currency === "MYR"
-																		? t.amount / usdRate
-																		: t.amount,
+																formatRecentRowAmount(t, displayCurrency, usdRate),
 															).toLocaleString(undefined, {
 																minimumFractionDigits: 2,
 															}),

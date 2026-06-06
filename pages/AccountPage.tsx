@@ -7,6 +7,7 @@ import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
 import { deleteTransaction, bulkImportTransactions, loadData } from "../src/lib/application/commands";
+import { useHistoryHandlers } from "../src/lib/application/handlers/useHistoryHandlers";
 import { checkSheetClientReady } from "../src/lib/application/commands/sheet";
 import { useAuth } from "../services/auth.services";
 import {
@@ -65,8 +66,6 @@ const AccountPage: React.FC = () => {
 	const { transactions, categories, accounts, pots, pockets } =
 		useFinanceStore();
 	const {
-		setShowAddModal,
-		setEditingTransaction,
 		setShowAccountForm,
 		setEditingAccount,
 	} = useOutletContext<any>();
@@ -126,6 +125,8 @@ const AccountPage: React.FC = () => {
 		});
 		return results;
 	}, [transactions, id]);
+
+	const historyHandlers = useHistoryHandlers();
 
 	const getCurrencySymbol = (currency: string) => {
 		switch (currency) {
@@ -523,21 +524,9 @@ const AccountPage: React.FC = () => {
 							accounts={accounts}
 							pockets={pockets}
 							isAssetPage={true}
-							onAddTransaction={() => setShowAddModal(true)}
-							onEditTransaction={(t) => {
-								setEditingTransaction(t);
-								setShowAddModal(true);
-							}}
-							onDeleteTransaction={(id) =>
-								deleteTransaction(
-									id,
-									accounts,
-									pots,
-									pockets,
-									usdRate,
-									transactions,
-								)
-							}
+							onAddTransaction={historyHandlers.onAddTransaction}
+							onEditTransaction={historyHandlers.onEditTransaction}
+							onDeleteTransaction={historyHandlers.onDeleteTransaction}
 						/>
 					</div>
 				</div>

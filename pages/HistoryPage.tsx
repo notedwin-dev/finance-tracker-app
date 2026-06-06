@@ -1,15 +1,10 @@
 import React, { useEffect } from "react";
-import { useOutletContext } from "react-router-dom";
 import History from "../components/History";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { deleteTransaction } from "../src/lib/application/commands";
+import { useHistoryHandlers } from "../src/lib/application/handlers/useHistoryHandlers";
 
 const HistoryPage: React.FC = () => {
-  const usdRate = useFinanceStore((s) => s.usdRate);
-  const { transactions, categories, accounts, pockets, pots } =
-    useFinanceStore();
-  const { showAddModal, setShowAddModal, setEditingTransaction } =
-    useOutletContext<any>();
+  const { transactions, categories, accounts, pockets } = useFinanceStore();
 
   const expandedTransactions = React.useMemo(() => {
     const results: any[] = [];
@@ -51,6 +46,8 @@ const HistoryPage: React.FC = () => {
     window.scrollTo(0, 0);
   }, []);
 
+  const historyHandlers = useHistoryHandlers();
+
   return (
     <div className="animate-fadeIn max-w-3xl mx-auto">
       <h2 className="text-2xl font-bold mb-6 text-white">
@@ -61,15 +58,9 @@ const HistoryPage: React.FC = () => {
         categories={categories}
         accounts={accounts}
         pockets={pockets}
-        showAddModal={showAddModal}
-        onAddTransaction={() => setShowAddModal(true)}
-        onEditTransaction={(t) => {
-          setEditingTransaction(t);
-          setShowAddModal(true);
-        }}
-        onDeleteTransaction={(id) =>
-          deleteTransaction(id, accounts, pots, pockets, usdRate, transactions)
-        }
+        onAddTransaction={historyHandlers.onAddTransaction}
+        onEditTransaction={historyHandlers.onEditTransaction}
+        onDeleteTransaction={historyHandlers.onDeleteTransaction}
       />
     </div>
   );

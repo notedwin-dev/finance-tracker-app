@@ -9,7 +9,7 @@ import Modal from "./Modal";
 interface Props {
   initialAccount?: Account;
   accounts: Account[];
-  onSave: (account: Omit<Account, "userId">) => void;
+  onSave: (account: Omit<Account, "userId">) => Promise<void>;
   onDelete?: (id: string, name: string) => void;
   onClose: () => void;
 }

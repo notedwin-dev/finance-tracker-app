@@ -29,7 +29,7 @@ Key problems:
 
 We will refactor into a **5-layer architecture** with strict dependency rules:
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │              Presentation Layer              │
 │  pages/  components/  layouts/               │
@@ -117,7 +117,7 @@ Each store uses Zustand with `persist` middleware (or delegates persistence to i
 
 Commands orchestrate a full operation across multiple stores and infrastructure:
 
-```
+```text
 handleTransactionSubmit(tx) {
   1. Validate tx (domain)
   2. Compute balance deltas (domain: balance.engine)

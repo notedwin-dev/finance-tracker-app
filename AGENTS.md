@@ -1,7 +1,8 @@
 # ZenFinance Tracker — Agent Guide
 
 ## Project Structure
-```
+
+```text
 finance-tracker-app/
 ├── components/         # React components (feature folders)
 │   └── history/        #   History/search/filter components

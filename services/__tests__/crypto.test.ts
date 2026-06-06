@@ -60,14 +60,17 @@ describe("crypto.services", () => {
 			const h = await hashPassword("hunter2");
 			const parts = h.split("$");
 
-			// Decode the hash to bytes
-			const hashBytes = Uint8Array.from(atob(parts[3]), (c) => c.charCodeAt(0));
+			const decodeBase64ToBytes = (b64: string) =>
+				Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+			const flipFirstByte = (bytes: Uint8Array) => {
+				bytes[0] = bytes[0] ^ 0xff;
+			};
+			const encodeBytesToBase64 = (bytes: Uint8Array) =>
+				btoa(String.fromCharCode(...bytes));
 
-			// Flip one byte
-			hashBytes[0] = hashBytes[0] ^ 0xFF;
-
-			// Re-encode to base64
-			const tamperedHash = btoa(String.fromCharCode(...hashBytes));
+			const hashBytes = decodeBase64ToBytes(parts[3]);
+			flipFirstByte(hashBytes);
+			const tamperedHash = encodeBytesToBase64(hashBytes);
 			const tampered = `${parts[0]}$${parts[1]}$${parts[2]}$${tamperedHash}`;
 
 			expect(await verifyPassword("hunter2", tampered)).toBe(false);

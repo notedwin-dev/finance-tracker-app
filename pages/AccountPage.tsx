@@ -8,8 +8,8 @@ import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { useUIStore } from "../src/stores/ui.store";
 import { deleteTransaction, bulkImportTransactions, loadData } from "../src/lib/application/commands";
+import { checkSheetClientReady } from "../src/lib/application/commands/sheet";
 import { useAuth } from "../services/auth.services";
-import * as SheetService from "../services/sheets.services";
 import {
 	ChevronLeftIcon,
 	WalletIcon,
@@ -674,7 +674,7 @@ const AccountPage: React.FC = () => {
 				accountId={account.id}
 				onImport={async (txs, isHistorical) => {
 					if (!profile) return;
-					const isCloud = !(profile as any).offlineMode && SheetService.isClientReady();
+					const isCloud = !(profile as any).offlineMode && checkSheetClientReady();
 					const profileId = (profile as any).id || "local";
 					await bulkImportTransactions(
 						txs,

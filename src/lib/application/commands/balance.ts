@@ -75,10 +75,10 @@ export async function recalculateBalances(
       StorageService.savePots(updatedPots),
       StorageService.savePockets(updatedPockets),
     ]);
-    store.setAccounts(updatedAccounts);
-    store.setPots(updatedPots);
-    store.setPockets(updatedPockets);
   }
+  store.setAccounts(updatedAccounts);
+  store.setPots(updatedPots);
+  store.setPockets(updatedPockets);
 
   if (isCloudEnabled && !startDate && !endDate) {
     if (updatedAccounts.length > 0) {

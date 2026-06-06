@@ -37,6 +37,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const ProtectedAppShell = () => (
+  <ProtectedRoute>
+    <MainLayout />
+  </ProtectedRoute>
+);
+
 const AppInit: React.FC = () => {
   useAppInit();
   return null;
@@ -48,21 +54,12 @@ const App: React.FC = () => {
       <AuthProvider>
         <AppInit />
         <Routes>
-          {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
 
-          {/* Protected App Routes */}
-          <Route
-            path="/app"
-            element={
-              <ProtectedRoute>
-                <MainLayout />
-              </ProtectedRoute>
-            }
-          >
+          <Route path="/app" element={<ProtectedAppShell />}>
             <Route index element={<DashboardPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="account/:id" element={<AccountPage />} />

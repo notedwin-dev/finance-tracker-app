@@ -261,6 +261,15 @@ describe("computeBudgetConsumption", () => {
     );
     expect(result.get("pot1")).toBeUndefined();
   });
+
+  it("returns empty map for historical transactions", () => {
+    const result = computeBudgetConsumption(
+      makeTx({ type: TransactionType.EXPENSE, potId: "pot1", isHistorical: true }),
+      1,
+      [makePot()],
+    );
+    expect(result.size).toBe(0);
+  });
 });
 
 describe("computeSavingsMovement", () => {
@@ -307,5 +316,14 @@ describe("computeSavingsMovement", () => {
       [makePocket({ resetDate: "2026-01-01" })],
     );
     expect(result.get("pocket1")).toBeUndefined();
+  });
+
+  it("returns empty map for historical transactions", () => {
+    const result = computeSavingsMovement(
+      makeTx({ type: TransactionType.INCOME, savingPocketId: "pocket1", isHistorical: true }),
+      1,
+      [makePocket()],
+    );
+    expect(result.size).toBe(0);
   });
 });

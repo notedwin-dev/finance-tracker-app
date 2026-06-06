@@ -223,8 +223,7 @@ const MainLayout: React.FC = () => {
           />
         </nav>
 
-        {/* Mask Mode Toggle */}
-        <div className="mt-auto space-y-3 pt-6 border-t border-gray-800">
+        <div className="mt-auto space-y-3 pt-6 border-t border-gray-800" aria-label="Mask mode toggle">
           {!isOnline && (
             <div className="flex items-center gap-3 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl">
               <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse" />

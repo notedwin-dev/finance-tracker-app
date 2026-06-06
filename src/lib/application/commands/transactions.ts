@@ -2,9 +2,9 @@ import {
   Account, Transaction, Pot, SavingPocket, Subscription,
 } from "../../../../types";
 import {
-  computeAccountTransactionAmount,
-  computeBudgetConsumption,
-  computeSavingsMovement,
+  accumulateDeltas,
+  materializeDeltas,
+  mergeDeltas,
 } from "../../domain/balance.engine";
 import { isCrossCurrency, computeTransactionDeltas } from "../../domain/transaction";
 import { useFinanceStore } from "../../../stores/finance.store";
@@ -262,56 +262,22 @@ export async function deleteTransaction(
     }
   }
 
-  const accountUpdates = new Map<string, number>();
-  const potUpdates = new Map<string, number>();
-  const pocketUpdates = new Map<string, number>();
-
-  const applyDeltas = (t: Transaction, factor: 1 | -1) => {
-    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
-      accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
-      potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
-      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
-    }
-  };
-
-  txsToProcess.forEach((t) => applyDeltas(t, -1));
-
   const now = new Date().toISOString();
-  if (accountUpdates.size > 0) {
-    const updated = accounts.map((a) => {
-      const delta = accountUpdates.get(a.id);
-      return delta !== undefined ? { ...a, balance: a.balance + delta, updatedAt: now } : a;
-    });
-    store.setAccounts(updated);
-    StorageService.saveAccounts(updated);
+  const deltas = accumulateDeltas(txsToProcess, accounts, pots, pockets, -1, usdRate);
+  const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
+    materializeDeltas(accounts, pots, pockets, deltas, now);
+
+  if (updatedAccounts !== accounts) {
+    store.setAccounts(updatedAccounts);
+    StorageService.saveAccounts(updatedAccounts);
   }
-  if (potUpdates.size > 0) {
-    const updated = pots.map((p) => {
-      const delta = potUpdates.get(p.id);
-      if (delta !== undefined) {
-        const newUsedAmount = Math.max(0, p.usedAmount + delta);
-        return { ...p, usedAmount: newUsedAmount, amountLeft: p.limitAmount - newUsedAmount, updatedAt: now };
-      }
-      return p;
-    });
-    store.setPots(updated);
-    StorageService.savePots(updated);
+  if (updatedPots !== pots) {
+    store.setPots(updatedPots);
+    StorageService.savePots(updatedPots);
   }
-  if (pocketUpdates.size > 0) {
-    const updated = pockets.map((p) => {
-      const delta = pocketUpdates.get(p.id);
-      if (delta !== undefined) {
-        const newCurrentAmount = Math.max(0, p.currentAmount + delta);
-        return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
-      }
-      return p;
-    });
-    store.setPockets(updated);
-    StorageService.savePockets(updated);
+  if (updatedPockets !== pockets) {
+    store.setPockets(updatedPockets);
+    StorageService.savePockets(updatedPockets);
   }
 
   store.removeTransactions(idsToDelete);
@@ -358,56 +324,22 @@ export async function batchDeleteTransaction(
 
   if (txsToProcess.length === 0) return;
 
-  const accountUpdates = new Map<string, number>();
-  const potUpdates = new Map<string, number>();
-  const pocketUpdates = new Map<string, number>();
-
-  const applyDeltas = (t: Transaction, factor: 1 | -1) => {
-    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
-      accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
-      potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
-      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
-    }
-  };
-
-  txsToProcess.forEach((tx) => applyDeltas(tx, -1));
-
   const now = new Date().toISOString();
-  if (accountUpdates.size > 0) {
-    const updated = accounts.map((a) => {
-      const delta = accountUpdates.get(a.id);
-      return delta !== undefined ? { ...a, balance: a.balance + delta, updatedAt: now } : a;
-    });
-    store.setAccounts(updated);
-    StorageService.saveAccounts(updated);
+  const deltas = accumulateDeltas(txsToProcess, accounts, pots, pockets, -1, usdRate);
+  const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
+    materializeDeltas(accounts, pots, pockets, deltas, now);
+
+  if (updatedAccounts !== accounts) {
+    store.setAccounts(updatedAccounts);
+    StorageService.saveAccounts(updatedAccounts);
   }
-  if (potUpdates.size > 0) {
-    const updated = pots.map((p) => {
-      const delta = potUpdates.get(p.id);
-      if (delta !== undefined) {
-        const newUsedAmount = Math.max(0, p.usedAmount + delta);
-        return { ...p, usedAmount: newUsedAmount, amountLeft: p.limitAmount - newUsedAmount, updatedAt: now };
-      }
-      return p;
-    });
-    store.setPots(updated);
-    StorageService.savePots(updated);
+  if (updatedPots !== pots) {
+    store.setPots(updatedPots);
+    StorageService.savePots(updatedPots);
   }
-  if (pocketUpdates.size > 0) {
-    const updated = pockets.map((p) => {
-      const delta = pocketUpdates.get(p.id);
-      if (delta !== undefined) {
-        const newCurrentAmount = Math.max(0, p.currentAmount + delta);
-        return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
-      }
-      return p;
-    });
-    store.setPockets(updated);
-    StorageService.savePockets(updated);
+  if (updatedPockets !== pockets) {
+    store.setPockets(updatedPockets);
+    StorageService.savePockets(updatedPockets);
   }
 
   const idsToDelete = Array.from(idsToDeleteSet);
@@ -479,23 +411,22 @@ export async function bulkImportTransactions(
   }
 
   if (adjustBalance && !isHistorical) {
-    const accountUpdates = new Map<string, number>();
+    const { accountDeltas } = accumulateDeltas(
+      transactionsToInsert,
+      accounts,
+      pots,
+      pockets,
+      1,
+      usdRate,
+    );
 
-    transactionsToInsert.forEach((tx) => {
-      const acc = accounts.find((a) => a.id === tx.accountId);
-      if (!acc) return;
-      for (const [id, delta] of computeAccountTransactionAmount(tx, 1, accounts, usdRate)) {
-        accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
-      }
-    });
-
-    if (accountUpdates.size > 0) {
+    if (accountDeltas.size > 0) {
       const now = new Date().toISOString();
       const updatedAccounts = accounts.map((a) => {
-        if (accountUpdates.has(a.id)) {
+        if (accountDeltas.has(a.id)) {
           return {
             ...a,
-            balance: a.balance + (accountUpdates.get(a.id) || 0),
+            balance: a.balance + (accountDeltas.get(a.id) || 0),
             updatedAt: now,
           };
         }
@@ -610,73 +541,38 @@ export async function batchEditTransactions(
     }
   }
 
-  const potUpdates = new Map<string, number>();
-  const pocketUpdates = new Map<string, number>();
-  const accountUpdates = new Map<string, number>();
-
-  const applyDeltas = (t: Transaction, factor: 1 | -1) => {
-    if (t.isHistorical) return;
-    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
-      accountUpdates.set(id, (accountUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
-      potUpdates.set(id, (potUpdates.get(id) || 0) + delta);
-    }
-    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
-      pocketUpdates.set(id, (pocketUpdates.get(id) || 0) + delta);
-    }
-  };
-
+  const oldTxsForDeltas: Transaction[] = [];
+  const newTxsForDeltas: Transaction[] = [];
   affectedTransactionIds.forEach((txId) => {
     const newTx = updatedTransactionsList.find((t) => t.id === txId);
     const oldTx = transactions.find((t) => t.id === txId);
-
     if (oldTx && newTx) {
-      applyDeltas(oldTx, -1);
-      applyDeltas(newTx, 1);
+      oldTxsForDeltas.push(oldTx);
+      newTxsForDeltas.push(newTx);
     }
   });
 
+  const withdrawals = accumulateDeltas(oldTxsForDeltas, accounts, pots, pockets, -1, usdRate);
+  const deposits = accumulateDeltas(newTxsForDeltas, accounts, pots, pockets, 1, usdRate);
+  const deltas = mergeDeltas(withdrawals, deposits);
+
   const now = new Date().toISOString();
-  if (potUpdates.size > 0) {
-    const updatedPotList = pots.map((p) => {
-      if (potUpdates.has(p.id)) {
-        const delta = potUpdates.get(p.id) || 0;
-        const newUsedAmount = p.usedAmount + delta;
-        return {
-          ...p,
-          usedAmount: Math.max(0, newUsedAmount),
-          amountLeft: p.limitAmount - Math.max(0, newUsedAmount),
-          updatedAt: now,
-        };
-      }
-      return p;
-    });
+  const { accounts: updatedAccountList, pots: updatedPotList, pockets: updatedPocketList } =
+    materializeDeltas(accounts, pots, pockets, deltas, now);
+
+  if (deltas.potDeltas.size > 0) {
     store.setPots(updatedPotList);
-    const affectedPots = updatedPotList.filter((p) => potUpdates.has(p.id));
+    const affectedPots = updatedPotList.filter((p) => deltas.potDeltas.has(p.id));
     StorageService.savePots(updatedPotList);
     if (isCloudEnabled && affectedPots.length > 0) {
       await SheetService.updateMany("Pots", affectedPots);
     }
   }
 
-  if (pocketUpdates.size > 0) {
-    const updatedPocketList = pockets.map((p) => {
-      if (pocketUpdates.has(p.id)) {
-        return {
-          ...p,
-          currentAmount: Math.max(
-            0,
-            p.currentAmount + (pocketUpdates.get(p.id) || 0),
-          ),
-          updatedAt: now,
-        };
-      }
-      return p;
-    });
+  if (deltas.pocketDeltas.size > 0) {
     store.setPockets(updatedPocketList);
     const affectedPockets = updatedPocketList.filter((p) =>
-      pocketUpdates.has(p.id),
+      deltas.pocketDeltas.has(p.id),
     );
     StorageService.savePockets(updatedPocketList);
     if (isCloudEnabled && affectedPockets.length > 0) {
@@ -684,22 +580,12 @@ export async function batchEditTransactions(
     }
   }
 
-  if (accountUpdates.size > 0) {
-    const updatedAccountList = accounts.map((a) => {
-      if (accountUpdates.has(a.id)) {
-        return {
-          ...a,
-          balance: a.balance + (accountUpdates.get(a.id) || 0),
-          updatedAt: now,
-        };
-      }
-      return a;
-    });
+  if (deltas.accountDeltas.size > 0) {
     store.setAccounts(updatedAccountList);
     StorageService.saveAccounts(updatedAccountList);
     if (isCloudEnabled) {
       const affectedAccounts = updatedAccountList.filter((a) =>
-        accountUpdates.has(a.id),
+        deltas.accountDeltas.has(a.id),
       );
       if (affectedAccounts.length > 0) {
         await SheetService.updateMany("Accounts", affectedAccounts);

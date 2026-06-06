@@ -2,6 +2,94 @@ import { Transaction, TransactionType, Account, Pot, SavingPocket } from "../../
 import { normalizeDate } from "./dates";
 import { convertAmount } from "./currency";
 
+export interface AccumulatedDeltas {
+  accountDeltas: Map<string, number>;
+  potDeltas: Map<string, number>;
+  pocketDeltas: Map<string, number>;
+}
+
+export function accumulateDeltas(
+  txs: Transaction[],
+  accounts: Account[],
+  pots: Pot[],
+  pockets: SavingPocket[],
+  factor: 1 | -1,
+  usdRate: number,
+): AccumulatedDeltas {
+  const accountDeltas = new Map<string, number>();
+  const potDeltas = new Map<string, number>();
+  const pocketDeltas = new Map<string, number>();
+
+  for (const t of txs) {
+    for (const [id, delta] of computeAccountTransactionAmount(t, factor, accounts, usdRate)) {
+      accountDeltas.set(id, (accountDeltas.get(id) || 0) + delta);
+    }
+    for (const [id, delta] of computeBudgetConsumption(t, factor, pots)) {
+      potDeltas.set(id, (potDeltas.get(id) || 0) + delta);
+    }
+    for (const [id, delta] of computeSavingsMovement(t, factor, pockets)) {
+      pocketDeltas.set(id, (pocketDeltas.get(id) || 0) + delta);
+    }
+  }
+
+  return { accountDeltas, potDeltas, pocketDeltas };
+}
+
+export function mergeDeltas(...groups: AccumulatedDeltas[]): AccumulatedDeltas {
+  const accountDeltas = new Map<string, number>();
+  const potDeltas = new Map<string, number>();
+  const pocketDeltas = new Map<string, number>();
+  for (const g of groups) {
+    for (const [id, d] of g.accountDeltas) accountDeltas.set(id, (accountDeltas.get(id) || 0) + d);
+    for (const [id, d] of g.potDeltas) potDeltas.set(id, (potDeltas.get(id) || 0) + d);
+    for (const [id, d] of g.pocketDeltas) pocketDeltas.set(id, (pocketDeltas.get(id) || 0) + d);
+  }
+  return { accountDeltas, potDeltas, pocketDeltas };
+}
+
+export function materializeDeltas(
+  accounts: Account[],
+  pots: Pot[],
+  pockets: SavingPocket[],
+  deltas: AccumulatedDeltas,
+  now: string,
+): { accounts: Account[]; pots: Pot[]; pockets: SavingPocket[] } {
+  const updatedAccounts =
+    deltas.accountDeltas.size > 0
+      ? accounts.map((a) => {
+          const d = deltas.accountDeltas.get(a.id);
+          return d !== undefined ? { ...a, balance: a.balance + d, updatedAt: now } : a;
+        })
+      : accounts;
+
+  const updatedPots =
+    deltas.potDeltas.size > 0
+      ? pots.map((p) => {
+          const d = deltas.potDeltas.get(p.id);
+          if (d === undefined) return p;
+          const newUsedAmount = Math.max(0, p.usedAmount + d);
+          return {
+            ...p,
+            usedAmount: newUsedAmount,
+            amountLeft: p.limitAmount - newUsedAmount,
+            updatedAt: now,
+          };
+        })
+      : pots;
+
+  const updatedPockets =
+    deltas.pocketDeltas.size > 0
+      ? pockets.map((p) => {
+          const d = deltas.pocketDeltas.get(p.id);
+          if (d === undefined) return p;
+          const newCurrentAmount = Math.max(0, p.currentAmount + d);
+          return { ...p, currentAmount: newCurrentAmount, updatedAt: now };
+        })
+      : pockets;
+
+  return { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets };
+}
+
 export function computeBudgetConsumption(
   t: Transaction,
   factor: 1 | -1,

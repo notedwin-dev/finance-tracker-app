@@ -16,8 +16,34 @@ const BACKEND_URL =
 
 const normalizeApiKey = (rawKey?: string): string => {
 	if (!rawKey) return "";
-	return rawKey.trim().replace(/^['\"]|['\"]$/g, "");
+	return rawKey.trim().replace(/^['"]|['"]$/g, "");
 };
+
+async function fetchProxyTitle(
+	firstQuestion: string,
+	firstAnswer: string,
+): Promise<string> {
+	try {
+		const response = await fetch(`${BACKEND_URL}/ai/title`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				question: firstQuestion,
+				answer: firstAnswer,
+			}),
+		});
+
+		if (!response.ok) {
+			return "New Financial Chat";
+		}
+
+		const data = await response.json();
+		return data.title || "New Financial Chat";
+	} catch (e) {
+		logger.error("Proxy Title Error:", e);
+		return "New Financial Chat";
+	}
+}
 
 const isPlaceholderApiKey = (key: string): boolean => {
 	const normalized = key.trim().toLowerCase();
@@ -435,26 +461,7 @@ export const generateChatTitle = async (
 ): Promise<string> => {
 	const resolvedApiKey = resolveApiKey(apiKey);
 	if (!resolvedApiKey) {
-		try {
-			const response = await fetch(`${BACKEND_URL}/ai/title`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					question: firstQuestion,
-					answer: firstAnswer,
-				}),
-			});
-
-			if (!response.ok) {
-				return "New Financial Chat";
-			}
-
-			const data = await response.json();
-			return data.title || "New Financial Chat";
-		} catch (e) {
-			logger.error("Proxy Title Error:", e);
-			return "New Financial Chat";
-		}
+		return fetchProxyTitle(firstQuestion, firstAnswer);
 	}
 
 	try {
@@ -475,25 +482,7 @@ export const generateChatTitle = async (
 		return text.replace(/"/g, "").trim() || "New Chat";
 	} catch (e) {
 		if (isInvalidApiKeyError(e)) {
-			try {
-				const response = await fetch(`${BACKEND_URL}/ai/title`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						question: firstQuestion,
-						answer: firstAnswer,
-					}),
-				});
-
-				if (!response.ok) {
-					return "New Financial Chat";
-				}
-
-				const data = await response.json();
-				return data.title || "New Financial Chat";
-			} catch (proxyError) {
-				logger.error("Title Proxy Fallback Error:", proxyError);
-			}
+			return fetchProxyTitle(firstQuestion, firstAnswer);
 		}
 		logger.error("Title Generation Error:", e);
 		return "New Financial Chat";

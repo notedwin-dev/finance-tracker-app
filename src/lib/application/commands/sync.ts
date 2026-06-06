@@ -212,8 +212,8 @@ export function processSubscriptions(
     return;
   }
 
-  const allTxs = [...currentTxs, ...dedupedNewTxs];
   const accUpdates = new Map<string, number>();
+  const appliedTxs: Transaction[] = [];
   dedupedNewTxs.forEach((t) => {
     const acc = accounts.find((a) => a.id === t.accountId);
     if (!acc) return;
@@ -225,7 +225,22 @@ export function processSubscriptions(
     }
     const amount = convertTransactionAmountForAccount(t, acc, usdRate, rateValid);
     accUpdates.set(t.accountId, (accUpdates.get(t.accountId) || 0) + amount);
+    appliedTxs.push(t);
   });
+
+  if (appliedTxs.length === 0) {
+    if (persist) {
+      StorageService.saveSubscriptions(updatedSubs);
+    }
+    useFinanceStore.getState().setSubscriptions(updatedSubs);
+    useSyncStore.getState().showToast(
+      "No new subscription payments to apply.",
+      "info",
+    );
+    return;
+  }
+
+  const persistedTxs = [...currentTxs, ...appliedTxs];
 
   const updatedAccounts = accounts.map((a) => {
     if (accUpdates.has(a.id))
@@ -238,18 +253,18 @@ export function processSubscriptions(
   });
 
   const store = useFinanceStore.getState();
-  store.setTransactions(allTxs);
+  store.setTransactions(persistedTxs);
   store.setSubscriptions(updatedSubs);
   store.setAccounts(updatedAccounts);
 
   if (persist) {
-    StorageService.saveTransactions(allTxs);
+    StorageService.saveTransactions(persistedTxs);
     StorageService.saveSubscriptions(updatedSubs);
     StorageService.saveAccounts(updatedAccounts);
   }
 
   useSyncStore.getState().showToast(
-    `Processed ${processedCount} subscription payments, ${dedupedNewTxs.length} new transactions applied.`,
+    `Processed ${processedCount} subscription payments, ${appliedTxs.length} new transactions applied.`,
     "success",
   );
 }

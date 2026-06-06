@@ -6,6 +6,7 @@ import type { UserProfile, Account, Transaction, Subscription } from "../../../.
 import { TransactionType } from "../../../../types";
 import { normalizeDate, parseDateSafe } from "../../../../helpers/transactions.helper";
 import { stripVaultFromAccount } from "../../domain/migration";
+import { mergeEntities, mergeProfile, toTimestamp } from "../../domain/sync";
 import {
   computeNextOccurrences,
   buildSubscriptionTransaction,
@@ -293,24 +294,30 @@ export async function syncData(
   const userId = currentProfile.id || profile.id;
   if (userId) SheetService.setSheetUser(userId);
 
+  async function ensureGapiReady(): Promise<boolean> {
+    try {
+      await SheetService.initGapiClient();
+    } catch (e) {
+      logger.warn("GAPI init failed, likely offline.");
+      syncInProgress = false;
+      useSyncStore.getState().setIsSyncing(false);
+      return false;
+    }
+    const savedToken = localStorage.getItem("google_access_token");
+    const savedExpiry = localStorage.getItem("google_token_expiry");
+    if (savedToken) {
+      const expiresIn = savedExpiry
+        ? (parseInt(savedExpiry) - Date.now()) / 1000
+        : undefined;
+      SheetService.setGapiAccessToken(savedToken, expiresIn);
+    }
+    return true;
+  }
+
   try {
     if (!SheetService.isClientReady()) {
-      try {
-        await SheetService.initGapiClient();
-      } catch (e) {
-        logger.warn("GAPI init failed, likely offline.");
-        syncInProgress = false;
-        useSyncStore.getState().setIsSyncing(false);
-        return;
-      }
-      const savedToken = localStorage.getItem("google_access_token");
-      const savedExpiry = localStorage.getItem("google_token_expiry");
-      if (savedToken) {
-        const expiresIn = savedExpiry
-          ? (parseInt(savedExpiry) - Date.now()) / 1000
-          : undefined;
-        SheetService.setGapiAccessToken(savedToken, expiresIn);
-      }
+      const ok = await ensureGapiReady();
+      if (!ok) return;
     }
 
     if (!SheetService.isClientReady()) {
@@ -342,13 +349,6 @@ export async function syncData(
       let useCloudAsAuthority = true;
 
       if (hasCloudData && hasLocalData && cloudData.profile) {
-        const toTimestamp = (value: any): number => {
-          if (!value) return 0;
-          if (typeof value === "number") return value;
-          if (typeof value === "string") return new Date(value).getTime();
-          return 0;
-        };
-
         const cloudLastUpdated = toTimestamp(cloudData.profile.lastUpdatedAt);
         const localLastSynced = toTimestamp(profile.lastSyncAt);
 
@@ -361,94 +361,16 @@ export async function syncData(
         }
       }
 
-      let activeProfile = { ...profile };
-      if (cloudData.profile) {
-        const updates: any = {};
-
-        if (cloudData.profile.name && cloudData.profile.name !== profile.name) {
-          updates.name = cloudData.profile.name;
-        }
-
-        if (
-          cloudData.profile.maskMode !== undefined &&
-          cloudData.profile.maskMode !== profile.maskMode
-        ) {
-          updates.maskMode = cloudData.profile.maskMode;
-        }
-
-        if (
-          cloudData.profile.showAIAssistant !== undefined &&
-          cloudData.profile.showAIAssistant !== profile.showAIAssistant
-        ) {
-          updates.showAIAssistant = cloudData.profile.showAIAssistant;
-        }
-
-        if (
-          cloudData.profile.syncChatToSheets !== undefined &&
-          cloudData.profile.syncChatToSheets !== profile.syncChatToSheets
-        ) {
-          updates.syncChatToSheets = cloudData.profile.syncChatToSheets;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          logger.log("Updating local profile from cloud merge", updates);
-          activeProfile = { ...activeProfile, ...updates };
-        }
+      const activeProfile = mergeProfile({ ...profile }, cloudData.profile);
+      if (cloudData.profile && activeProfile !== profile) {
+        logger.log("Updating local profile from cloud merge", activeProfile);
       }
 
       const merge = <T extends { id: string; updatedAt?: any }>(
         local: T[],
         cloud: T[],
         trustCloud: boolean = true,
-      ): T[] => {
-        const map = new Map<string, T>();
-        const now = new Date().toISOString();
-
-        const toTimestamp = (value: any): number => {
-          if (!value) return 0;
-          if (typeof value === "number") return value;
-          if (typeof value === "string") return new Date(value).getTime();
-          return 0;
-        };
-
-        if (trustCloud) {
-          cloud.forEach((i) => {
-            if (i.id) {
-              map.set(String(i.id), { ...i, updatedAt: i.updatedAt || now });
-            }
-          });
-          local.forEach((i) => {
-            const id = String(i.id);
-            if (map.has(id)) {
-              const cloudItem = map.get(id)!;
-              if (toTimestamp(i.updatedAt) > toTimestamp(cloudItem.updatedAt)) {
-                map.set(id, { ...i, updatedAt: i.updatedAt || now });
-              }
-            } else if (i.id) {
-              map.set(id, { ...i, updatedAt: i.updatedAt || now });
-            }
-          });
-        } else {
-          local.forEach((i) => {
-            if (i.id) {
-              map.set(String(i.id), { ...i, updatedAt: i.updatedAt || now });
-            }
-          });
-          cloud.forEach((i) => {
-            const id = String(i.id);
-            if (map.has(id)) {
-              const localItem = map.get(id)!;
-              if (toTimestamp(i.updatedAt) > toTimestamp(localItem.updatedAt)) {
-                map.set(id, { ...i, updatedAt: i.updatedAt || now });
-              }
-            } else if (i.id) {
-              map.set(id, { ...i, updatedAt: i.updatedAt || now });
-            }
-          });
-        }
-
-        return Array.from(map.values());
-      };
+      ): T[] => mergeEntities(local, cloud, trustCloud);
 
       const cloudAccounts: Account[] = cloudData.accounts || [];
       const localAccounts: Account[] = StorageService.getStoredAccounts();

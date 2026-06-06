@@ -23,6 +23,11 @@ import {
 } from "@heroicons/react/24/outline";
 import { TrashIcon } from "@heroicons/react/24/solid";
 import DatePicker from "./DatePicker";
+import { formatCalculatorAmount } from "../helpers/amount-calculator";
+import {
+	validateTransactionForm,
+	serializeBreakdownItems,
+} from "../src/lib/domain/transaction-form.validation";
 
 interface Props {
 	accounts: Account[];
@@ -149,42 +154,6 @@ const TransactionForm: React.FC<Props> = ({
 	const [validationError, setValidationError] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	// Reusable Calculator-style decimal logic
-	const formatCalculatorAmount = (val: string, currentVal: string) => {
-		if (!val) return "";
-
-		const cleanCurrent = String(currentVal || "");
-
-		// 1. Handle Dot Promotion (e.g., "4.50" + "." -> "450.")
-		if (val.endsWith(".") && !cleanCurrent.endsWith(".")) {
-			const d = cleanCurrent.replace(/\D/g, "");
-			return parseInt(d || "0", 10).toString() + ".";
-		}
-
-		// 2. Manual Decimal Entry (e.g., "450." + "2" -> "450.2")
-		if (cleanCurrent.endsWith(".") || cleanCurrent.match(/\.\d$/)) {
-			const parts = cleanCurrent.split(".");
-			const newChar = val.length > cleanCurrent.length ? val.slice(-1) : "";
-
-			if (/\d/.test(newChar)) {
-				if (parts[1] === "") {
-					return parts[0] + "." + newChar;
-				}
-				if (parts[1].length === 1) {
-					return parts[0] + "." + parts[1] + newChar;
-				}
-			}
-		}
-
-		// 3. Default Shifting Logic (Calculator style)
-		const digits = val.replace(/\D/g, "");
-		if (!digits) return "";
-
-		const cents = parseInt(digits, 10);
-		return (cents / 100).toFixed(2);
-	};
-
-	// Auto-decimal with manual "." support
 	const handleAmountChange = (val: string) => {
 		setAmount(formatCalculatorAmount(val, amount));
 	};
@@ -251,44 +220,21 @@ const TransactionForm: React.FC<Props> = ({
 
 		setValidationError(null);
 
-		const missingFields: string[] = [];
-		if (!isSubsidized && (!amount || parseFloat(amount) <= 0))
-			missingFields.push("Amount");
-		if (isSubsidized && (!marketValue || parseFloat(marketValue) <= 0))
-			missingFields.push("Market Value");
-		if (!accountId) missingFields.push("Account");
-		if (type === TransactionType.TRANSFER && !toAccountId)
-			missingFields.push("To Account");
-		if (
-			(type === TransactionType.EXPENSE || type === TransactionType.INCOME) &&
-			!categoryId
-		)
-			missingFields.push("Category");
-		if (!date) missingFields.push("Date");
-
-		if (missingFields.length > 0) {
-			setValidationError(
-				`Missing required fields: ${missingFields.join(", ")}`,
-			);
+		const error = validateTransactionForm({
+			type,
+			amount,
+			marketValue,
+			accountId,
+			toAccountId,
+			categoryId,
+			date,
+			isSubsidized,
+			breakdownEnabled,
+			breakdownItems,
+		});
+		if (error) {
+			setValidationError(error);
 			return;
-		}
-
-		if (type === TransactionType.TRANSFER && accountId === toAccountId) {
-			setValidationError("Source and Destination accounts cannot be the same");
-			return;
-		}
-
-		if (breakdownEnabled) {
-			const breakdownTotal = breakdownItems.reduce(
-				(sum, item) => sum + (parseFloat(item.amount) || 0),
-				0,
-			);
-			if (breakdownTotal > parseFloat(amount)) {
-				setValidationError(
-					`Breakdown total (${breakdownTotal.toFixed(2)}) exceeds total amount (${parseFloat(amount).toFixed(2)})`,
-				);
-				return;
-			}
 		}
 
 		setIsSubmitting(true);
@@ -321,13 +267,7 @@ const TransactionForm: React.FC<Props> = ({
 				shopName,
 				date,
 				time: time || undefined,
-				amountBreakdown:
-					breakdownEnabled && breakdownItems.length > 0
-						? breakdownItems.map((item) => ({
-								...item,
-								amount: parseFloat(item.amount) || 0,
-							}))
-						: undefined,
+				amountBreakdown: serializeBreakdownItems(breakdownEnabled, breakdownItems),
 				createdAt: initialTransaction?.createdAt || new Date().toISOString(),
 				linkedTransactionId: initialTransaction?.linkedTransactionId,
 				transferDirection: initialTransaction?.transferDirection,
@@ -341,7 +281,7 @@ const TransactionForm: React.FC<Props> = ({
 						accountId,
 						categoryId,
 						frequency,
-						nextPaymentDate: date, // Will be updated by DataProvider logic
+						nextPaymentDate: date,
 						active: true,
 					}
 				: undefined;

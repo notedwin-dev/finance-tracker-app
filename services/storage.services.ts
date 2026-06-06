@@ -28,29 +28,6 @@ export const KEYS = {
 
 const getKey = (baseKey: string) => getBaseKey(baseKey, KEYS.PROFILE);
 
-export const hasLegacyData = (): boolean => {
-  const checkKeys = [
-    KEYS.ACCOUNTS,
-    KEYS.TRANSACTIONS,
-    KEYS.GOALS,
-    KEYS.SUBSCRIPTIONS,
-    KEYS.POTS,
-    KEYS.POCKETS,
-  ];
-  for (const key of checkKeys) {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const data = JSON.parse(raw);
-        if (Array.isArray(data) && data.length > 0) return true;
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
-  return false;
-};
-
 export const migrateLegacyData = async (userId: string): Promise<boolean> => {
   if (!userId) return false;
   let hasChanges = false;
@@ -169,37 +146,6 @@ export const importFromKey = (sourceKey: string, targetBaseKey: string) => {
   return false;
 };
 
-export const saveLocalData = (data: {
-  accounts?: Account[];
-  transactions?: Transaction[];
-  categories?: Category[];
-  goals?: Goal[];
-  subscriptions?: Subscription[];
-  pots?: Pot[];
-}) => {
-  if (data.accounts)
-    localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(data.accounts));
-  if (data.transactions)
-    localStorage.setItem(
-      getKey(KEYS.TRANSACTIONS),
-      JSON.stringify(data.transactions),
-    );
-  if (data.categories)
-    localStorage.setItem(
-      getKey(KEYS.CATEGORIES),
-      JSON.stringify(data.categories),
-    );
-  if (data.goals)
-    localStorage.setItem(getKey(KEYS.GOALS), JSON.stringify(data.goals));
-  if (data.subscriptions)
-    localStorage.setItem(
-      getKey(KEYS.SUBSCRIPTIONS),
-      JSON.stringify(data.subscriptions),
-    );
-  if (data.pots)
-    localStorage.setItem(getKey(KEYS.POTS), JSON.stringify(data.pots));
-};
-
 // Initial Data Seeding
 const DEFAULT_CATEGORIES: Category[] = [
   {
@@ -285,61 +231,15 @@ export const saveTransactions = async (transactions: Transaction[]) => {
   }
 };
 
-export const insertOneTransaction = async (transaction: Transaction) => {
-  const transactions = getStoredTransactions();
-  const newTransactions = [...transactions, transaction];
-  localStorage.setItem(
-    getKey(KEYS.TRANSACTIONS),
-    JSON.stringify(newTransactions),
-  );
-  if (isLoggedIn()) {
-    await SheetService.insertOne("Transactions", transaction);
-  }
-};
-
-export const insertManyTransactions = async (newItems: Transaction[]) => {
-  const transactions = getStoredTransactions();
-  const newTransactions = [...transactions, ...newItems];
-  localStorage.setItem(
-    getKey(KEYS.TRANSACTIONS),
-    JSON.stringify(newTransactions),
-  );
-
-  if (isLoggedIn()) {
-    // Insert purely new items one by one (or could optimize to append batch)
-    for (const item of newItems) {
-      await SheetService.insertOne("Transactions", item);
-    }
-  }
-};
-
 export const getStoredAccounts = (): Account[] => {
   const stored = localStorage.getItem(getKey(KEYS.ACCOUNTS));
   return stored ? JSON.parse(stored) : [];
-};
-
-export const getDeviceId = (): string => {
-  let id = localStorage.getItem("device_id");
-  if (!id) {
-    id = `device_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
-    localStorage.setItem("device_id", id);
-  }
-  return id;
 };
 
 export const saveAccounts = async (accounts: Account[]) => {
   localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(accounts));
   if (isLoggedIn()) {
     await SheetService.saveToSheet("Accounts", accounts);
-  }
-};
-
-export const insertOneAccount = async (account: Account) => {
-  const accounts = getStoredAccounts();
-  const newAccounts = [...accounts, account];
-  localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(newAccounts));
-  if (isLoggedIn()) {
-    await SheetService.insertOne("Accounts", account);
   }
 };
 
@@ -374,15 +274,6 @@ export const saveCategories = async (categories: Category[]) => {
   }
 };
 
-export const insertOneCategory = async (category: Category) => {
-  const categories = getStoredCategories();
-  const newCategories = [...categories, category];
-  localStorage.setItem(getKey(KEYS.CATEGORIES), JSON.stringify(newCategories));
-  if (isLoggedIn()) {
-    await SheetService.insertOne("Categories", category);
-  }
-};
-
 export const getStoredGoals = (): Goal[] => {
   const stored = localStorage.getItem(getKey(KEYS.GOALS));
   return stored ? JSON.parse(stored) : [];
@@ -392,15 +283,6 @@ export const saveGoals = async (goals: Goal[]) => {
   localStorage.setItem(getKey(KEYS.GOALS), JSON.stringify(goals));
   if (isLoggedIn()) {
     await SheetService.saveToSheet("Goals", goals);
-  }
-};
-
-export const insertOneGoal = async (goal: Goal) => {
-  const goals = getStoredGoals();
-  const newGoals = [...goals, goal];
-  localStorage.setItem(getKey(KEYS.GOALS), JSON.stringify(newGoals));
-  if (isLoggedIn()) {
-    await SheetService.insertOne("Goals", goal);
   }
 };
 
@@ -508,31 +390,4 @@ export const getStoredProfile = (): UserProfile => {
 
 export const saveProfile = (profile: UserProfile) => {
   localStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
-};
-
-// Full Sync Operation
-export const syncAllData = async (
-  accounts: Account[],
-  transactions: Transaction[],
-  categories: Category[],
-  goals: Goal[],
-  subscriptions: Subscription[],
-  pots: Pot[],
-  pockets: SavingPocket[],
-  chatSessions: ChatSession[],
-  profile: UserProfile,
-) => {
-  if (isLoggedIn()) {
-    await SheetService.syncWithGoogleSheets(
-      accounts,
-      transactions,
-      categories,
-      goals,
-      subscriptions,
-      pots,
-      pockets,
-      profile.syncChatToSheets ? chatSessions : undefined,
-      profile,
-    );
-  }
 };

@@ -39,6 +39,7 @@ finance-tracker-app/
 | `main`      | Production branch (deployed)      | `main`                           |
 
 ### Workflow
+
 1. Create branch from `main`: `feature/xxx`, `bugfix/xxx`, or `refactor/xxx`
 2. Develop and commit on the feature branch
 3. Push and open a PR to `staging` branch
@@ -57,11 +58,13 @@ Read the latest ADR before making architectural changes to understand current de
 ## How to Document Processes
 
 ### Adding a new ADR
+
 1. Create `docs/adrs/NNN-title-kebab-case.md`
 2. Use template from existing ADR (Context → Decision → Consequences → Status)
 3. Number sequentially
 
 ### Daily process documentation
+
 - Significant decisions go in ADRs
 - Task tracking uses `todowrite` during sessions
 - Session summaries go in commit messages
@@ -122,6 +125,7 @@ Single-context layout. See `docs/agents/domain.md`.
 ## Session Log
 
 ### Goal & Chat Refactoring (Previous Session)
+
 - **Goal actions** (`saveGoal`, `deleteGoal`) → extracted from DataProvider to `src/lib/application/commands.ts`
 - **Subscription actions** (`addSubscription`, `deleteSubscription`) → extracted from DataProvider to `src/lib/application/commands.ts`
 - **Chat session actions** (`saveChatSession`, `deleteChatSession`) → extracted from DataProvider to `src/lib/application/commands.ts`
@@ -132,6 +136,7 @@ Single-context layout. See `docs/agents/domain.md`.
 - **Finance store bugfix** (`src/stores/finance.store.ts:84`) — `setChatSessions` used incorrect shorthand `{ chatSessions }` when parameter is `sessions`; fixed to `{ chatSessions: sessions }`
 
 ### Prior Session (Pot, Pocket & Account Migration)
+
 - **Pot/pocket commands** (`savePot`, `deletePot`, `saveSavingPocket`, `deleteSavingPocket`) — added to `src/lib/application/commands.ts`
 - **Account commands** (`saveAccount`, `deleteAccount`) — added to `src/lib/application/commands.ts`
 - **GoalsPage** — switched pots, pockets, accounts from `useData()` to `useFinanceStore`; uses new pot/pocket commands
@@ -145,6 +150,7 @@ Single-context layout. See `docs/agents/domain.md`.
 - **DataContextType** (`context/types.ts`) — removed 6 handler signatures
 
 ### Parallel Refactor (This Session — 2026-06-03)
+
 - **Refactored** `computeBalanceDeltas` → `computeAccountTransactionAmount`, `computeBudgetConsumption`, `computeSavingsMovement` — 82 tests pass
 - **Created 6 permanent subagents** (`~/.config/opencode/agents/`): code-reviewer, test-writer, git-smith, tech-writer, debugger, architect
 - **Created 3 refactor subagents** (`opencode.json`): state-migrator, commands-splitter, page-migrator

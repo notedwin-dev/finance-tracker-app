@@ -3,7 +3,7 @@ import {
   Account, Category, Transaction, Goal, Subscription,
   Pot, SavingPocket, ChatSession, ExchangeRateData,
 } from "../../types";
-import { CryptoPrices } from "../../services/coin.services";
+import type { CryptoPrices } from "../../services/coin.services";
 
 export interface FinanceState {
   accounts: Account[];

@@ -56,7 +56,6 @@ const AssetsPage: React.FC = () => {
           />
         ))}
 
-        {/* Add Asset Card */}
         <button
           onClick={() => setShowAccountForm(true)}
           className="flex flex-col items-center justify-center gap-4 h-70 rounded-[2.5rem] bg-indigo-500/5 border-2 border-dashed border-indigo-500/20 hover:bg-indigo-500/10 hover:border-indigo-500/40 transition-all group"

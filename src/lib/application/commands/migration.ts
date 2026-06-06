@@ -2,7 +2,7 @@ import * as StorageService from "../../../../services/storage.services";
 import * as SheetService from "../../../../services/sheets.services";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { migrateSchemaV1toV2, needsV1Migration } from "../../domain/migration";
-import { logger } from "../logger";
+import { logger } from "../../infrastructure/logger";
 
 export async function runVaultSchemaMigration(): Promise<void> {
   const profile = StorageService.getStoredProfile();
@@ -15,7 +15,12 @@ export async function runVaultSchemaMigration(): Promise<void> {
     migrateSchemaV1toV2(store.accounts, profile, new Date().toISOString());
 
   await StorageService.saveAccounts(cleanedAccounts);
-  StorageService.saveProfile(cleanedProfile);
+  try {
+    await StorageService.saveProfile(cleanedProfile);
+  } catch (e) {
+    logger.error("Vault migration: saveProfile failed, aborting migration", e);
+    throw e;
+  }
   store.setAccounts(cleanedAccounts);
 
   if (cleanedProfile.offlineMode || !SheetService.isClientReady()) return;

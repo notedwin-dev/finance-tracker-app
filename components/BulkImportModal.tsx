@@ -15,7 +15,7 @@ import {
 import { parseBankStatement } from "../services/gemini.services";
 import { Transaction, TransactionType } from "../types";
 import { useAuth } from "../services/auth.services";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 interface Props {
   isOpen: boolean;

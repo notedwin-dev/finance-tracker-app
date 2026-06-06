@@ -9,7 +9,7 @@ import {
 	ChatSession,
 } from "../types";
 import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 import { migrateLegacyPot } from "../src/lib/domain/pot-migration";
 
 declare global {
@@ -24,8 +24,14 @@ const DISCOVERY_DOCS = [
 	"https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ];
 
-const getApiKey = () =>
-	import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
+const getApiKey = () => {
+	const meta = import.meta.env?.VITE_GOOGLE_API_KEY;
+	if (meta) return meta;
+	if (typeof process !== "undefined" && process.env) {
+		return process.env.VITE_GOOGLE_API_KEY;
+	}
+	return undefined;
+};
 
 const maskFileIdForLogging = (fileId: string): string => {
 	if (!fileId || fileId.length < 8) return "***";
@@ -280,7 +286,7 @@ const getSheetNames = async (
 };
 
 export const findUser = async (email: string) => {
-	if (!gapiInited || !hasAccessToken) return null;
+	if (!isClientReady()) return null;
 	try {
 		const fileId = await getSpreadsheetId();
 		if (!fileId) return null;
@@ -329,6 +335,7 @@ export const findUser = async (email: string) => {
 	} catch (e: any) {
 		if (e?.status === 401) {
 			hasAccessToken = false;
+			gapiInited = false;
 			localStorage.removeItem("google_access_token");
 			localStorage.removeItem("google_token_expiry");
 			throw e;

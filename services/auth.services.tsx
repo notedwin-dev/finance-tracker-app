@@ -7,7 +7,7 @@ import { useFinanceStore } from "../src/stores/finance.store";
 import { useSyncStore } from "../src/stores/sync.store";
 import { UserProfile } from "../types";
 import { hashPassword, verifyPassword, isLegacyHash } from "./crypto.services";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 interface AuthContextType {
 	profile: UserProfile;
@@ -160,12 +160,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 				window.location.reload();
 				return;
 			} catch (e) {
-			logger.error("Migration failed", e);
-		}
+				logger.error("Migration failed", e);
+			}
 
-		setProfile(newProfile);
-	} catch (error) {
-		logger.error("Authentication failed", error);
+			setProfile(newProfile);
+		} catch (error) {
+			logger.error("Authentication failed", error);
 		} finally {
 			setIsAuthLoading(false);
 			setAuthStatus(null);

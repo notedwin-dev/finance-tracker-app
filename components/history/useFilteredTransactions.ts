@@ -6,7 +6,7 @@ import {
   normalizeDate,
 } from "../../helpers/transactions.helper";
 import { PAGE_SIZE } from "./constants";
-import { logger } from "../../src/lib/application/logger";
+import { logger } from "../../src/lib/infrastructure/logger";
 import { matchesSearch } from "../../src/lib/domain/search";
 
 export { matchesSearch };

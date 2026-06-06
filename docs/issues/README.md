@@ -6,7 +6,7 @@ This directory mirrors active GitHub issues as markdown files.
 
 - **Create**: When a GitHub issue is created, mirror it here as `NNN-title.md`
 - **Update**: Keep in sync with the GitHub issue body as it evolves
-- **Delete**: When the GitHub issue is closed/fixed, delete the corresponding file
+- **Archive/Retain**: When the GitHub issue is closed/fixed, keep the file and move it to the "Recently Closed" table below. Retain indefinitely so PRs/issues can link back to the discussion.
 
 ## Active Issues
 

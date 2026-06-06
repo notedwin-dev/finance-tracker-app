@@ -32,6 +32,9 @@ const SENSITIVE_KEYS = new Set([
 
 const REDACTED = "[REDACTED]";
 
+const API_KEY_REGEX =
+	/(?:^|[^a-zA-Z0-9])(?:AIzaSy[a-zA-Z0-9_-]{20,}|ya29\.[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9]{20,})/;
+
 const normalizedSensitiveSet = new Set(
 	Array.from(SENSITIVE_KEYS).map(k => k.toLowerCase().replace(/[^a-z0-9]/g, ""))
 );
@@ -45,7 +48,7 @@ const redact = (value: unknown, depth = 0): unknown => {
 	if (value === null || value === undefined) return value;
 
 	if (typeof value === "string") {
-		if (/(?:^|[^a-zA-Z0-9])(?:AIzaSy[a-zA-Z0-9_-]{20,}|ya29\.[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9]{20,})/.test(value)) {
+		if (API_KEY_REGEX.test(value)) {
 			return REDACTED;
 		}
 		return value;
@@ -91,7 +94,7 @@ const format = (args: unknown[]): unknown[] =>
 		if (typeof a === "object" && a !== null) {
 			return redact(a);
 		}
-		if (typeof a === "string" && /(?:^|[^a-zA-Z0-9])(?:AIzaSy[a-zA-Z0-9_-]{20,}|ya29\.[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9]{20,})/.test(a)) {
+		if (typeof a === "string" && API_KEY_REGEX.test(a)) {
 			return REDACTED;
 		}
 		return a;
@@ -105,4 +108,4 @@ export const logger = {
 	debug: (...args: unknown[]) => console.debug(...format(args)),
 };
 
-export const __test__ = { redact, SENSITIVE_KEYS };
+export const __test__ = { redact, SENSITIVE_KEYS, API_KEY_REGEX };

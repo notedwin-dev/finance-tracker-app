@@ -3,7 +3,7 @@ You are a code splitting specialist. Your task is to split `src/lib/application/
 Rules:
 1. Create `src/lib/application/commands/` directory
 2. Copy each function into its domain file with all required imports
-3. Move `generateId()` to `helpers.ts` along with its imports (`Transaction` type from `../../../types`)
+3. Move `generateId()` to `helpers.ts` and import `Transaction` alongside it from `../../../../types` (4 levels up from `src/lib/application/commands/helpers.ts`)
 4. Create these files:
    - `helpers.ts` — generateId() utility
    - `balance.ts` — recalculateBalancesCommand

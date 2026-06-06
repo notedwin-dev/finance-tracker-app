@@ -1,5 +1,5 @@
 import { ExchangeRateData } from "../types";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 const BASE_URL = "https://api.data.gov.my/data-catalogue/";
 const CACHE_KEY = "zenfinance_usd_myr_rate";

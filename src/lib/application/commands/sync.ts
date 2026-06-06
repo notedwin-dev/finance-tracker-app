@@ -13,7 +13,7 @@ import {
   convertTransactionAmountForAccount,
   dedupeTransactions,
 } from "../../domain/subscriptions";
-import { logger } from "../logger";
+import { logger } from "../../infrastructure/logger";
 
 export async function migrateData(): Promise<void> {
   const { showToast } = useSyncStore.getState();
@@ -50,7 +50,6 @@ export async function resetAndSync(
     "google_access_token",
     "google_token_expiry",
     "google_refresh_token",
-    "encrypted_vault_key",
     "device_id",
     "zenfinance_selected_sheet_id",
     StorageService.KEYS.PROFILE,
@@ -70,12 +69,12 @@ export async function resetAndSync(
     if (cloudData.profile) {
       const mergedProfile = { ...profile, ...cloudData.profile };
       StorageService.saveProfile(mergedProfile);
-      if (onProfileUpdate) onProfileUpdate(cloudData.profile);
+      if (onProfileUpdate) onProfileUpdate(mergedProfile);
     }
-    StorageService.saveAccounts(cloudData.accounts);
-    StorageService.saveTransactions(cloudData.transactions);
-    StorageService.saveCategories(cloudData.categories);
-    StorageService.saveGoals(cloudData.goals);
+    StorageService.saveAccounts(cloudData.accounts || []);
+    StorageService.saveTransactions(cloudData.transactions || []);
+    StorageService.saveCategories(cloudData.categories || []);
+    StorageService.saveGoals(cloudData.goals || []);
     StorageService.saveSubscriptions(cloudData.subscriptions || []);
     StorageService.savePots(cloudData.pots || []);
     StorageService.savePockets(cloudData.pockets || []);

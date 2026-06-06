@@ -32,12 +32,17 @@ export function useMask() {
       };
 
       const displayText = permanentMask ? getPermanentMask(text) : text;
+      const previewMask = permanentMask
+        ? getPermanentMask(text)
+        : text.length > 8
+          ? text.slice(0, 2) + "********"
+          : "******";
       if (!maskMode || !text) return displayText;
 
       return (
         <span className="group/mask inline-flex cursor-pointer transition-all duration-300">
           <span className="inline group-hover/mask:hidden whitespace-nowrap opacity-80">
-            {text.length > 8 ? text.slice(0, 2) + "********" : "******"}
+            {previewMask}
           </span>
           <span className="hidden group-hover/mask:inline whitespace-nowrap animate-fadeIn">
             {displayText}

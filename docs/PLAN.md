@@ -220,6 +220,7 @@ const handleCategorySave = async (cat: Category) => {
 ### After
 
 **commands.ts:**
+
 ```typescript
 export async function saveCategory(cat: Category): Promise<void> {
   const store = useFinanceStore.getState();
@@ -230,6 +231,7 @@ export async function saveCategory(cat: Category): Promise<void> {
 ```
 
 **Component:**
+
 ```typescript
 // Before
 const { categories, handleCategorySave } = useData();
@@ -239,6 +241,7 @@ const handleCategorySave = (cat: Category) => saveCategory(cat);
 ```
 
 **DataProvider:**
+
 ```typescript
 // After loading data from Sheets:
 const store = useFinanceStore.getState();

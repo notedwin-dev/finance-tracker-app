@@ -11,7 +11,7 @@ import {
 } from "../types";
 import * as SheetService from "./sheets.services";
 import { getKey as getBaseKey } from "../helpers/storage.helper";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 import { migrateLegacyPot } from "../src/lib/domain/pot-migration";
 
 export const KEYS = {

@@ -139,21 +139,26 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 ## Key Decisions
 
 ### Vitest over Jest
+
 - **Why:** Native Vite integration, zero additional config, faster cold starts, compatible with existing Vite setup.
 - **Config:** `globals: true, environment: "jsdom", setupFiles: "./src/test-setup.ts"`
 
 ### Zustand over Redux / React Context
+
 - **Why:** Minimal boilerplate, no action/reducer ceremony, built-in TypeScript inference, `persist` middleware for localStorage sync, subscribable outside React.
 - **Why not Context:** The current `DataContext` causes re-renders of all consumers on any state change. Zustand's selector-based subscriptions avoid this.
 
 ### Pure Domain Functions over Class Methods
+
 - **Why:** Simpler to test (no instantiation), tree-shakeable, no hidden `this` bugs, natural TypeScript inference.
 - **Pattern:** `computeAccountTransactionAmount(tx, factor, accounts, usdRate)`, `computeBudgetConsumption(tx, factor, pots)`, `computeSavingsMovement(tx, factor, pockets)` — every dependency is explicit.
 
 ### `factor: 1 | -1` over Separate Apply/Reverse Functions
+
 - **Why:** Balance operations are symmetric — applying a transaction (`factor = 1`) and reversing it (`factor = -1`) use the same logic with flipped sign. This eliminates the need for separate `applyLegToBalances` and `reverseLegToBalances`.
 
 ### Incremental Migration over Big Bang
+
 - **Why:** 3000+ lines of untested production code cannot be rewritten in one pass. Each phase:
   1. Extracts a pure function + tests
   2. Wires it back into DataProvider (no behavioral change)
@@ -161,6 +166,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
   4. Finally, migrates the handler to an application command
 
 ### Balance Engine Replaces 4 Inline Copies
+
 - `applyLegToBalances` was duplicated in `handleTransactionSubmit`, `handleTransactionDelete`, `handleBatchTransactionDelete`, and `recalculateBalances`.
 - Extracted to three named functions — `computeAccountTransactionAmount` (account-level transaction amounts), `computeBudgetConsumption` (budget/pocket consumption), and `computeSavingsMovement` (transfers/savings adjustments) — forming a single source of truth, covered by 22 tests.
 - Note: During extraction, a sign bug was **intentionally fixed**: `recalculateBalances` treated pocket adjustments with the wrong sign (positive for all adjustments) compared to the CRUD handlers (negative for non-income adjustments). The extracted functions match the CRUD handler behavior (which is exercised on every transaction), making `recalculateBalances` consistent.
@@ -170,6 +176,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 ## Phase Plan
 
 ### Phase 0: Tooling (✓ DONE)
+
 - [x] Install Vitest, React Testing Library, jsdom, `@testing-library/jest-dom`
 - [x] Configure `vite.config.ts` test block
 - [x] Update `tsconfig.json` with vitest types
@@ -177,6 +184,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 - [x] Add test scripts to `package.json`
 
 ### Phase 1: Balance Engine Extraction (✓ DONE)
+
 - [x] Extract `convertAmount` pure function + tests
 - [x] Extract `computeBalanceDeltas` pure function + 22 tests
 - [x] Wire `computeBalanceDeltas` into DataProvider (removed ~520 lines)
@@ -186,6 +194,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
   - `recalculateBalances`
 
 ### Phase 2: Infrastructure Interfaces
+
 - [ ] Define `IStorageBackend` interface
 - [ ] Define `ICloudBackend` interface
 - [ ] Define `IAuthService` interface
@@ -195,12 +204,14 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 - [ ] Implement wrappers for existing services
 
 ### Phase 3: Zustand Stores
+
 - [ ] Create `finance.store.ts` (accounts, transactions, categories, pots, pockets, goals, subscriptions, chatSessions + CRUD actions)
 - [ ] Create `privacy.store.ts` (privacy mode, vault state, mask helpers)
 - [ ] Create `sync.store.ts` (isSyncing, toast, sync state)
 - [ ] Create `ui.store.ts` (displayCurrency)
 
 ### Phase 4: Application Commands
+
 - [ ] Create `commands.ts` with orchestration functions
   - `submitTransaction(tx, stores, backends)`
   - `deleteTransaction(id, stores, backends)`
@@ -209,6 +220,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
   - Account/goal/pot/pocket CRUD commands
 
 ### Phase 5: Thin Pages + Feature Folders
+
 - [ ] Migrate page components to read from Zustand stores
 - [ ] Organize components into feature folders
 - [ ] Add component tests with React Testing Library
@@ -219,6 +231,7 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 ## Consequences
 
 ### Positive
+
 1. Testable business logic — pure functions with no React dependency
 2. Reduced cognitive load — each file has one responsibility
 3. Faster re-renders — Zustand selectors prevent unnecessary renders
@@ -227,11 +240,13 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 6. Smaller bundle — dead code elimination works better with small modules
 
 ### Negative
+
 1. Migration effort — all consumers of `DataContext` must be updated to use Zustand stores
 2. Learning curve — team must learn Zustand patterns
 3. Boilerplate for interfaces — defining interfaces for every infrastructure concern
 
 ### Mitigations
+
 - Migration is incremental — each phase is independently testable and revertible
 - A compatibility layer (`useData` hook wrapping Zustand stores) can ease the transition
 - Each interface is simple (3-5 methods) — minimal boilerplate
@@ -241,18 +256,23 @@ Pages become thin — they call commands (or use Zustand hooks directly for read
 ## Alternatives Considered
 
 ### Redux Toolkit
+
 - **Rejected:** Too much ceremony (slices, actions, reducers, thunks) for an app of this size. Zustand provides equivalent capabilities with 90% less boilerplate.
 
 ### React Query (TanStack Query)
+
 - **Rejected:** The app is primarily local-first with cloud sync, not server-state driven. React Query's caching/invalidation model doesn't align with the localStorage + Sheets sync pattern.
 
 ### Keep Context API
+
 - **Rejected:** The current Context causes full-tree re-renders on any state change, lacks middleware, and encourages monolithic providers.
 
 ### Class-based Domain Model
+
 - **Rejected:** Classes add complexity (instantiation, inheritance, `this` binding) without benefit. Pure functions are simpler to test and compose.
 
 ### Event Sourcing / CQRS
+
 - **Rejected:** Overkill for a personal finance app. The current CRUD model is sufficient. Domain events could be added later if needed.
 
 ---

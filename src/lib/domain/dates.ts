@@ -1,4 +1,4 @@
-const parseDateSafe = (date: string | number): Date => {
+export const parseDateSafe = (date: string | number): Date => {
 	if (typeof date === "number") return new Date(date);
 	if (!date) return new Date(NaN);
 
@@ -22,6 +22,9 @@ const parseDateSafe = (date: string | number): Date => {
 
 export const normalizeDate = (date: string | number): string => {
 	const d = parseDateSafe(date);
+	if (isNaN(d.getTime())) {
+		throw new Error(`Invalid date: ${date}`);
+	}
 	return d.toLocaleDateString("en-CA");
 };
 

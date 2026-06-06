@@ -4,7 +4,7 @@ The original layered-architecture refactor is complete. DataProvider/DataContext
 
 Rules:
 1. Add the new field to the appropriate existing store: `finance.store.ts` for finance data, `sync.store.ts` for sync/toast, `mask.store.ts` for mask mode, `ui.store.ts` for display preferences.
-2. Component reads: `useFinanceStore((s) => s.fieldName)` (selector form, not whole-store).
+2. Component reads: use the selector form of the specific store the field was added to — `useFinanceStore((s) => s.fieldName)` for finance fields, `useSyncStore((s) => s.fieldName)` for sync/toast fields, `useMaskStore((s) => s.fieldName)` for mask fields, `useUIStore((s) => s.fieldName)` for display preferences. Always use the selector form, never the whole-store hook.
 3. Component writes: call a domain command function in `src/lib/application/commands/`, which itself calls the store. NEVER mutate the store from a component, hook, or React context.
 4. If the migration is purely data-shape (e.g. rename a field, add an enum value), update the store's `state`, `actions`, and `initialState` blocks in one PR. Keep public function signatures of command handlers unchanged.
 5. Do NOT touch any page/component files (that's page-migrator's job).

@@ -15,8 +15,8 @@ After the prior migration, 3 handlers remain in DataProvider: `handleMigrateData
 
 - [x] **B.1 — `batchEditTransactions`** — Extracted to `commands/transactions.ts`; `History.tsx` calls command directly (c5ea1c8)
 - [x] **B.2 — `bulkImportTransactions`** — Extracted to `commands/transactions.ts`; `AccountPage.tsx` calls command directly (c5ea1c8)
-- [ ] **B.3 — `migrateData`** — Extract `handleMigrateData` into a new sync command; update `Profile`/`MainLayout`
-- [ ] **B.4 — `resetAndSync`** — Extract `handleResetAndSync` into a new sync command; update `Profile`/`MainLayout`
+- [x] **B.3 — `migrateData`** — Extracted to `commands/sync.ts`; `Profile.tsx` calls command directly (76a60ac)
+- [x] **B.4 — `resetAndSync`** — Extracted to `commands/sync.ts`; `Profile.tsx` calls command directly (76a60ac)
 - [x] **B.5 — `recalculateBalances`** — Extracted to `commands/balance.ts`; `Profile.tsx` calls command directly (c5ea1c8)
 - [x] **B.6 — Partial cleanup** — 5 dead signatures removed from `DataContextType`; corresponding implementations removed from DataProvider (c5ea1c8). Remaining: `handleMigrateData`, `handleResetAndSync`, `handleSelectExistingSheet`
 

@@ -11,7 +11,7 @@ import {
   processSubscriptions,
   runVaultSchemaMigration,
 } from "../src/lib/application/commands";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 export function useAppInit() {
   const { profile, updateProfile, loginWithGoogle, isInitialized } = useAuth();

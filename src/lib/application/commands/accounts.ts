@@ -2,6 +2,7 @@ import { Account, Transaction, TransactionType, UserProfile } from "../../../../
 import * as StorageService from "../../../../services/storage.services";
 import { useFinanceStore } from "../../../stores/finance.store";
 import { useSyncStore } from "../../../stores/sync.store";
+import { logger } from "../../infrastructure/logger";
 
 export async function saveAccount(
   acc: Omit<Account, "userId">,
@@ -66,8 +67,15 @@ export async function saveAccount(
       await StorageService.saveTransactions(updatedTxs);
       await StorageService.saveAccounts(updated);
     } catch (err) {
-      await StorageService.saveTransactions(existingTransactions);
-      await StorageService.saveAccounts(existingAccounts);
+      const rollbackResults = await Promise.allSettled([
+        StorageService.saveTransactions(existingTransactions),
+        StorageService.saveAccounts(existingAccounts),
+      ]);
+      rollbackResults.forEach((r) => {
+        if (r.status === "rejected") {
+          logger.error("Rollback failed during account save error", r.reason);
+        }
+      });
       throw err;
     }
     store.setTransactions(updatedTxs);

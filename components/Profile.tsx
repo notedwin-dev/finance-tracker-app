@@ -26,7 +26,7 @@ import Modal from "./Modal";
 import ConfirmationModal, { ConfirmationModalState } from "./ConfirmationModal";
 import DatePicker from "./DatePicker";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 interface Props {
 	profile: UserProfile;

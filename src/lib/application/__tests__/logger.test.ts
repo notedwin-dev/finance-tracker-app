@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { logger, __test__ } from "../logger";
+import { logger, __test__ } from "../../infrastructure/logger";
 
 const { redact, SENSITIVE_KEYS } = __test__;
 

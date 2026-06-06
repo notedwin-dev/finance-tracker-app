@@ -1,4 +1,4 @@
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 export interface CryptoPrices {
   BTC: number;

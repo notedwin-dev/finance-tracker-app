@@ -17,6 +17,7 @@ import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helpe
 import { useMask } from "../helpers/useMask";
 import { useFinanceStore } from "../src/stores/finance.store";
 import { batchDeleteTransaction, batchEditTransactions } from "../src/lib/application/commands";
+import { logger } from "../src/lib/infrastructure/logger";
 import { cn } from "./history/cn";
 import { SCROLL_THRESHOLD } from "./history/constants";
 import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
@@ -165,7 +166,9 @@ const History: React.FC<Props> = ({
 				try {
 					await onDeleteTransaction(t.id);
 					swipe.setSwipedId(null);
-				} catch {}
+				} catch (e) {
+					logger.error("Failed to delete transaction", e);
+				}
 			}
 		},
 		[onDeleteTransaction, swipe.setSwipedId],

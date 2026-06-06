@@ -9,7 +9,7 @@ import {
 	Subscription,
 	TransactionType,
 } from "../types";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 const BACKEND_URL =
 	import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";

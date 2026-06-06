@@ -16,7 +16,7 @@ import {
   normalizeDate,
   parseDateSafe,
 } from "../../../../helpers/transactions.helper";
-import { logger } from "../logger";
+import { logger } from "../../infrastructure/logger";
 import { buildPartnerLeg, buildNewSubscription, bumpSubscriptionNextDate, syncTransactionToCloud, persistTransactionChanges, rollbackTransactionChanges, applyTransactionUpdatesToStore, PersistSnapshots } from "./transactions.helpers";
 
 export async function submitTransaction(
@@ -175,8 +175,8 @@ export async function submitTransaction(
   if (newSubscription && !isEdit) {
     const sub = buildNewSubscription(newSubscription, userId, now);
     const updatedSubs = [...(subscriptions || []), sub];
+    await StorageService.saveSubscriptions(updatedSubs);
     store.setSubscriptions(updatedSubs);
-    StorageService.saveSubscriptions(updatedSubs);
     if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
   }
 
@@ -190,8 +190,8 @@ export async function submitTransaction(
         const updatedSubsList = subscriptions.map((s: Subscription) =>
           s.id === sub.id ? updatedSub : s,
         );
+        await StorageService.saveSubscriptions(updatedSubsList);
         store.setSubscriptions(updatedSubsList);
-        StorageService.saveSubscriptions(updatedSubsList);
         if (isCloudEnabled) await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
       }
     }
@@ -232,21 +232,21 @@ export async function deleteTransaction(
     materializeDeltas(accounts, pots, pockets, deltas, now);
 
   if (updatedAccounts !== accounts) {
+    await StorageService.saveAccounts(updatedAccounts);
     store.setAccounts(updatedAccounts);
-    StorageService.saveAccounts(updatedAccounts);
   }
   if (updatedPots !== pots) {
+    await StorageService.savePots(updatedPots);
     store.setPots(updatedPots);
-    StorageService.savePots(updatedPots);
   }
   if (updatedPockets !== pockets) {
+    await StorageService.savePockets(updatedPockets);
     store.setPockets(updatedPockets);
-    StorageService.savePockets(updatedPockets);
   }
 
-  store.removeTransactions(idsToDelete);
   const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
-  StorageService.saveTransactions(updatedTxs);
+  await StorageService.saveTransactions(updatedTxs);
+  store.removeTransactions(idsToDelete);
 
   if (isCloudEnabled) {
     for (const delId of idsToDelete) {
@@ -294,22 +294,22 @@ export async function batchDeleteTransaction(
     materializeDeltas(accounts, pots, pockets, deltas, now);
 
   if (updatedAccounts !== accounts) {
+    await StorageService.saveAccounts(updatedAccounts);
     store.setAccounts(updatedAccounts);
-    StorageService.saveAccounts(updatedAccounts);
   }
   if (updatedPots !== pots) {
+    await StorageService.savePots(updatedPots);
     store.setPots(updatedPots);
-    StorageService.savePots(updatedPots);
   }
   if (updatedPockets !== pockets) {
+    await StorageService.savePockets(updatedPockets);
     store.setPockets(updatedPockets);
-    StorageService.savePockets(updatedPockets);
   }
 
   const idsToDelete = Array.from(idsToDeleteSet);
-  store.removeTransactions(idsToDelete);
   const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
-  StorageService.saveTransactions(updatedTxs);
+  await StorageService.saveTransactions(updatedTxs);
+  store.removeTransactions(idsToDelete);
 
   if (isCloudEnabled) {
     for (const delId of idsToDelete) {
@@ -367,8 +367,8 @@ export async function bulkImportTransactions(
   });
 
   const updatedTransactionsList = [...store.transactions, ...transactionsToInsert];
+  await StorageService.saveTransactions(updatedTransactionsList);
   store.setTransactions(updatedTransactionsList);
-  StorageService.saveTransactions(updatedTransactionsList);
 
   if (isCloudEnabled) {
     await SheetService.insertMany("Transactions", transactionsToInsert);
@@ -396,8 +396,8 @@ export async function bulkImportTransactions(
         }
         return a;
       });
+      await StorageService.saveAccounts(updatedAccounts);
       store.setAccounts(updatedAccounts);
-      StorageService.saveAccounts(updatedAccounts);
     }
   }
 
@@ -493,8 +493,8 @@ export async function batchEditTransactions(
     return tu ? { ...t, ...tu } as Transaction : t;
   });
 
+  await StorageService.saveTransactions(updatedTransactionsList);
   store.setTransactions(updatedTransactionsList);
-  StorageService.saveTransactions(updatedTransactionsList);
 
   if (isCloudEnabled) {
     const affectedTxs = Array.from(affectedTransactionIds)
@@ -545,8 +545,8 @@ export async function batchEditTransactions(
   }
 
   if (deltas.accountDeltas.size > 0) {
+    await StorageService.saveAccounts(updatedAccountList);
     store.setAccounts(updatedAccountList);
-    StorageService.saveAccounts(updatedAccountList);
     if (isCloudEnabled) {
       const affectedAccounts = updatedAccountList.filter((a) =>
         deltas.accountDeltas.has(a.id),

@@ -38,9 +38,14 @@ describe("crypto.services", () => {
 			expect(await verifyPassword("hunter3", h)).toBe(false);
 		});
 
-		it("rejects empty input", async () => {
+		it("rejects an empty stored hash", async () => {
 			const h = await hashPassword("hunter2");
 			expect(await verifyPassword("hunter2", "")).toBe(false);
+		});
+
+		it("rejects an empty password input", async () => {
+			const h = await hashPassword("hunter2");
+			expect(await verifyPassword("", h)).toBe(false);
 		});
 
 		it("verifies legacy SHA-256 hashes (no salt)", async () => {

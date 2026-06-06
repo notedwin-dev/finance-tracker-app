@@ -3,7 +3,7 @@ import {
   DrivePicker,
   DrivePickerDocsView,
 } from "@googleworkspace/drive-picker-react";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 const maskFileId = (fileId: string): string => {
   return fileId.length > 4 ? `***${fileId.slice(-4)}` : "***";

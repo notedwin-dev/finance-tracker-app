@@ -59,13 +59,13 @@ describe("computeNextOccurrences", () => {
     expect(result.nextDateStr).toBe("2026-01-01");
   });
 
-  it("treats unparseable nextPaymentDate as today (normalizeDate fallback)", () => {
-    const result = computeNextOccurrences(
-      makeSub({ nextPaymentDate: "not-a-date" }),
-      "2099-12-31",
-    );
-    expect(result.nextDateStr).not.toBeNull();
-    expect(result.generatedTxDates.length).toBeGreaterThan(0);
+  it("throws on unparseable nextPaymentDate (normalizeDate is strict)", () => {
+    expect(() =>
+      computeNextOccurrences(
+        makeSub({ nextPaymentDate: "not-a-date" }),
+        "2099-12-31",
+      ),
+    ).toThrow("Invalid date");
   });
 
   it("bails out at maxIterations for runaway loop", () => {

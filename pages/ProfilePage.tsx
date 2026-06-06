@@ -14,7 +14,7 @@ import {
   resetAndSync,
 } from "../src/lib/application/commands/sync";
 import { checkSheetClientReady } from "../src/lib/application/commands/sheet";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 
 const ProfilePage: React.FC = () => {
   const { profile, loginWithGoogle, updateProfile, unlinkCloud } = useAuth();
@@ -48,7 +48,7 @@ const ProfilePage: React.FC = () => {
     }
 
     const SENSITIVE_KEYS =
-      /^(?:apikey|api[_-]?key|secret|token|password|passphrase|geminiApiKey|googleApiKey|vite_(?:gemini|google)_api_key|totpSecret|encryptionKey|vaultSalt|biometricCred(?:Id|Ids)|devices|cardNumber|cvv|expiry|holderName|accountNumber|details|isEncrypted|encryptedDetails|pin|ssn|taxId|iban|routingNumber|swift)$/i;
+      /^(?:apikey|api[_-]?key|secret|token|password|passphrase|geminiApiKey|googleApiKey|vite_(?:gemini|google)_api_key|totpSecret|encryptionKey|vaultSalt|biometricCred(?:Id|Ids)|biometricPublicKey|biometricCredentialId|biometricCredentialIds|isSecurityEnabled|isVaultLocked|devices|cardNumber|cvv|expiry|holderName|accountNumber|details|isEncrypted|encryptedDetails|pin|ssn|taxId|iban|routingNumber|swift)$/i;
     const stripSensitive = (obj: unknown): unknown => {
       if (Array.isArray(obj)) return obj.map(stripSensitive);
       if (obj && typeof obj === "object") {

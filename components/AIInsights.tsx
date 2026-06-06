@@ -15,7 +15,7 @@ import {
 	streamFinancialAdvice,
 	generateChatTitle,
 } from "../services/gemini.services";
-import { logger } from "../src/lib/application/logger";
+import { logger } from "../src/lib/infrastructure/logger";
 import {
 	SparklesIcon,
 	PaperAirplaneIcon,

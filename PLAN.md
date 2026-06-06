@@ -6,7 +6,7 @@
 
 Replace the 2,330-line `DataProvider.tsx` monolith with focused **Zustand stores** (state) and **application commands** (logic). Data flows in one direction:
 
-```
+```text
 Sheets ──→ DataProvider ──→ Stores ──→ Components
                 │               │
                 ↓               ↓
@@ -35,7 +35,7 @@ Sheets ──→ DataProvider ──→ Stores ──→ Components
 
 ## Architecture
 
-```
+```text
 src/
 ├── lib/
 │   ├── domain/            ← Pure functions (balance.engine, currency)
@@ -63,7 +63,7 @@ src/
 
 ### Data flow after full migration
 
-```
+```text
 User action (click "Save")
   → Command (submitTransaction in commands/transactions.ts)
     → Domain logic (computeAccountTransactionAmount / computeBudgetConsumption / computeSavingsMovement)
@@ -142,7 +142,7 @@ useFinanceStore.getState().setCryptoPrices(prices);
 
 **`isSyncing`/`hasSynced` write-through**: Pipe into `useSyncStore` alongside React state.
 
-**`securityUnlocked` write-through**: `setSecurityUnlockedWithRef` (line 82) also calls `usePrivacyStore.getState().setVaultUnlocked()`.
+**`maskMode` write-through**: `setMaskMode` (formerly `setSecurityUnlockedWithRef`) calls `useMaskStore.getState().setMaskMode()` to keep the mask store in sync. The legacy `usePrivacyStore.setVaultUnlocked` was removed when the vault subsystem was deleted; mask state now lives in `src/stores/mask.store.ts`.
 
 ### 1.3 Update page reads — switch scalar state from `useData()` to stores
 
@@ -154,7 +154,7 @@ useFinanceStore.getState().setCryptoPrices(prices);
 | | `displayCurrency` | `useUIStore()` |
 | **AccountPage** | `usdRate`, `cryptoPrices` | `useFinanceStore()` |
 | | `displayCurrency` | `useUIStore()` |
-| | `isVaultEnabled`, `isVaultUnlocked` | `usePrivacyStore()` |
+| | `isVaultEnabled`, `isVaultUnlocked` | `useMaskStore()` (legacy vault fields renamed to `maskMode`) |
 | **HistoryPage** | `usdRate` | `useFinanceStore()` |
 
 After this: `useData()` calls in pages remain only for handler functions (maskAmount, maskText, vault methods, complex handlers).
@@ -163,7 +163,7 @@ After this: `useData()` calls in pages remain only for handler functions (maskAm
 
 ### 2.1 Create file structure
 
-```
+```text
 src/lib/application/
 ├── commands.ts                  ← barrel: re-exports all from commands/*.ts
 ├── commands/
@@ -218,7 +218,7 @@ Configure three subagents to parallelize work:
         "read": "allow",
         "glob": "allow",
         "grep": "allow",
-        "bash": "allow"
+        "bash": "deny"
       }
     },
     "commands-splitter": {
@@ -232,7 +232,7 @@ Configure three subagents to parallelize work:
         "read": "allow",
         "glob": "allow",
         "grep": "allow",
-        "bash": "allow"
+        "bash": "deny"
       }
     },
     "page-migrator": {
@@ -246,17 +246,25 @@ Configure three subagents to parallelize work:
         "read": "allow",
         "glob": "allow",
         "grep": "allow",
-        "bash": "allow"
+        "bash": "deny"
       }
     }
   }
 }
 ```
 
+All three subagent configs set `"bash": "deny"` to follow least-privilege. To opt in to a specific command, use the scoped allowlist pattern:
+
+```json
+"bash": "allow:git status,npx tsc --noEmit,npm test"
+```
+
+This restricts shell access to the listed commands only; any other shell invocation is denied.
+
 ### 3.1 Subagent prompts
 
 **`.opencode/prompts/state-migrator.txt`**
-```
+```text
 You are a Zustand migration specialist. Your task is to add missing state to Zustand stores and pipe DataProvider React state into stores.
 
 Rules:
@@ -268,7 +276,7 @@ Rules:
 ```
 
 **`.opencode/prompts/commands-splitter.txt`**
-```
+```text
 You are a code splitting specialist. Your task is to split `src/lib/application/commands.ts` into domain-specific files.
 
 Rules:
@@ -280,13 +288,13 @@ Rules:
 ```
 
 **`.opencode/prompts/page-migrator.txt`**
-```
+```text
 You are a page migration specialist. Your task is to update page files to read scalar state from Zustand stores instead of useData().
 
 Rules:
 1. Switch usdRate, cryptoPrices → useFinanceStore()
 2. Switch displayCurrency, setDisplayCurrency → useUIStore()
-3. Switch isVaultEnabled, isVaultUnlocked → usePrivacyStore()
+3. Switch isVaultEnabled, isVaultUnlocked → useMaskStore() (mask state moved out of legacy privacy store)
 4. Only switch values that have store equivalents (maskAmount, maskText, handlers stay on useData())
 5. Remove imports of DataContext only when useData() is no longer used in the file
 6. Never break existing functionality
@@ -307,13 +315,13 @@ After state migration and commands split:
 
 ### 4.1 Component updates — migrate remaining `useData()` consumers
 
-- **Profile.tsx** — vault methods → usePrivacyStore, recalculateBalances → command
+- **Profile.tsx** — mask methods → useMaskStore, recalculateBalances → command
 - **History.tsx** — maskAmount/maskText → useMask hook, handleBatchTransactionEdit → command
 - **SubscriptionManager.tsx, Goals.tsx** — maskAmount/maskText → useMask hook
 - **Charts.tsx** — maskAmount → useMask hook
 - **AccountCard.tsx** — maskAmount/maskText → useMask hook
-- **AccountForm.tsx** — vault methods → usePrivacyStore
-- **MainLayout.tsx** — privacyMode → usePrivacyStore, handlers → commands, toast → useSyncStore
+- **AccountForm.tsx** — mask methods → useMaskStore
+- **MainLayout.tsx** — maskMode → useMaskStore, handlers → commands, toast → useSyncStore
 
 ### 4.2 Complex handler extraction
 

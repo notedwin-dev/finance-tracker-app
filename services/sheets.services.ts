@@ -754,28 +754,15 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 export const insertOne = async (sheetName: string, item: any) => {
 	if (!gapiInited || !hasAccessToken) return;
 
-	const fileId = await getSpreadsheetId();
-	if (!fileId) return;
-
-	// 1. Get Headers to ensure column alignment
-	let headers: string[] = [];
-	try {
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A1:Z1`,
-		});
-		const rows = res.result.values;
-		if (rows && rows.length > 0) {
-			headers = rows[0];
-		}
-	} catch (e) {
-		/* ignore */
-	}
+	const headers = await fetchSheetHeaders(sheetName, "A1:Z1");
 
 	// If no headers, we must initialize the sheet (fallback to saveToSheet)
 	if (headers.length === 0) {
 		return saveToSheet(sheetName, [item]);
 	}
+
+	const fileId = await getSpreadsheetId();
+	if (!fileId) return;
 
 	// 2. Align Data to Headers
 	const row = headers.map((header) => {
@@ -801,28 +788,15 @@ export const insertOne = async (sheetName: string, item: any) => {
 export const insertMany = async (sheetName: string, items: any[]) => {
 	if (!gapiInited || !hasAccessToken || items.length === 0) return;
 
-	const fileId = await getSpreadsheetId();
-	if (!fileId) return;
-
-	// 1. Get Headers to ensure column alignment
-	let headers: string[] = [];
-	try {
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A1:Z1`,
-		});
-		const rows = res.result.values;
-		if (rows && rows.length > 0) {
-			headers = rows[0];
-		}
-	} catch (e) {
-		/* ignore */
-	}
+	const headers = await fetchSheetHeaders(sheetName, "A1:Z1");
 
 	// If no headers, initialize sheet with saveToSheet
 	if (headers.length === 0) {
 		return saveToSheet(sheetName, items);
 	}
+
+	const fileId = await getSpreadsheetId();
+	if (!fileId) return;
 
 	// 2. Align Data to Headers
 	const rows = items.map((item) => {
@@ -856,6 +830,23 @@ const getColumnLetter = (index: number): string => {
 	return letter;
 };
 
+async function fetchSheetHeaders(
+	sheetName: string,
+	range = "1:1",
+): Promise<string[]> {
+	const fileId = await getSpreadsheetId();
+	if (!fileId) return [];
+	try {
+		const res = await window.gapi.client.sheets.spreadsheets.values.get({
+			spreadsheetId: fileId,
+			range: `'${sheetName}'!${range}`,
+		});
+		return res.result.values?.[0] || [];
+	} catch {
+		return [];
+	}
+}
+
 const serializeCellValue = (val: unknown): unknown => {
 	if (typeof val === "object" && val !== null) return JSON.stringify(val);
 	return val;
@@ -888,11 +879,7 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 		if (!fileId) return;
 
 		// 1. Get Headers to align columns and find ID column
-		const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!1:1`,
-		});
-		const headers = headerRes.result.values?.[0] || [];
+		const headers = await fetchSheetHeaders(sheetName);
 		const idColumnIndex = headers.indexOf("id");
 
 		if (idColumnIndex === -1) {
@@ -971,11 +958,7 @@ export const updateMany = async (
 		if (!fileId) return;
 
 		// 1. Get Headers once
-		const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!1:1`,
-		});
-		const headers = headerRes.result.values?.[0] || [];
+		const headers = await fetchSheetHeaders(sheetName);
 		const idColumnIndex = headers.indexOf("id");
 
 		if (idColumnIndex === -1) {

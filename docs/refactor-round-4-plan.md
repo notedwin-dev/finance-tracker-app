@@ -89,7 +89,7 @@ Where `ProtectedAppShell` is a small component in `App.tsx` that wraps `<Protect
 ## Refactor B: `processSubscriptions` → Domain Functions
 
 **Files touched:** 1 created, 1 modified, 1 test created
-**Commit:** 1
+**Commit:** B
 **Risk:** Medium (logic extraction, but pure functions with no side effects in domain)
 
 ### Current state (`src/lib/application/commands/sync.ts:144-278`)
@@ -181,7 +181,7 @@ export function processSubscriptions(accounts, usdRate, options = { persist: tru
 ## Refactor C: `submitTransaction` → Domain Functions
 
 **Files touched:** 1 created, 1 modified, 1 test created
-**Commit:** 1
+**Commit:** C
 **Risk:** Medium
 
 ### Current state (`src/lib/application/commands/transactions.ts:44-72`)

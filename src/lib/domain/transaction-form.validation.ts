@@ -13,56 +13,74 @@ export interface TransactionFormState {
 	breakdownItems: { amount: string }[];
 }
 
+const isPositiveNumber = (val: string): boolean => {
+	if (!val) return false;
+	const n = parseFloat(val);
+	return n > 0;
+};
+
+const isTransferCategory = (type: TransactionType): boolean =>
+	type === TransactionType.EXPENSE || type === TransactionType.INCOME;
+
+const collectMissingFields = (state: TransactionFormState): string[] => {
+	const missing: string[] = [];
+	const { type, isSubsidized } = state;
+
+	if (isSubsidized) {
+		if (!isPositiveNumber(state.marketValue)) missing.push("Market Value");
+	} else {
+		if (!isPositiveNumber(state.amount)) missing.push("Amount");
+	}
+	if (!state.accountId) missing.push("Account");
+	if (type === TransactionType.TRANSFER && !state.toAccountId) {
+		missing.push("To Account");
+	}
+	if (isTransferCategory(type) && !state.categoryId) missing.push("Category");
+	if (!state.date) missing.push("Date");
+	return missing;
+};
+
+const validateTransferAccounts = (
+	type: TransactionType,
+	accountId: string,
+	toAccountId: string,
+): string | null => {
+	if (type !== TransactionType.TRANSFER) return null;
+	if (accountId && toAccountId && accountId === toAccountId) {
+		return "Source and Destination accounts cannot be the same";
+	}
+	return null;
+};
+
+const sumBreakdownTotal = (items: { amount: string }[]): number =>
+	items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+
+const validateBreakdownTotal = (state: TransactionFormState): string | null => {
+	if (!state.breakdownEnabled) return null;
+	const total = sumBreakdownTotal(state.breakdownItems);
+	const amount = parseFloat(state.amount);
+	if (total > amount) {
+		return `Breakdown total (${total.toFixed(2)}) exceeds total amount (${amount.toFixed(2)})`;
+	}
+	return null;
+};
+
 export const validateTransactionForm = (
 	state: TransactionFormState,
 ): string | null => {
-	const {
-		type,
-		amount,
-		marketValue,
-		accountId,
-		toAccountId,
-		categoryId,
-		date,
-		isSubsidized,
-		breakdownEnabled,
-		breakdownItems,
-	} = state;
-
-	const missingFields: string[] = [];
-	if (!isSubsidized && (!amount || parseFloat(amount) <= 0))
-		missingFields.push("Amount");
-	if (isSubsidized && (!marketValue || parseFloat(marketValue) <= 0))
-		missingFields.push("Market Value");
-	if (!accountId) missingFields.push("Account");
-	if (type === TransactionType.TRANSFER && !toAccountId)
-		missingFields.push("To Account");
-	if (
-		(type === TransactionType.EXPENSE || type === TransactionType.INCOME) &&
-		!categoryId
-	)
-		missingFields.push("Category");
-	if (!date) missingFields.push("Date");
-
-	if (missingFields.length > 0) {
-		return `Missing required fields: ${missingFields.join(", ")}`;
+	const missing = collectMissingFields(state);
+	if (missing.length > 0) {
+		return `Missing required fields: ${missing.join(", ")}`;
 	}
 
-	if (type === TransactionType.TRANSFER && accountId === toAccountId) {
-		return "Source and Destination accounts cannot be the same";
-	}
+	const transferError = validateTransferAccounts(
+		state.type,
+		state.accountId,
+		state.toAccountId,
+	);
+	if (transferError) return transferError;
 
-	if (breakdownEnabled) {
-		const breakdownTotal = breakdownItems.reduce(
-			(sum, item) => sum + (parseFloat(item.amount) || 0),
-			0,
-		);
-		if (breakdownTotal > parseFloat(amount)) {
-			return `Breakdown total (${breakdownTotal.toFixed(2)}) exceeds total amount (${parseFloat(amount).toFixed(2)})`;
-		}
-	}
-
-	return null;
+	return validateBreakdownTotal(state);
 };
 
 export const serializeBreakdownItems = (

@@ -286,6 +286,159 @@ const prepareContext = (
 	};
 };
 
+const buildSystemInstruction = (contextData: unknown): string => `
+      You are ZenFinance AI, a helpful and minimalist financial assistant.
+      Your goal is to provide clear, actionable financial advice based on the user's data.
+
+      CRITICAL: Always prioritize the "Current Financial Context" provided below over any data mentioned in previous messages.
+      The user's financial state (balances, goals, pots, subscriptions) may have changed since earlier in the conversation.
+
+      "updatedAt" timestamps are provided for accounts, goals, and pots. Use these to determine how recently the data was modified.
+
+      "Spending Limits" (pots):
+      - "totalBudgetLimit" is the total budget for the period.
+      - "remainingAvailableBudget" is how much the user has LEFT to spend.
+      - Money Spent = totalBudgetLimit - remainingAvailableBudget.
+      - Spent Percentage = (Money Spent / totalBudgetLimit) * 100.
+
+      Current Financial Context (Snapshot Date/Time: ${new Date().toLocaleString()}):
+      ${JSON.stringify(contextData, null, 2)}
+
+      Rules:
+      1. Be concise and friendly.
+      2. Use Markdown for formatting. Use headers (###), bold text, and bullet points to make info digestible.
+      3. Use double newlines between paragraphs and headers to ensure proper spacing.
+      4. If asked about spending, reference their specific categories and limits.
+      5. Never give professional investment advice; always include a disclaimer if needed but keep it brief.
+      6. Always respond in the language the user is using.
+      7. Follow-up Suggestions (UI Elements):
+         At the very end of your response, provide 3-4 follow-up suggestions for the user.
+         These will be rendered as clickable UI buttons to help the user continue the conversation.
+         The suggestions MUST be phrased from the USER's perspective.
+         Format:
+         <suggestion>User Command 1</suggestion>
+         <suggestion>User Command 2</suggestion>
+
+      TOOLS & SECURITY:
+      - You have access to tools to query historical transactions.
+      - When you use a tool, the user will be asked to APPROVE or REJECT the data access.
+      - If historical context for goals or pots is needed, look at related transactions using the tool.
+			- You also have location/map tools for nearby food discovery; use them only when user asks for nearby places or location-based suggestions.
+			- Prefer free/open data sources and keep map recommendations concise (name, distance, area hint).
+    `;
+
+const mapHistoryToSDKFormat = (history: ChatMessage[]): any[] =>
+	history.map((m) => {
+		if (m.functionResponse) {
+			return {
+				role: "user",
+				parts: [
+					{
+						functionResponse: {
+							name: m.functionResponse.name,
+							response: normalizeFunctionResponsePayload(
+								m.functionResponse.response,
+							),
+						},
+					},
+				],
+			};
+		}
+		const parts: any[] = [];
+		if (m.content) parts.push({ text: m.content });
+		if (m.functionCall) parts.push({ functionCall: m.functionCall });
+		return { role: m.role === "user" ? "user" : "model", parts };
+	});
+
+const extractLastUserMessage = (contents: any[]): string => {
+	const lastTurn = contents[contents.length - 1];
+	if (!lastTurn) return "";
+	const messagePart = lastTurn.parts?.find(
+		(part: any) => typeof part?.text === "string",
+	);
+	if (typeof messagePart?.text === "string") return messagePart.text;
+	const hasFunctionResponse = Boolean(
+		lastTurn.parts?.some((part: any) => Boolean(part?.functionResponse)),
+	);
+	return hasFunctionResponse
+		? "Continue based on the approved tool result and answer the user directly."
+		: "";
+};
+
+const streamAndCollect = async (
+	chat: any,
+	message: string,
+	onChunk: (chunk: string) => void,
+): Promise<{ text: string; functionCall?: any }> => {
+	const response = await chat.sendMessageStream({ message });
+	let fullText = "";
+	let functionCall: any = null;
+	for await (const chunk of response) {
+		if (chunk.text) {
+			fullText += chunk.text;
+			onChunk(chunk.text);
+		}
+		if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+			functionCall = chunk.functionCalls[0];
+		}
+	}
+	return { text: fullText, functionCall };
+};
+
+const handleStreamError = async (
+	error: any,
+	history: ChatMessage[],
+	contextData: ContextData,
+	onChunk: (chunk: string) => void,
+): Promise<{ text: string; functionCall?: any }> => {
+	if (isInvalidApiKeyError(error)) {
+		logger.warn(
+			"Invalid Gemini API key detected. Falling back to backend proxy.",
+		);
+		try {
+			return await requestChatViaProxy(history, contextData, onChunk);
+		} catch (proxyError) {
+			logger.error("Proxy AI Fallback Error:", proxyError);
+			throw new Error(
+				"Gemini API key is invalid. Please update your Gemini key in Profile settings.",
+			);
+		}
+	}
+	if (error?.status === 429) {
+		throw new Error(
+			"Gemini API Quota Exceeded. You have reached the limit for the Free Tier (usually 20-50 requests per day). Please check your Google AI Studio dashboard or try again later.",
+		);
+	}
+	throw error;
+};
+
+type ContextData = ReturnType<typeof prepareContext>;
+
+const requestChatViaGemini = async (
+	apiKey: string,
+	history: ChatMessage[],
+	contextData: ContextData,
+	onChunk: (chunk: string) => void,
+): Promise<{ text: string; functionCall?: any }> => {
+	try {
+		const ai = getClient(apiKey);
+		const contents = mapHistoryToSDKFormat(history);
+		const chat = ai.chats.create({
+			model: "gemini-3.1-flash-lite-preview",
+			history: contents.slice(0, -1),
+			config: {
+				systemInstruction: buildSystemInstruction(contextData),
+				tools: [assistantTools],
+			},
+		});
+		const message = extractLastUserMessage(contents);
+		return await streamAndCollect(chat, message, onChunk);
+	} catch (error: any) {
+		logger.error("Gemini Streaming Error:", error);
+		return handleStreamError(error, history, contextData, onChunk);
+	}
+};
+
 export const streamFinancialAdvice = async (
 	apiKey: string,
 	accounts: Account[],
@@ -307,7 +460,6 @@ export const streamFinancialAdvice = async (
 	);
 	const resolvedApiKey = resolveApiKey(apiKey);
 
-	// IF NO API KEY PROVIDED, USE BACKEND PROXY
 	if (!resolvedApiKey) {
 		try {
 			return await requestChatViaProxy(history, contextData, onChunk);
@@ -317,141 +469,7 @@ export const streamFinancialAdvice = async (
 		}
 	}
 
-	try {
-		const ai = getClient(resolvedApiKey);
-
-		const systemInstruction = `
-      You are ZenFinance AI, a helpful and minimalist financial assistant. 
-      Your goal is to provide clear, actionable financial advice based on the user's data.
-      
-      CRITICAL: Always prioritize the "Current Financial Context" provided below over any data mentioned in previous messages. 
-      The user's financial state (balances, goals, pots, subscriptions) may have changed since earlier in the conversation.
-      
-      "updatedAt" timestamps are provided for accounts, goals, and pots. Use these to determine how recently the data was modified.
-      
-      "Spending Limits" (pots):
-      - "totalBudgetLimit" is the total budget for the period.
-      - "remainingAvailableBudget" is how much the user has LEFT to spend.
-      - Money Spent = totalBudgetLimit - remainingAvailableBudget.
-      - Spent Percentage = (Money Spent / totalBudgetLimit) * 100.
-      
-      Current Financial Context (Snapshot Date/Time: ${new Date().toLocaleString()}):
-      ${JSON.stringify(contextData, null, 2)}
-      
-      Rules:
-      1. Be concise and friendly.
-      2. Use Markdown for formatting. Use headers (###), bold text, and bullet points to make info digestible.
-      3. Use double newlines between paragraphs and headers to ensure proper spacing.
-      4. If asked about spending, reference their specific categories and limits.
-      5. Never give professional investment advice; always include a disclaimer if needed but keep it brief.
-      6. Always respond in the language the user is using.
-      7. Follow-up Suggestions (UI Elements):
-         At the very end of your response, provide 3-4 follow-up suggestions for the user.
-         These will be rendered as clickable UI buttons to help the user continue the conversation.
-         The suggestions MUST be phrased from the USER'S perspective.
-         Format:
-         <suggestion>User Command 1</suggestion>
-         <suggestion>User Command 2</suggestion>
-      
-      TOOLS & SECURITY:
-      - You have access to tools to query historical transactions.
-      - When you use a tool, the user will be asked to APPROVE or REJECT the data access.
-      - If historical context for goals or pots is needed, look at related transactions using the tool.
-			- You also have location/map tools for nearby food discovery; use them only when user asks for nearby places or location-based suggestions.
-			- Prefer free/open data sources and keep map recommendations concise (name, distance, area hint).
-    `;
-
-		// Map history to Google GenAI SDK format
-		const contents: any[] = history.map((m) => {
-			const parts: any[] = [];
-
-			if (m.functionResponse) {
-				return {
-					role: "user",
-					parts: [
-						{
-							functionResponse: {
-								name: m.functionResponse.name,
-								response: normalizeFunctionResponsePayload(
-									m.functionResponse.response,
-								),
-							},
-						},
-					],
-				};
-			}
-
-			if (m.content) parts.push({ text: m.content });
-			if (m.functionCall) parts.push({ functionCall: m.functionCall });
-
-			return {
-				role: m.role === "user" ? "user" : "model",
-				parts,
-			};
-		});
-
-		const chat = ai.chats.create({
-			model: "gemini-3.1-flash-lite-preview",
-			history: contents.slice(0, -1),
-			config: {
-				systemInstruction: systemInstruction,
-				tools: [assistantTools],
-			},
-		});
-
-		const lastTurn = contents[contents.length - 1];
-		const messagePart = lastTurn?.parts?.find(
-			(part: any) => typeof part?.text === "string",
-		);
-		const hasFunctionResponse = Boolean(
-			lastTurn?.parts?.some((part: any) => Boolean(part?.functionResponse)),
-		);
-		const message =
-			typeof messagePart?.text === "string"
-				? messagePart.text
-				: hasFunctionResponse
-					? "Continue based on the approved tool result and answer the user directly."
-					: "";
-		const response = await chat.sendMessageStream({ message });
-
-		let fullText = "";
-		let functionCall: any = null;
-
-		for await (const chunk of response) {
-			if (chunk.text) {
-				fullText += chunk.text;
-				onChunk(chunk.text);
-			}
-
-			// In the new SDK, functionCalls are collected on the response/chunk
-			if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-				functionCall = chunk.functionCalls[0];
-			}
-		}
-
-		return { text: fullText, functionCall };
-	} catch (error: any) {
-		logger.error("Gemini Streaming Error:", error);
-		if (isInvalidApiKeyError(error)) {
-			try {
-				logger.warn(
-					"Invalid Gemini API key detected. Falling back to backend proxy.",
-				);
-				return await requestChatViaProxy(history, contextData, onChunk);
-			} catch (proxyError) {
-				logger.error("Proxy AI Fallback Error:", proxyError);
-				throw new Error(
-					"Gemini API key is invalid. Please update your Gemini key in Profile settings.",
-				);
-			}
-		}
-		if (error?.status === 429) {
-			throw new Error(
-				"Gemini API Quota Exceeded. You have reached the limit for the Free Tier (usually 20-50 requests per day). Please check your Google AI Studio dashboard or try again later.",
-			);
-		}
-		throw error;
-	}
+	return requestChatViaGemini(resolvedApiKey, history, contextData, onChunk);
 };
 
 export const generateChatTitle = async (

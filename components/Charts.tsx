@@ -13,9 +13,10 @@ import {
   ScriptableContext,
 } from "chart.js";
 import { Line, Pie } from "react-chartjs-2";
-import { Transaction, TransactionType } from "../types";
+import { Transaction } from "../types";
 import { useMask } from "../helpers/useMask";
 import Modal from "./Modal";
+import { aggregateMonthly } from "../src/lib/domain/charts";
 
 // Register ChartJS components
 ChartJS.register(
@@ -29,44 +30,6 @@ ChartJS.register(
   Filler,
   Legend,
 );
-
-// --- HELPER TO PARSE DATE SAFE ---
-const toYMD = (dateInput: string | number | undefined): string => {
-  if (!dateInput) return "1970-01-01";
-
-  const s = String(dateInput);
-
-  // If it's a numeric serial date (usually 5 digits)
-  if (typeof dateInput === "number" || /^\d{5}$/.test(s)) {
-    const serial = Number(dateInput);
-    const base = Date.UTC(1899, 11, 30);
-    const d = new Date(base + serial * 86400000);
-    return d.toLocaleDateString("en-CA");
-  }
-
-  // If it's already a simple YYYY-MM-DD string, trust it (avoid timezone shifts)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    return s;
-  }
-
-  // Try parsing (Handles ISO strings, etc)
-  try {
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      // Use local timezone as requested
-      if (s.includes("T")) {
-        return d.toLocaleDateString("en-CA");
-      }
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  return "1970-01-01";
-};
 
 // --- NET WORTH CHART ---
 
@@ -112,40 +75,12 @@ export const RevenueChart: React.FC<Props> = ({
         d.toLocaleString("default", { month: "short", year: "numeric" }),
       );
 
-      const income = transactions
-        .filter(
-          (t) =>
-            t.type === TransactionType.INCOME &&
-            toYMD(t.date).startsWith(monthStr),
-        )
-        .reduce((sum, t) => {
-          let val = t.amount;
-          if (t.currency !== displayCurrency) {
-            if (t.currency === "USD" && displayCurrency === "MYR")
-              val = t.amount * usdRate;
-            else if (t.currency === "MYR" && displayCurrency === "USD")
-              val = t.amount / usdRate;
-          }
-          return sum + val;
-        }, 0);
-
-      const expense = transactions
-        .filter(
-          (t) =>
-            (t.type === TransactionType.EXPENSE ||
-              (t.type === TransactionType.TRANSFER && t.fee)) &&
-            toYMD(t.date).startsWith(monthStr),
-        )
-        .reduce((sum, t) => {
-          let val = t.type === TransactionType.EXPENSE ? t.amount : t.fee || 0;
-          if (t.currency !== displayCurrency) {
-            if (t.currency === "USD" && displayCurrency === "MYR")
-              val *= usdRate;
-            else if (t.currency === "MYR" && displayCurrency === "USD")
-              val /= usdRate;
-          }
-          return sum + val;
-        }, 0);
+      const { income, expense } = aggregateMonthly(
+        transactions,
+        monthStr,
+        usdRate,
+        displayCurrency,
+      );
 
       incomeData.push(income);
       expenseData.push(expense);
@@ -596,40 +531,12 @@ export const MonthlyBreakdown: React.FC<Props> = ({
         year: "numeric",
       });
 
-      const income = transactions
-        .filter(
-          (t) =>
-            t.type === TransactionType.INCOME &&
-            toYMD(t.date).startsWith(monthStr),
-        )
-        .reduce((sum, t) => {
-          let val = t.amount;
-          if (t.currency !== displayCurrency) {
-            if (t.currency === "USD" && displayCurrency === "MYR")
-              val = t.amount * usdRate;
-            else if (t.currency === "MYR" && displayCurrency === "USD")
-              val = t.amount / usdRate;
-          }
-          return sum + val;
-        }, 0);
-
-      const expense = transactions
-        .filter(
-          (t) =>
-            (t.type === TransactionType.EXPENSE ||
-              (t.type === TransactionType.TRANSFER && t.fee)) &&
-            toYMD(t.date).startsWith(monthStr),
-        )
-        .reduce((sum, t) => {
-          let val = t.type === TransactionType.EXPENSE ? t.amount : t.fee || 0;
-          if (t.currency !== displayCurrency) {
-            if (t.currency === "USD" && displayCurrency === "MYR")
-              val *= usdRate;
-            else if (t.currency === "MYR" && displayCurrency === "USD")
-              val /= usdRate;
-          }
-          return sum + val;
-        }, 0);
+      const { income, expense } = aggregateMonthly(
+        transactions,
+        monthStr,
+        usdRate,
+        displayCurrency,
+      );
 
       if (income === 0 && expense === 0) continue;
 

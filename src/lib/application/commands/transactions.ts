@@ -17,7 +17,7 @@ import {
   parseDateSafe,
 } from "../../../../helpers/transactions.helper";
 import { logger } from "../logger";
-import { buildPartnerLeg, buildNewSubscription, bumpSubscriptionNextDate, syncTransactionToCloud } from "./transactions.helpers";
+import { buildPartnerLeg, buildNewSubscription, bumpSubscriptionNextDate, syncTransactionToCloud, persistTransactionChanges, rollbackTransactionChanges, applyTransactionUpdatesToStore, PersistSnapshots } from "./transactions.helpers";
 
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
@@ -136,29 +136,31 @@ export async function submitTransaction(
     return p;
   });
 
-  const snapshotTransactions = StorageService.getStoredTransactions();
-  const snapshotAccounts = StorageService.getStoredAccounts();
-  const snapshotPots = StorageService.getStoredPots();
-  const snapshotPockets = StorageService.getStoredPockets();
-
+  let snapshots: PersistSnapshots | null = null;
   try {
-    await StorageService.saveTransactions(updatedTransactions);
-    if (accountUpdates.size > 0) await StorageService.saveAccounts(updatedAccounts);
-    if (potUpdates.size > 0) await StorageService.savePots(updatedPots);
-    if (pocketUpdates.size > 0) await StorageService.savePockets(updatedPockets);
+    snapshots = await persistTransactionChanges(
+      updatedTransactions,
+      updatedAccounts,
+      updatedPots,
+      updatedPockets,
+      accountUpdates,
+      potUpdates,
+      pocketUpdates,
+    );
+    applyTransactionUpdatesToStore(
+      updatedTransactions,
+      updatedAccounts,
+      updatedPots,
+      updatedPockets,
+      accountUpdates,
+      potUpdates,
+      pocketUpdates,
+    );
   } catch (saveError) {
     logger.error("submitTransaction: save failed, rolling back localStorage", saveError);
-    await StorageService.saveTransactions(snapshotTransactions);
-    if (accountUpdates.size > 0) await StorageService.saveAccounts(snapshotAccounts);
-    if (potUpdates.size > 0) await StorageService.savePots(snapshotPots);
-    if (pocketUpdates.size > 0) await StorageService.savePockets(snapshotPockets);
+    if (snapshots) await rollbackTransactionChanges(snapshots);
     throw saveError;
   }
-
-  store.setTransactions(updatedTransactions);
-  if (accountUpdates.size > 0) store.setAccounts(updatedAccounts);
-  if (potUpdates.size > 0) store.setPots(updatedPots);
-  if (pocketUpdates.size > 0) store.setPockets(updatedPockets);
 
   if (isCloudEnabled) {
     await syncTransactionToCloud(

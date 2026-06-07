@@ -164,6 +164,38 @@ const persistPostSubscriptionState = async (): Promise<{
   };
 };
 
+const loadCloudDataOrShowError = async (
+  email: string,
+): Promise<Awaited<ReturnType<typeof SheetService.loadFromGoogleSheets>> | null> => {
+  useSyncStore.getState().showToast("Syncing with Google Sheets...", "info");
+  const cloudData = await SheetService.loadFromGoogleSheets(email);
+  if (!cloudData) {
+    useSyncStore.getState().dismissToast();
+  }
+  return cloudData;
+};
+
+const mergeActiveProfile = (
+  profile: any,
+  cloudProfile: any,
+): UserProfile => {
+  const active = mergeProfile({ ...profile }, cloudProfile);
+  if (cloudProfile && active !== profile) {
+    logger.log("Updating local profile from cloud merge", active);
+  }
+  return active;
+};
+
+const handleSyncError = (e: any, loginWithGoogle: () => void): void => {
+  logger.error("Sync failed", e);
+  if (e?.status === 401) {
+    useSyncStore.getState().showToast("Session expired. Please sign in again.", "info");
+    loginWithGoogle();
+  } else {
+    useSyncStore.getState().showToast("Cloud sync failed. Working offline.", "info");
+  }
+};
+
 const hasAnyData = (...counts: number[]): boolean => counts.some((c) => c > 0);
 
 const decideMergeAuthority = (
@@ -489,20 +521,11 @@ export async function syncData(
       return;
     }
 
-    useSyncStore.getState().showToast("Syncing with Google Sheets...", "info");
-    const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
-    if (!cloudData) {
-      useSyncStore.getState().dismissToast();
-      return;
-    }
+    const cloudData = await loadCloudDataOrShowError(profile.email);
+    if (!cloudData) return;
 
     const useCloudAsAuthority = decideMergeAuthority(cloudData, profile);
-
-    const activeProfile = mergeProfile({ ...profile }, cloudData.profile);
-    if (cloudData.profile && activeProfile !== profile) {
-      logger.log("Updating local profile from cloud merge", activeProfile);
-    }
-
+    const activeProfile = mergeActiveProfile(profile, cloudData.profile);
     const store = useFinanceStore.getState();
 
     await mergeAccounts(cloudData.accounts, useCloudAsAuthority, store);
@@ -535,13 +558,7 @@ export async function syncData(
     updateProfile({ ...activeProfile, lastSyncAt: syncTimestamp, updatedAt: syncTimestamp }, true);
     useSyncStore.getState().showToast("Cloud sync complete", "success");
   } catch (e: any) {
-    logger.error("Sync failed", e);
-    if (e?.status === 401) {
-      useSyncStore.getState().showToast("Session expired. Please sign in again.", "info");
-      loginWithGoogle();
-    } else {
-      useSyncStore.getState().showToast("Cloud sync failed. Working offline.", "info");
-    }
+    handleSyncError(e, loginWithGoogle);
   } finally {
     finishSync();
   }

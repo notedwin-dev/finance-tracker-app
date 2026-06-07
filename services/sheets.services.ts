@@ -1167,6 +1167,85 @@ export const syncWithGoogleSheets = async (
 	await Promise.all(tasks);
 };
 
+const hasRequiredAuth = (): boolean => {
+	if (!gapiInited) {
+		logger.error("GAPI not initialized");
+		return false;
+	}
+	if (!hasAccessToken) {
+		logger.warn("No access token found for sync");
+		return false;
+	}
+	return true;
+};
+
+const resolveSpreadsheetId = async (): Promise<string | null> => {
+	const fileId = await getSpreadsheetId();
+	if (!fileId) {
+		logger.warn("Could not retrieve spreadsheet ID");
+	}
+	return fileId;
+};
+
+const NUMERIC_SHEET_FIELDS = new Set([
+	"amount",
+	"balance",
+	"updatedAt",
+	"createdAt",
+	"limit",
+	"targetAmount",
+	"currentAmount",
+	"lastSyncAt",
+	"usedAmount",
+	"limitAmount",
+	"amountLeft",
+]);
+
+const isProfileSheet = (name: string) => name === "Profile" || name === "Users";
+
+const coerceSheetValue = (header: string, val: unknown): unknown => {
+	if (val === undefined) return val;
+	if (header === "date" && typeof val === "number") return fromSerialDate(val);
+	if (header === "time" && typeof val === "number") return fromSerialTime(val);
+	const coerced = coerceStringValue(val);
+	if (
+		typeof coerced === "string" &&
+		coerced.trim() !== "" &&
+		NUMERIC_SHEET_FIELDS.has(header)
+	) {
+		const num = Number(coerced);
+		return isNaN(num) ? coerced : num;
+	}
+	if (header === "id") return String(coerced);
+	return coerced;
+};
+
+const parseDataRow = (headers: string[], row: unknown[]): any => {
+	const obj: any = {};
+	headers.forEach((header, index) => {
+		const val = coerceSheetValue(header, row[index]);
+		if (val !== undefined) obj[header] = val;
+	});
+	return obj;
+};
+
+const parseProfileSheet = (
+	headers: string[],
+	dataRows: unknown[][],
+	userEmail?: string,
+): any | undefined => {
+	const emailIdx = headers.indexOf("email");
+	if (emailIdx === -1) return undefined;
+	const emailToFind = userEmail || currentUserId;
+	const userRow = dataRows.find((r: any[]) => r[emailIdx] === emailToFind);
+	return userRow ? parseUserRow(headers, userRow) : undefined;
+};
+
+const filterByCurrentUser = (rows: any[]): any[] =>
+	rows.filter(
+		(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
+	);
+
 export const loadFromGoogleSheets = async (
 	userEmail?: string,
 ): Promise<{
@@ -1180,24 +1259,13 @@ export const loadFromGoogleSheets = async (
 	chatSessions: ChatSession[];
 	profile?: any;
 } | null> => {
-	if (!gapiInited) {
-		logger.error("GAPI not initialized");
-		return null;
-	}
-	if (!hasAccessToken) {
-		logger.warn("No access token found for sync");
-		return null;
-	}
+	if (!hasRequiredAuth()) return null;
 
-	const fileId = await getSpreadsheetId();
-	if (!fileId) {
-		logger.warn("Could not retrieve spreadsheet ID");
-		return null;
-	}
+	const fileId = await resolveSpreadsheetId();
+	if (!fileId) return null;
 
 	const result: any = {};
 
-	// Support both "Profile" (new) and "Users" (legacy) sheet names
 	const sheetName = await getProfileSheetName(fileId);
 	const sheetNamesToLoad = [
 		"Accounts",
@@ -1208,7 +1276,7 @@ export const loadFromGoogleSheets = async (
 		"Pots",
 		"Pockets",
 		"ChatSessions",
-		sheetName, // Use detected sheet name (Profile or Users)
+		sheetName,
 	];
 
 	const names = await getSheetNames(fileId);
@@ -1239,62 +1307,14 @@ export const loadFromGoogleSheets = async (
 			const headers = rows[0] as string[];
 			const dataRows = rows.slice(1);
 
-			// Handle Profile/Users sheet differently (lookup single user)
-			if (sheetName === "Profile" || sheetName === "Users") {
-				const emailIdx = headers.indexOf("email");
-				if (emailIdx !== -1) {
-					const emailToFind = userEmail || currentUserId;
-					const userRow = dataRows.find((r) => r[emailIdx] === emailToFind);
-					if (userRow) {
-						result.profile = parseUserRow(headers, userRow);
-					}
-				}
+			if (isProfileSheet(sheetName)) {
+				result.profile = parseProfileSheet(headers, dataRows, userEmail);
 				return;
 			}
 
-			result[sheetName.toLowerCase()] = dataRows
-				.map((row: any[]) => {
-					const obj: any = {};
-					headers.forEach((header, index) => {
-						let val = row[index];
-						if (header === "date" && typeof val === "number")
-							val = fromSerialDate(val);
-						if (header === "time" && typeof val === "number")
-							val = fromSerialTime(val);
-
-						val = coerceStringValue(val);
-
-						// Convert numeric fields
-						const numericFields = [
-							"amount",
-							"balance",
-							"updatedAt",
-							"createdAt",
-							"limit",
-							"targetAmount",
-							"currentAmount",
-							"lastSyncAt",
-							"usedAmount",
-							"limitAmount",
-							"amountLeft",
-						];
-						if (
-							typeof val === "string" &&
-							val.trim() !== "" &&
-							numericFields.includes(header)
-						) {
-							const num = Number(val);
-							if (!isNaN(num)) val = num;
-						}
-
-						if (header === "id" && val !== undefined) val = String(val);
-						if (val !== undefined) obj[header] = val;
-					});
-					return obj;
-				})
-				.filter(
-					(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
-				);
+			result[sheetName.toLowerCase()] = filterByCurrentUser(
+				dataRows.map((row: any[]) => parseDataRow(headers, row)),
+			);
 		});
 	} catch (err: any) {
 		if (err?.status === 401) {
@@ -1304,7 +1324,6 @@ export const loadFromGoogleSheets = async (
 		logger.warn("Batch load failed", err);
 	}
 
-	// Perform migration for Pots if needed
 	const pots = (result.pots || []).map((p: any) => migrateLegacyPot(p));
 
 	return {

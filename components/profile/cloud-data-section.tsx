@@ -46,6 +46,25 @@ const LinkBadge = ({ offlineMode }: { offlineMode: boolean }) => (
 	</div>
 );
 
+const getConnectionDescription = (offlineMode: boolean, email?: string): string =>
+	offlineMode ? "Not linked to Google Sheets" : `Linked to ${email || "Google Account"}`;
+
+const getConnectionColor = (offlineMode: boolean): string =>
+	offlineMode ? "text-gray-400" : "text-sky-400";
+
+const getSyncDescription = (isSyncing: boolean): string =>
+	isSyncing ? "Synchronizing your data..." : "Force sync with Google Sheets";
+
+const getConnectionOnClick = (
+	offlineMode: boolean,
+	onLogin: () => void,
+	requestConfirmation: ConfirmationRequester,
+	onUnlinkCloud: (() => void) | undefined,
+): (() => void) | undefined =>
+	offlineMode
+		? onLogin
+		: () => requestUnlinkConfirmation(requestConfirmation, () => onUnlinkCloud?.());
+
 const requestUnlinkConfirmation = (
 	requestConfirmation: ConfirmationRequester,
 	onUnlink: () => void,
@@ -112,21 +131,9 @@ export const CloudDataSection: React.FC<Props> = ({
 			<CloudActionItem
 				icon={CloudArrowUpIcon}
 				label="Google Sheets Connection"
-				description={
-					offlineMode
-						? "Not linked to Google Sheets"
-						: `Linked to ${profile.email || "Google Account"}`
-				}
-				color={offlineMode ? "text-gray-400" : "text-sky-400"}
-				onClick={
-					offlineMode
-						? onLogin
-						: () =>
-								requestUnlinkConfirmation(
-									requestConfirmation,
-									() => onUnlinkCloud?.(),
-								)
-				}
+				description={getConnectionDescription(offlineMode, profile.email)}
+				color={getConnectionColor(offlineMode)}
+				onClick={getConnectionOnClick(offlineMode, onLogin, requestConfirmation, onUnlinkCloud)}
 				action={<LinkBadge offlineMode={offlineMode} />}
 			/>
 
@@ -134,11 +141,7 @@ export const CloudDataSection: React.FC<Props> = ({
 				<CloudActionItem
 					icon={ArrowPathIcon}
 					label="Sync Now"
-					description={
-						isSyncing
-							? "Synchronizing your data..."
-							: "Force sync with Google Sheets"
-					}
+					description={getSyncDescription(isSyncing)}
 					onClick={onSync}
 					color="text-sky-400"
 					action={

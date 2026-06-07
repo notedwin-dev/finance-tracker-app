@@ -22,21 +22,28 @@ const isPositiveNumber = (val: string): boolean => {
 const isTransferCategory = (type: TransactionType): boolean =>
 	type === TransactionType.EXPENSE || type === TransactionType.INCOME;
 
+const pushIfMissing = (missing: string[], condition: boolean, label: string) => {
+	if (condition) missing.push(label);
+};
+
 const collectMissingFields = (state: TransactionFormState): string[] => {
 	const missing: string[] = [];
 	const { type, isSubsidized } = state;
+	const amountValue = isSubsidized ? state.marketValue : state.amount;
 
-	if (isSubsidized) {
-		if (!isPositiveNumber(state.marketValue)) missing.push("Market Value");
-	} else {
-		if (!isPositiveNumber(state.amount)) missing.push("Amount");
-	}
-	if (!state.accountId) missing.push("Account");
-	if (type === TransactionType.TRANSFER && !state.toAccountId) {
-		missing.push("To Account");
-	}
-	if (isTransferCategory(type) && !state.categoryId) missing.push("Category");
-	if (!state.date) missing.push("Date");
+	pushIfMissing(missing, !isPositiveNumber(amountValue), isSubsidized ? "Market Value" : "Amount");
+	pushIfMissing(missing, !state.accountId, "Account");
+	pushIfMissing(
+		missing,
+		type === TransactionType.TRANSFER && !state.toAccountId,
+		"To Account",
+	);
+	pushIfMissing(
+		missing,
+		isTransferCategory(type) && !state.categoryId,
+		"Category",
+	);
+	pushIfMissing(missing, !state.date, "Date");
 	return missing;
 };
 

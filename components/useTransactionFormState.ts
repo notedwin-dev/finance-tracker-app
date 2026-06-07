@@ -84,12 +84,6 @@ const formatInitialOptional = (val: number | string | undefined): string => {
 	return String(val || "");
 };
 
-const pickInitialString = (val: string | undefined, fallback: string): string =>
-	val || fallback;
-
-const pickInitialNumber = (val: number | undefined, fallback: number): number =>
-	val ?? fallback;
-
 const defaultBreakdownItems = (
 	tx: Transaction | undefined,
 ): Array<{ id: string; description: string; amount: string }> =>
@@ -100,31 +94,67 @@ const defaultBreakdownItems = (
 			}))
 		: [];
 
-const initFormState = (
+const initAccountFields = (
 	accounts: Account[],
-	categories: Category[],
 	tx: Transaction | undefined,
-): TransactionFormState => ({
-	type: tx?.type ?? TransactionType.EXPENSE,
+): Pick<TransactionFormState, "accountId" | "toAccountId"> => ({
+	accountId: tx ? tx.accountId || accounts[0]?.id || "" : accounts[0]?.id || "",
+	toAccountId: tx
+		? tx.toAccountId || (accounts.length > 1 ? accounts[1].id : "")
+		: accounts.length > 1
+			? accounts[1].id
+			: "",
+});
+
+const initTypeFields = (
+	tx: Transaction | undefined,
+	categories: Category[],
+): Pick<TransactionFormState, "type" | "currency" | "categoryId" | "shopName"> => ({
+	type: tx ? tx.type : TransactionType.EXPENSE,
+	currency: tx ? tx.currency : "MYR",
+	categoryId: tx ? tx.categoryId || "" : categories[0]?.id || "",
+	shopName: tx ? tx.shopName : "",
+});
+
+const initAmountFields = (
+	tx: Transaction | undefined,
+): Pick<TransactionFormState, "amount" | "fee" | "feeType"> => ({
 	amount: tx ? formatInitialNumber(tx.amount) : "",
-	currency: tx?.currency ?? "MYR",
-	accountId: tx?.accountId ?? accounts[0]?.id ?? "",
+	fee: tx ? formatInitialOptional(tx.fee) : "",
+	feeType: tx ? tx.feeType || "INCLUSIVE" : "INCLUSIVE",
+});
+
+const initTimeFields = (
+	tx: Transaction | undefined,
+): Pick<TransactionFormState, "date" | "time"> => ({
+	date: tx ? tx.date : new Date().toLocaleDateString("en-CA"),
+	time: tx ? tx.time || "" : "",
+});
+
+const initBucketFields = (
+	tx: Transaction | undefined,
+): Pick<
+	TransactionFormState,
+	"potId" | "savingPocketId" | "toSavingPocketId" | "subscriptionId"
+> => ({
 	potId: tx?.potId ?? "",
 	savingPocketId: tx?.savingPocketId ?? "",
 	toSavingPocketId: tx?.toSavingPocketId ?? "",
-	fee: tx ? formatInitialOptional(tx.fee) : "",
-	feeType: tx?.feeType ?? "INCLUSIVE",
 	subscriptionId: tx?.subscriptionId ?? "",
-	isSubscription: false,
-	frequency: "MONTHLY",
-	toAccountId:
-		tx?.toAccountId ?? (accounts.length > 1 ? accounts[1].id : ""),
-	categoryId: tx?.categoryId ?? categories[0]?.id ?? "",
-	shopName: tx?.shopName ?? "",
-	date: tx?.date ?? new Date().toLocaleDateString("en-CA"),
-	time: tx?.time ?? "",
-	breakdownEnabled: Array.isArray(tx?.amountBreakdown) && tx.amountBreakdown.length > 0,
+});
+
+const initBreakdownFields = (
+	tx: Transaction | undefined,
+): Pick<TransactionFormState, "breakdownEnabled" | "breakdownItems"> => ({
+	breakdownEnabled:
+		Array.isArray(tx?.amountBreakdown) && tx.amountBreakdown.length > 0,
 	breakdownItems: defaultBreakdownItems(tx),
+});
+
+const initHistoricalFields = (tx: Transaction | undefined): Pick<
+	TransactionFormState,
+	"isSubsidized" | "marketValue" | "isHistorical" | "isToAccountHistorical"
+> => ({
 	isSubsidized: tx?.isSubsidized ?? false,
 	marketValue: tx?.marketValue?.toString() ?? "",
 	isHistorical: tx?.isHistorical ?? false,
@@ -132,6 +162,22 @@ const initFormState = (
 		(tx as any)?.linkedTransaction?.isHistorical ??
 		(tx as any)?.isToAccountHistorical ??
 		false,
+});
+
+const initFormState = (
+	accounts: Account[],
+	categories: Category[],
+	tx: Transaction | undefined,
+): TransactionFormState => ({
+	...initAccountFields(accounts, tx),
+	...initTypeFields(tx, categories),
+	...initAmountFields(tx),
+	...initTimeFields(tx),
+	...initBucketFields(tx),
+	isSubscription: false,
+	frequency: "MONTHLY",
+	...initBreakdownFields(tx),
+	...initHistoricalFields(tx),
 });
 
 const findPocketAccountMismatch = (

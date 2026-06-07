@@ -25,6 +25,8 @@ import { TransactionFormAmount } from "./TransactionFormAmount";
 import { TransactionFormCategory } from "./TransactionFormCategory";
 import { TransactionFormHistorical } from "./TransactionFormHistorical";
 import { TransactionFormAccountSection } from "./TransactionFormAccountSection";
+import { TransactionFormDetails } from "./TransactionFormDetails";
+import { TransactionFormFooter } from "./TransactionFormFooter";
 
 interface Props {
 	accounts: Account[];
@@ -237,44 +239,7 @@ const TransactionForm: React.FC<Props> = ({
 					)}
 
 					{/* Details */}
-					<div>
-						<label className="block text-xs font-medium text-gray-400 mb-1">
-							{form.type === TransactionType.TRANSFER ? "Reference" : "Description"}
-						</label>
-						<input
-							type="text"
-							value={form.shopName}
-							onChange={(e) => form.setShopName(e.target.value)}
-							className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
-							placeholder={
-								form.type === TransactionType.EXPENSE
-									? "e.g., Starbucks"
-									: form.type === TransactionType.TRANSFER
-										? "e.g., Monthly Rent"
-										: "e.g., Paycheck"
-							}
-						/>
-					</div>
-
-					<div className="grid grid-cols-2 gap-4">
-						<div>
-							<label className="block text-xs font-medium text-gray-400 mb-1">
-								Date
-							</label>
-							<DatePicker value={form.date} onChange={form.setDate} />
-						</div>
-						<div>
-							<label className="block text-xs font-medium text-gray-400 mb-1">
-								Time (Optional)
-							</label>
-							<input
-								type="time"
-								value={form.time}
-								onChange={(e) => form.setTime(e.target.value)}
-								className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
-							/>
-						</div>
-					</div>
+					<TransactionFormDetails form={form} />
 
 					{/* Historical Checkboxes */}
 					<TransactionFormHistorical form={form} />
@@ -283,27 +248,11 @@ const TransactionForm: React.FC<Props> = ({
 					<TransactionFormBreakdown form={form} />
 				</form>
 
-				<div className="p-4 border-t border-gray-800 bg-surface">
-					{validationError && (
-						<p className="text-red-500 text-xs text-center font-medium mb-3 bg-red-500/10 py-2 rounded-lg border border-red-500/20">
-							{validationError}
-						</p>
-					)}
-					<button
-						onClick={handleSubmit}
-						disabled={isSubmitting}
-						className={`w-full text-white font-bold py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
-							isSubmitting
-								? "bg-gray-600 cursor-not-allowed"
-								: "bg-primary hover:bg-primaryDark shadow-indigo-900/20"
-						}`}
-					>
-						{isSubmitting && (
-							<div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-						)}
-						{isSubmitting ? "Processing..." : "Save Record"}
-					</button>
-				</div>
+				<TransactionFormFooter
+					validationError={validationError}
+					isSubmitting={isSubmitting}
+					onSubmit={handleSubmit}
+				/>
 			</div>
 		</div>
 	);

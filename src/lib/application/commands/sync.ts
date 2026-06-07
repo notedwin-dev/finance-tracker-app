@@ -369,44 +369,30 @@ export async function loadData(profile: any, _forceUnlock?: boolean): Promise<vo
   store.setSubscriptions(storedSubs);
 }
 
-export function processSubscriptions(
-  accounts: Account[],
-  usdRate: number,
-  options: { persist?: boolean } = { persist: true },
-) {
-  const { persist = true } = options;
-  const subs = StorageService.getStoredSubscriptions();
-  const currentTxs = StorageService.getStoredTransactions();
-  const today = new Date().toLocaleDateString("en-CA");
+const generateSubscriptionTxs = (
+  subs: Subscription[],
+  today: string,
+  currentUserId: string,
+): { updatedSubs: Subscription[]; newTxs: Transaction[]; processedCount: number } => {
   let newTxs: Transaction[] = [];
-  let updatedSubs = [...subs];
   let processedCount = 0;
-  let bailedSubIds = new Set<string>();
-  const storedProfile = StorageService.getStoredProfile();
-  const currentUserId = storedProfile.id || "guest";
 
-  const rateValid = usdRate > 0 && isFinite(usdRate);
-  if (!rateValid) {
-    logger.warn(
-      "processSubscriptions: usdRate invalid, cross-currency subs will be skipped to avoid silent balance corruption",
-    );
-  }
-
-  updatedSubs = updatedSubs.map((sub) => {
+  const updatedSubs = subs.map((sub) => {
     if (!sub.active) return sub;
     const { nextDateStr, generatedTxDates, bailed } = computeNextOccurrences(sub, today);
     if (!nextDateStr) {
       logger.warn(`processSubscriptions: invalid nextPaymentDate for sub ${sub.id}, skipping`);
       return sub;
     }
-    const newSubTxs = generatedTxDates.map((d) => buildSubscriptionTransaction(sub, d, currentUserId, new Date().toISOString()));
+    const newSubTxs = generatedTxDates.map((d) =>
+      buildSubscriptionTransaction(sub, d, currentUserId, new Date().toISOString()),
+    );
     newTxs.push(...newSubTxs);
     if (bailed) {
       logger.warn(
         `processSubscriptions: sub ${sub.id} hit iteration cap; nextPaymentDate may be corrupted`,
         sub.nextPaymentDate,
       );
-      bailedSubIds.add(sub.id);
       return { ...sub, nextPaymentDate: nextDateStr };
     }
     if (newSubTxs.length > 0) {
@@ -420,24 +406,18 @@ export function processSubscriptions(
     return { ...sub, nextPaymentDate: nextDateStr };
   });
 
-  if (newTxs.length === 0) return;
+  return { updatedSubs, newTxs, processedCount };
+};
 
-  const dedupedNewTxs = dedupeTransactions(currentTxs, newTxs);
-  if (dedupedNewTxs.length === 0) {
-    if (persist) {
-      StorageService.saveSubscriptions(updatedSubs);
-    }
-    useFinanceStore.getState().setSubscriptions(updatedSubs);
-    useSyncStore.getState().showToast(
-      "No new subscription payments to apply.",
-      "info",
-    );
-    return;
-  }
-
+const applyAccountUpdates = (
+  accounts: Account[],
+  newTxs: Transaction[],
+  usdRate: number,
+  rateValid: boolean,
+): { updatedAccounts: Account[]; appliedTxs: Transaction[] } => {
   const accUpdates = new Map<string, number>();
   const appliedTxs: Transaction[] = [];
-  dedupedNewTxs.forEach((t) => {
+  newTxs.forEach((t) => {
     const acc = accounts.find((a) => a.id === t.accountId);
     if (!acc) return;
     if (t.currency !== acc.currency && !rateValid) {
@@ -451,30 +431,34 @@ export function processSubscriptions(
     appliedTxs.push(t);
   });
 
-  if (appliedTxs.length === 0) {
-    if (persist) {
-      StorageService.saveSubscriptions(updatedSubs);
-    }
-    useFinanceStore.getState().setSubscriptions(updatedSubs);
-    useSyncStore.getState().showToast(
-      "No new subscription payments to apply.",
-      "info",
-    );
-    return;
-  }
+  const updatedAccounts = accounts.map((a) =>
+    accUpdates.has(a.id)
+      ? {
+          ...a,
+          balance: a.balance - (accUpdates.get(a.id) || 0),
+          updatedAt: new Date().toISOString(),
+        }
+      : a,
+  );
 
+  return { updatedAccounts, appliedTxs };
+};
+
+const showNothingToApplyToast = (persist: boolean, updatedSubs: Subscription[]) => {
+  if (persist) StorageService.saveSubscriptions(updatedSubs);
+  useFinanceStore.getState().setSubscriptions(updatedSubs);
+  useSyncStore.getState().showToast("No new subscription payments to apply.", "info");
+};
+
+const persistSubscriptionResult = (
+  currentTxs: Transaction[],
+  appliedTxs: Transaction[],
+  updatedSubs: Subscription[],
+  updatedAccounts: Account[],
+  processedCount: number,
+  persist: boolean,
+) => {
   const persistedTxs = [...currentTxs, ...appliedTxs];
-
-  const updatedAccounts = accounts.map((a) => {
-    if (accUpdates.has(a.id))
-      return {
-        ...a,
-        balance: a.balance - (accUpdates.get(a.id) || 0),
-        updatedAt: new Date().toISOString(),
-      };
-    return a;
-  });
-
   const store = useFinanceStore.getState();
   store.setTransactions(persistedTxs);
   store.setSubscriptions(updatedSubs);
@@ -489,6 +473,59 @@ export function processSubscriptions(
   useSyncStore.getState().showToast(
     `Processed ${processedCount} subscription payments, ${appliedTxs.length} new transactions applied.`,
     "success",
+  );
+};
+
+export function processSubscriptions(
+  accounts: Account[],
+  usdRate: number,
+  options: { persist?: boolean } = { persist: true },
+) {
+  const { persist = true } = options;
+  const subs = StorageService.getStoredSubscriptions();
+  const currentTxs = StorageService.getStoredTransactions();
+  const today = new Date().toLocaleDateString("en-CA");
+  const storedProfile = StorageService.getStoredProfile();
+  const currentUserId = storedProfile.id || "guest";
+
+  const rateValid = usdRate > 0 && isFinite(usdRate);
+  if (!rateValid) {
+    logger.warn(
+      "processSubscriptions: usdRate invalid, cross-currency subs will be skipped to avoid silent balance corruption",
+    );
+  }
+
+  const { updatedSubs, newTxs, processedCount } = generateSubscriptionTxs(
+    subs,
+    today,
+    currentUserId,
+  );
+  if (newTxs.length === 0) return;
+
+  const dedupedNewTxs = dedupeTransactions(currentTxs, newTxs);
+  if (dedupedNewTxs.length === 0) {
+    showNothingToApplyToast(persist, updatedSubs);
+    return;
+  }
+
+  const { updatedAccounts, appliedTxs } = applyAccountUpdates(
+    accounts,
+    dedupedNewTxs,
+    usdRate,
+    rateValid,
+  );
+  if (appliedTxs.length === 0) {
+    showNothingToApplyToast(persist, updatedSubs);
+    return;
+  }
+
+  persistSubscriptionResult(
+    currentTxs,
+    appliedTxs,
+    updatedSubs,
+    updatedAccounts,
+    processedCount,
+    persist,
   );
 }
 

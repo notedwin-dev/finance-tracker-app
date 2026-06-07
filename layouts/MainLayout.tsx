@@ -1,445 +1,195 @@
 import React, { useState } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  HomeIcon,
-  ClockIcon,
-  ChartBarIcon,
-  PlusIcon,
-  UserIcon,
-  Squares2X2Icon,
-  ChatBubbleBottomCenterIcon,
-} from "@heroicons/react/24/outline";
-import {
-  HomeIcon as HomeIconSolid,
-  ClockIcon as ClockIconSolid,
-  ChartBarIcon as ChartBarIconSolid,
-  UserIcon as UserIconSolid,
-} from "@heroicons/react/24/solid";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../services/auth.services";
 import * as SheetService from "../services/sheets.services";
 import { useSyncStore } from "../src/stores/sync.store";
 import { useMaskStore } from "../src/stores/mask.store";
 import { useFinanceStore } from "../src/stores/finance.store";
-import AIInsights from "../components/AIInsights";
-import TransactionForm from "../components/TransactionForm";
-import AccountForm from "../components/AccountForm";
-import CategoryManager from "../components/CategoryManager";
-import SubscriptionManager from "../components/SubscriptionManager";
 import {
-  saveCategory, deleteCategory,
-  addSubscription, deleteSubscription,
-  saveChatSession, deleteChatSession,
-  saveAccount, deleteAccount,
-  submitTransaction,
+	saveCategory,
+	deleteCategory,
+	addSubscription,
+	deleteSubscription,
+	saveChatSession,
+	deleteChatSession,
+	saveAccount,
+	deleteAccount,
+	submitTransaction,
 } from "../src/lib/application/commands";
-import { Transaction, Account, TransactionType, Subscription } from "../types";
-import { useOnlineStatus, OfflineBanner } from "./connection-status";
-import { MaskModeToggle } from "./mask-mode-toggle";
-
-const buildSubscriptionPaymentDraft = (sub: Subscription, profileId: string | undefined): Transaction => ({
-  id: crypto.randomUUID(),
-  userId: profileId || "local",
-  accountId: sub.accountId,
-  amount: sub.amount,
-  currency: sub.currency,
-  type: TransactionType.EXPENSE,
-  categoryId: sub.categoryId,
-  shopName: sub.name,
-  date: new Date().toLocaleDateString("en-CA"),
-  createdAt: new Date().toISOString(),
-  subscriptionId: sub.id,
-}) as Transaction;
-
-const zenLogo = "/images/ZenFinance.svg";
+import { Transaction, Account, Subscription } from "../types";
+import { useOnlineStatus } from "./connection-status";
+import { DesktopSidebar } from "./desktop-sidebar";
+import { MobileHeader } from "./mobile-header";
+import { MobileBottomNav } from "./mobile-bottom-nav";
+import { GlobalOverlays } from "./global-overlays";
+import { buildSubscriptionPaymentDraft } from "../src/lib/domain/subscription-draft";
 
 const MainLayout: React.FC = () => {
-  const { profile, logout } = useAuth();
-  const toast = useSyncStore((s) => s.toast);
-  const maskMode = useMaskStore((s) => s.maskMode);
-  const setMaskMode = useMaskStore((s) => s.setMaskMode);
+	const { profile, logout } = useAuth();
+	const toast = useSyncStore((s) => s.toast);
+	const maskMode = useMaskStore((s) => s.maskMode);
+	const setMaskMode = useMaskStore((s) => s.setMaskMode);
 
-  const categories = useFinanceStore((s) => s.categories);
-  const goals = useFinanceStore((s) => s.goals);
-  const subscriptions = useFinanceStore((s) => s.subscriptions);
-  const chatSessions = useFinanceStore((s) => s.chatSessions);
-  const accounts = useFinanceStore((s) => s.accounts);
-  const pots = useFinanceStore((s) => s.pots);
-  const pockets = useFinanceStore((s) => s.pockets);
-  const storeTransactions = useFinanceStore((s) => s.transactions);
+	const categories = useFinanceStore((s) => s.categories);
+	const goals = useFinanceStore((s) => s.goals);
+	const subscriptions = useFinanceStore((s) => s.subscriptions);
+	const chatSessions = useFinanceStore((s) => s.chatSessions);
+	const accounts = useFinanceStore((s) => s.accounts);
+	const pots = useFinanceStore((s) => s.pots);
+	const pockets = useFinanceStore((s) => s.pockets);
+	const storeTransactions = useFinanceStore((s) => s.transactions);
 
-  const isOnline = useOnlineStatus();
+	const isOnline = useOnlineStatus();
 
-  const location = useLocation();
-  const navigate = useNavigate();
+	const location = useLocation();
+	const navigate = useNavigate();
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showAccountForm, setShowAccountForm] = useState(false);
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [showSubscriptionManager, setShowSubscriptionManager] = useState(false);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [editingTransaction, setEditingTransaction] = useState<
-    Transaction | undefined
-  >();
-  const [editingAccount, setEditingAccount] = useState<Account | undefined>();
+	const [showAddModal, setShowAddModal] = useState(false);
+	const [showAccountForm, setShowAccountForm] = useState(false);
+	const [showCategoryManager, setShowCategoryManager] = useState(false);
+	const [showSubscriptionManager, setShowSubscriptionManager] = useState(false);
+	const [activeChatId, setActiveChatId] = useState<string | null>(null);
+	const [editingTransaction, setEditingTransaction] = useState<
+		Transaction | undefined
+	>();
+	const [editingAccount, setEditingAccount] = useState<Account | undefined>();
 
-  if (!profile.isLoggedIn) {
-    navigate("/");
-    return null;
-  }
+	if (!profile.isLoggedIn) {
+		navigate("/");
+		return null;
+	}
 
-  const handleLogout = async () => {
-    navigate("/", { replace: true });
-    setTimeout(() => {
-      logout();
-    }, 100);
-  };
+	const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
+	const userId = profile.id || "local";
 
-  const handleRecordSubscriptionPayment = (sub: Subscription) => {
-    setShowSubscriptionManager(false);
-    setEditingTransaction(buildSubscriptionPaymentDraft(sub, profile.id));
-    setShowAddModal(true);
-  };
+	const handleLogout = async () => {
+		navigate("/", { replace: true });
+		setTimeout(() => logout(), 100);
+	};
 
-  const isCloudEnabled = !profile.offlineMode && SheetService.isClientReady();
+	const handleRecordSubscriptionPayment = (sub: Subscription) => {
+		setShowSubscriptionManager(false);
+		setEditingTransaction(buildSubscriptionPaymentDraft(sub, profile.id));
+		setShowAddModal(true);
+	};
 
-  const handleTransactionSubmit = async (
-    tx: Omit<Transaction, "userId">,
-    newSubscription?: Omit<Subscription, "userId" | "id">,
-    isDestHistorical?: boolean,
-  ) => {
-    const store = useFinanceStore.getState();
-    const existingTx = store.transactions.find((t) => t.id === tx.id);
-    const linkedRecord = existingTx?.linkedTransactionId
-      ? store.transactions.find((t) => t.id === existingTx.linkedTransactionId)
-      : null;
+	const handleTransactionSubmit = async (
+		tx: Omit<Transaction, "userId">,
+		newSubscription?: Omit<Subscription, "userId" | "id">,
+		isDestHistorical?: boolean,
+	) => {
+		const store = useFinanceStore.getState();
+		const existingTx = store.transactions.find((t) => t.id === tx.id);
+		const linkedRecord = existingTx?.linkedTransactionId
+			? store.transactions.find((t) => t.id === existingTx.linkedTransactionId)
+			: null;
 
-    await submitTransaction(
-      tx,
-      store.accounts,
-      store.pots,
-      store.pockets,
-      store.usdRate,
-      profile.id || "local",
-      isCloudEnabled,
-      existingTx,
-      linkedRecord,
-      undefined,
-      newSubscription,
-      store.subscriptions,
-      isDestHistorical,
-    );
-  };
+		await submitTransaction(
+			tx,
+			store.accounts,
+			store.pots,
+			store.pockets,
+			store.usdRate,
+			userId,
+			isCloudEnabled,
+			existingTx,
+			linkedRecord,
+			undefined,
+			newSubscription,
+			store.subscriptions,
+			isDestHistorical,
+		);
+	};
 
-  return (
-    <div className="min-h-screen bg-background text-gray-100 font-sans flex justify-center">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 h-screen bg-surface border-r border-gray-800 p-6 fixed left-0 top-0 z-40">
-        <div className="flex items-center gap-3 mb-10">
-          <img
-            src={zenLogo}
-            alt="ZenFinance Logo"
-            className="w-8 h-8 object-contain"
-          />
-          <h1 className="text-xl font-bold tracking-tight text-white">
-            ZenFinance
-          </h1>
-        </div>
+	const closeTransaction = () => {
+		setShowAddModal(false);
+		setEditingTransaction(undefined);
+	};
 
-        <OfflineBanner
-          variant="block"
-          isOnline={isOnline}
-          offlineMode={profile.offlineMode}
-        />
+	const closeAccountForm = () => {
+		setShowAccountForm(false);
+		setEditingAccount(undefined);
+	};
 
-        <nav className="flex-1 space-y-2">
-          <SidebarLink
-            to="/app"
-            icon={HomeIcon}
-            label="Dashboard"
-            active={location.pathname === "/app"}
-          />
-          <SidebarLink
-            to="/app/history"
-            icon={ClockIcon}
-            label="Transactions"
-            active={location.pathname === "/app/history"}
-          />
-          <SidebarLink
-            to="/app/goals"
-            icon={ChartBarIcon}
-            label="Goals & Pots"
-            active={location.pathname === "/app/goals"}
-          />
-          <SidebarLink
-            to="/app/assets"
-            icon={Squares2X2Icon}
-            label="My Assets"
-            active={location.pathname === "/app/assets"}
-          />
-          <SidebarLink
-            to="/app/profile"
-            icon={UserIcon}
-            label="Profile"
-            active={location.pathname === "/app/profile"}
-          />
-        </nav>
+	return (
+		<div className="min-h-screen bg-background text-gray-100 font-sans flex justify-center">
+			<DesktopSidebar
+				isOnline={isOnline}
+				offlineMode={profile.offlineMode}
+				maskMode={maskMode}
+				onToggleMask={() => setMaskMode(!maskMode)}
+			/>
 
-        <div className="mt-auto space-y-3 pt-6 border-t border-gray-800" aria-label="Mask mode toggle">
-          <OfflineBanner
-            variant="chip"
-            isOnline={isOnline}
-            offlineMode={profile.offlineMode}
-          />
+			<div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl relative">
+				<MobileHeader
+					photoUrl={profile.photoUrl}
+					isOnline={isOnline}
+					offlineMode={profile.offlineMode}
+					maskMode={maskMode}
+					onToggleMask={() => setMaskMode(!maskMode)}
+				/>
 
-          <MaskModeToggle
-            maskMode={maskMode}
-            onToggle={() => setMaskMode(!maskMode)}
-            variant="sidebar"
-          />
-        </div>
-      </aside>
+				<main className="flex-1 p-4 pb-32 lg:pb-8 w-full mx-auto">
+					<Outlet
+						context={{
+							showAddModal,
+							setShowAddModal,
+							setEditingTransaction,
+							setShowAccountForm,
+							setEditingAccount,
+							setShowCategoryManager,
+							setShowSubscriptionManager,
+							handleLogout,
+						}}
+					/>
+				</main>
+			</div>
 
-      {/* Main Content Area */}
-      <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-7xl relative">
-        <header className="lg:hidden flex justify-between items-center px-6 h-20 bg-background/90 backdrop-blur-md sticky top-0 z-60 border-b border-gray-800 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
-          <div className="flex items-center gap-2">
-            <img
-              src={zenLogo}
-              alt="ZenFinance Logo"
-              className="w-7 h-7 object-contain"
-            />
-            <h1 className="text-xl font-black text-white tracking-tighter">
-              Zen<span className="text-indigo-400 font-black">Finance</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <OfflineBanner
-              variant="chip"
-              isOnline={isOnline}
-              offlineMode={profile.offlineMode}
-            />
-            <MaskModeToggle
-              maskMode={maskMode}
-              onToggle={() => setMaskMode(!maskMode)}
-              variant="header"
-            />
-            <Link to="/app/profile" className="relative group">
-              {profile.photoUrl ? (
-                <div className="w-10 h-10 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-surface shadow-lg group-active:scale-90 transition-transform">
-                  <img
-                    src={profile.photoUrl}
-                    className="w-full h-full object-cover"
-                    alt="Avatar"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-surface border-2 border-gray-800 flex items-center justify-center shadow-lg group-active:scale-90 transition-transform">
-                  <UserIcon className="w-6 h-6 text-gray-400" />
-                </div>
-              )}
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-background rounded-full"></div>
-            </Link>
-          </div>
-        </header>
+			<MobileBottomNav onAdd={() => setShowAddModal(true)} />
 
-        <main className="flex-1 p-4 pb-32 lg:pb-8 w-full mx-auto">
-          <Outlet
-            context={{
-              showAddModal,
-              setShowAddModal,
-              setEditingTransaction,
-              setShowAccountForm,
-              setEditingAccount,
-              setShowCategoryManager,
-              setShowSubscriptionManager,
-              handleLogout,
-            }}
-          />
-        </main>
-      </div>
-
-      {/* Mobile Bottom Nav - Floating Island Style */}
-      <div className="lg:hidden fixed bottom-6 left-0 w-full px-6 z-40">
-        <div className="relative bg-[#0A0A0A]/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] px-2 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-          {/* Centered Add Button */}
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="w-16 h-16 bg-indigo-600 rounded-full shadow-[0_8px_20px_rgba(79,70,229,0.4)] flex items-center justify-center text-white border-[6px] border-[#0A0A0A] transform transition-transform active:scale-90"
-            >
-              <PlusIcon className="w-8 h-8" />
-            </button>
-          </div>
-
-          <nav className="flex justify-between items-center h-16">
-            <div className="flex-1 flex justify-around items-center">
-              <MobileNavLink
-                to="/app"
-                icon={HomeIcon}
-                iconSolid={HomeIconSolid}
-                label="HOME"
-                active={location.pathname === "/app"}
-              />
-              <MobileNavLink
-                to="/app/history"
-                icon={ClockIcon}
-                iconSolid={ClockIconSolid}
-                label="HISTORY"
-                active={location.pathname === "/app/history"}
-              />
-            </div>
-
-            {/* Gap for Add Button */}
-            <div className="w-16"></div>
-
-            <div className="flex-1 flex justify-around items-center">
-              <MobileNavLink
-                to="/app/goals"
-                icon={ChartBarIcon}
-                iconSolid={ChartBarIconSolid}
-                label="GOALS"
-                active={location.pathname === "/app/goals"}
-              />
-              <MobileNavLink
-                to="/app/profile"
-                icon={UserIcon}
-                iconSolid={UserIconSolid}
-                label="PROFILE"
-                active={location.pathname === "/app/profile"}
-              />
-            </div>
-          </nav>
-        </div>
-      </div>
-
-      {/* Global Comps */}
-      {profile.showAIAssistant && location.pathname !== "/app/ai" && (
-        <Link
-          to="/app/ai"
-          className="fixed bottom-24 right-6 lg:bottom-8 lg:right-8 w-14 h-14 bg-primary hover:bg-primary-hover text-white rounded-full flex items-center justify-center shadow-2xl z-40 transition-all hover:scale-110 group mb-[env(safe-area-inset-bottom)] lg:mb-0"
-        >
-          <ChatBubbleBottomCenterIcon className="w-7 h-7" />
-        </Link>
-      )}
-
-      {location.pathname === "/app/ai" && (
-        <AIInsights
-          apiKey={profile.geminiApiKey}
-          sessions={chatSessions}
-          activeSessionId={activeChatId}
-          accounts={accounts}
-          transactions={storeTransactions}
-          categories={categories}
-          pots={pots}
-          goals={goals}
-          subscriptions={subscriptions}
-          onClose={() => navigate(-1)}
-          onSaveSession={(s) => saveChatSession(s, chatSessions)}
-          onDeleteSession={(id) => deleteChatSession(id, chatSessions)}
-          onSelectSession={setActiveChatId}
-          onNewChat={() => setActiveChatId(null)}
-        />
-      )}
-
-      {showAddModal && (
-        <TransactionForm
-          accounts={accounts}
-          categories={categories}
-          pots={pots}
-          pockets={pockets}
-          subscriptions={subscriptions}
-          initialTransaction={editingTransaction}
-          onClose={() => {
-            setShowAddModal(false);
-            setEditingTransaction(undefined);
-          }}
-          onSubmit={handleTransactionSubmit}
-          onManageCategories={() => setShowCategoryManager(true)}
-        />
-      )}
-
-      {showAccountForm && (
-        <AccountForm
-          initialAccount={editingAccount}
-          accounts={accounts}
-          onSave={(a) => saveAccount(a, accounts, storeTransactions, profile.id || "local", profile)}
-          onClose={() => {
-            setShowAccountForm(false);
-            setEditingAccount(undefined);
-          }}
-          onDelete={(id) => deleteAccount(id, accounts, storeTransactions)}
-        />
-      )}
-
-      {showCategoryManager && (
-        <CategoryManager
-          categories={categories}
-          onClose={() => setShowCategoryManager(false)}
-          onSave={(cat) => saveCategory(cat, categories, profile.id || "local")}
-          onDelete={(id) => deleteCategory(id, categories)}
-        />
-      )}
-
-      {showSubscriptionManager && (
-        <SubscriptionManager
-          subscriptions={subscriptions}
-          accounts={accounts}
-          categories={categories}
-          onAdd={(s) => addSubscription(s, subscriptions, profile.id || "local")}
-          onDelete={(id) => deleteSubscription(id, subscriptions)}
-          onRecordPayment={handleRecordSubscriptionPayment}
-          onClose={() => setShowSubscriptionManager(false)}
-        />
-      )}
-
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 lg:left-auto lg:translate-x-0 left-1/2 -translate-x-1/2 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 z-100 animate-fadeIn border border-white/10 backdrop-blur-md ${toast.type === "alert" ? "bg-red-500/90 text-white" : "bg-primary/90 text-white"}`}
-        >
-          <span className="font-bold tracking-wide">{toast.message}</span>
-        </div>
-      )}
-    </div>
-  );
+			<GlobalOverlays
+				showAI={profile.showAIAssistant}
+				isOnAiRoute={location.pathname === "/app/ai"}
+				apiKey={profile.geminiApiKey}
+				sessions={chatSessions}
+				activeSessionId={activeChatId}
+				accounts={accounts}
+				transactions={storeTransactions}
+				categories={categories}
+				pots={pots}
+				pockets={pockets}
+				goals={goals}
+				subscriptions={subscriptions}
+				toast={toast}
+				ui={{
+					showAddModal,
+					showAccountForm,
+					showCategoryManager,
+					showSubscriptionManager,
+					editingTransaction,
+					editingAccount,
+				}}
+				onCloseAi={() => navigate(-1)}
+				onSaveSession={(s) => saveChatSession(s, chatSessions)}
+				onDeleteSession={(id) => deleteChatSession(id, chatSessions)}
+				onSelectSession={setActiveChatId}
+				onNewChat={() => setActiveChatId(null)}
+				onCloseTransaction={closeTransaction}
+				onSubmitTransaction={handleTransactionSubmit}
+				onManageCategories={() => setShowCategoryManager(true)}
+				onCloseAccountForm={closeAccountForm}
+				onSaveAccount={(a) => saveAccount(a, accounts, storeTransactions, userId, profile)}
+				onDeleteAccount={(id) => deleteAccount(id, accounts, storeTransactions)}
+				onCloseCategoryManager={() => setShowCategoryManager(false)}
+				onSaveCategory={(cat) => saveCategory(cat, categories, userId)}
+				onDeleteCategory={(id) => deleteCategory(id, categories)}
+				onCloseSubscriptionManager={() => setShowSubscriptionManager(false)}
+				onAddSubscription={(s) => addSubscription(s, subscriptions, userId)}
+				onDeleteSubscription={(id) => deleteSubscription(id, subscriptions)}
+				onRecordSubscriptionPayment={handleRecordSubscriptionPayment}
+			/>
+		</div>
+	);
 };
-
-const SidebarLink = ({ to, icon: Icon, label, active }: any) => (
-  <Link
-    to={to}
-    className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all font-medium ${active ? "bg-primary text-white shadow-lg shadow-indigo-900/30" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
-  >
-    <Icon className="w-5 h-5" />
-    {label}
-  </Link>
-);
-
-const MobileNavLink = ({
-  to,
-  icon: Icon,
-  iconSolid: IconSolid,
-  label,
-  active,
-}: any) => (
-  <Link
-    to={to}
-    className={`flex flex-col items-center justify-center pt-1 transition-all ${active ? "text-indigo-400 scale-110" : "text-gray-600 hover:text-gray-400"}`}
-  >
-    <div
-      className={`p-2 rounded-xl transition-all ${active ? "bg-indigo-500/10" : ""}`}
-    >
-      {active ? (
-        <IconSolid className="w-6 h-6" />
-      ) : (
-        <Icon className="w-6 h-6" />
-      )}
-    </div>
-    <span
-      className={`text-[8px] font-black mt-0.5 tracking-widest ${active ? "opacity-100" : "opacity-40"}`}
-    >
-      {label}
-    </span>
-  </Link>
-);
 
 export default MainLayout;

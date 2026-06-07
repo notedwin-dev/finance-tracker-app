@@ -13,7 +13,6 @@ import {
 	XMarkIcon,
 	PlusIcon,
 	ExclamationTriangleIcon,
-	ArrowPathIcon,
 	SparklesIcon,
 } from "@heroicons/react/24/outline";
 import DatePicker from "./DatePicker";
@@ -25,6 +24,8 @@ import {
 } from "../src/lib/domain/transaction-payload";
 import { useTransactionFormState } from "./useTransactionFormState";
 import { TransactionFormBreakdown } from "./TransactionFormBreakdown";
+import { TransactionFormSubscription } from "./TransactionFormSubscription";
+import { TransactionFormTransferDetails } from "./TransactionFormTransferDetails";
 
 interface Props {
 	accounts: Account[];
@@ -54,13 +55,6 @@ const ALL_TRANSACTION_TYPES: TransactionType[] = [
 	TransactionType.TRANSFER,
 	TransactionType.ADJUSTMENT,
 	TransactionType.ACCOUNT_OPENING,
-];
-
-const FREQUENCIES: Subscription["frequency"][] = [
-	"DAILY",
-	"WEEKLY",
-	"MONTHLY",
-	"YEARLY",
 ];
 
 const TransactionForm: React.FC<Props> = ({
@@ -435,106 +429,7 @@ const TransactionForm: React.FC<Props> = ({
 					</div>
 
 					{form.type === TransactionType.TRANSFER && (
-						<div className="animate-fadeIn grid grid-cols-2 gap-4">
-							<div>
-								<label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-									<SparklesIcon className="w-3.5 h-3.5 text-emerald-400" />
-									<span>Destination Pocket (Optional)</span>
-								</label>
-								<div className="relative">
-									<select
-										value={form.toSavingPocketId}
-										onChange={(e) => form.setToSavingPocketId(e.target.value)}
-										className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
-									>
-										<option value="">No Pocket Selected</option>
-										{pockets
-											.filter(
-												(p) =>
-													p.id !== form.savingPocketId &&
-													(!p.accountId || p.accountId === form.toAccountId),
-											)
-											.map((p) => (
-												<option key={p.id} value={p.id}>
-													{p.icon} {p.name} ({p.currency}{" "}
-													{p.currentAmount.toLocaleString()})
-												</option>
-											))}
-									</select>
-								</div>
-							</div>
-
-							<div>
-								<label className="block text-xs font-medium text-gray-400 mb-1">
-									Transaction Fee (Optional)
-								</label>
-								<div className="relative">
-									<input
-										type="text"
-										inputMode="decimal"
-										value={form.fee}
-										onChange={(e) =>
-											form.setFee(formatCalculatorAmount(e.target.value, form.fee))
-										}
-										className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
-										placeholder="0.00"
-									/>
-									{form.fee && (
-										<div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-500 uppercase">
-											{form.currency}
-										</div>
-									)}
-								</div>
-								{parseFloat(form.fee) > 0 && (
-									<div className="mt-2 flex items-center gap-2">
-										<span className="text-[10px] text-gray-400 uppercase font-bold">
-											Fee Type:
-										</span>
-										<div className="flex bg-card p-1 rounded-lg border border-gray-800">
-											<button
-												type="button"
-												onClick={() => form.setFeeType("INCLUSIVE")}
-												className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-													form.feeType === "INCLUSIVE"
-														? "bg-primary text-white shadow-lg"
-														: "text-gray-500 hover:text-white"
-												}`}
-											>
-												INCLUSIVE
-											</button>
-											<button
-												type="button"
-												onClick={() => form.setFeeType("EXCLUSIVE")}
-												className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-													form.feeType === "EXCLUSIVE"
-														? "bg-primary text-white shadow-lg"
-														: "text-gray-500 hover:text-white"
-												}`}
-											>
-												EXCLUSIVE
-											</button>
-										</div>
-									</div>
-								)}
-								{parseFloat(form.fee) > 0 && parseFloat(form.amount) > 0 && (
-									<p className="mt-1 text-[10px] text-gray-500 italic">
-										{form.feeType === "INCLUSIVE"
-											? `Amount includes fee. Source pays ${parseFloat(
-													form.amount,
-												).toFixed(
-													2,
-												)} ${form.currency}, Destination receives ${parseFloat(
-													form.amount,
-												).toFixed(2)} ${form.currency}.`
-											: `Fee is excluded from received amount. Source pays ${parseFloat(
-													form.amount,
-												).toFixed(2)} ${form.currency}, Destination receives ${(
-													parseFloat(form.amount) - parseFloat(form.fee)
-												).toFixed(2)} ${form.currency}.`}
-									</p>
-								)}
-							</div>
-						</div>
+						<TransactionFormTransferDetails form={form} pockets={pockets} />
 					)}
 
 					{/* Category Selection (Expense & Income) */}
@@ -577,85 +472,7 @@ const TransactionForm: React.FC<Props> = ({
 
 					{/* Subscription Linking */}
 					{form.type === TransactionType.EXPENSE && (
-						<div className="space-y-3 bg-white/5 p-3 rounded-2xl border border-gray-800">
-							<div className="flex items-center justify-between">
-								<label className="text-xs font-medium text-gray-400 flex items-center gap-2">
-									<ArrowPathIcon className="w-3.5 h-3.5" />
-									Subscription
-								</label>
-								{!form.subscriptionId && (
-									<button
-										type="button"
-										onClick={() => form.setIsSubscription(!form.isSubscription)}
-										className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-all ${
-											form.isSubscription
-												? "bg-primary/20 text-primary border border-primary/30"
-												: "text-gray-500 border border-gray-800"
-										}`}
-									>
-										{form.isSubscription ? "CREATE NEW" : "SET AS REPEATING"}
-									</button>
-								)}
-							</div>
-
-							{form.isSubscription && !form.subscriptionId && (
-								<div className="animate-fadeIn space-y-3">
-									<div className="flex gap-2">
-										{FREQUENCIES.map((f) => (
-											<button
-												key={f}
-												type="button"
-												onClick={() => form.setFrequency(f)}
-												className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
-													form.frequency === f
-														? "bg-primary border-primary text-white"
-														: "bg-surface border-gray-700 text-gray-400"
-												}`}
-											>
-												{f}
-											</button>
-										))}
-									</div>
-									<p className="text-[10px] text-gray-500 italic">
-										This will create a new subscription starting from {form.date}.
-									</p>
-								</div>
-							)}
-
-							{subscriptions.length > 0 && !form.isSubscription && (
-								<div className="relative">
-									<select
-										value={form.subscriptionId}
-										onChange={(e) => {
-											const subId = e.target.value;
-											form.setSubscriptionId(subId);
-											if (subId) {
-												const sub = subscriptions.find((s) => s.id === subId);
-												if (sub) form.applySubscription(sub);
-											}
-										}}
-										className="w-full bg-surface border border-gray-700 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-primary appearance-none"
-									>
-										<option value="">Link existing subscription...</option>
-										{subscriptions.map((sub) => (
-											<option key={sub.id} value={sub.id}>
-												{sub.name} ({sub.currency} {sub.amount.toLocaleString()}
-												) - {sub.frequency}
-											</option>
-										))}
-									</select>
-									{form.subscriptionId && (
-										<button
-											type="button"
-											onClick={() => form.setSubscriptionId("")}
-											className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
-										>
-											<XMarkIcon className="w-4 h-4" />
-										</button>
-									)}
-								</div>
-							)}
-						</div>
+						<TransactionFormSubscription form={form} subscriptions={subscriptions} />
 					)}
 
 					{/* Details */}

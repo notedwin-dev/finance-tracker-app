@@ -26,6 +26,9 @@ import { useTransactionFormState } from "./useTransactionFormState";
 import { TransactionFormBreakdown } from "./TransactionFormBreakdown";
 import { TransactionFormSubscription } from "./TransactionFormSubscription";
 import { TransactionFormTransferDetails } from "./TransactionFormTransferDetails";
+import { TransactionFormAmount } from "./TransactionFormAmount";
+import { TransactionFormCategory } from "./TransactionFormCategory";
+import { TransactionFormHistorical } from "./TransactionFormHistorical";
 
 interface Props {
 	accounts: Account[];
@@ -215,70 +218,7 @@ const TransactionForm: React.FC<Props> = ({
 					)}
 
 					{/* Amount & Currency */}
-					<div>
-						<label className="block text-xs font-medium text-gray-400 mb-1.5">
-							{form.isSubsidized ? "Cash Outflow (Usually 0.00)" : "Amount"}
-						</label>
-						<div className="flex gap-2">
-							<select
-								value={form.currency}
-								onChange={(e) => form.setCurrency(e.target.value as any)}
-								className="bg-surface border border-gray-700 rounded-xl px-2 sm:px-3 text-white text-sm sm:text-base font-bold focus:outline-none shrink-0"
-							>
-								<option value="MYR">MYR</option>
-								<option value="USD">USD</option>
-							</select>
-							<input
-								type="text"
-								inputMode="decimal"
-								required={!form.isSubsidized}
-								value={form.amount}
-								onChange={(e) => handleAmountChange(e.target.value)}
-								className="flex-1 min-w-0 bg-surface border border-gray-700 rounded-xl py-2.5 sm:py-3 px-3 sm:px-4 text-white text-lg sm:text-xl font-bold focus:outline-none focus:border-primary"
-								placeholder="0.00"
-								autoFocus
-							/>
-						</div>
-						{form.isSubsidized && (
-							<div className="mt-3 animate-fadeIn">
-								<label className="block text-xs font-medium text-indigo-400 mb-1.5">
-									Market Value (Original Price)
-								</label>
-								<div className="relative">
-									<div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">
-										{form.currency === "MYR" ? "RM" : "$"}
-									</div>
-									<input
-										type="text"
-										inputMode="decimal"
-										value={form.marketValue}
-										onChange={(e) => form.setMarketValue(e.target.value)}
-										className="w-full bg-surface border border-indigo-500/30 rounded-xl py-2.5 px-10 text-white font-bold focus:outline-none focus:border-indigo-500"
-										placeholder="0.00"
-									/>
-								</div>
-								<p className="mt-1 text-[10px] text-gray-400 italic">
-									Value received from subsidy/gift.
-								</p>
-							</div>
-						)}
-						{form.type === TransactionType.EXPENSE && (
-							<div className="mt-2 text-right">
-								<button
-									type="button"
-									onClick={() => form.setIsSubsidized(!form.isSubsidized)}
-									className={`inline-flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-										form.isSubsidized
-											? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
-											: "text-gray-500 hover:text-white"
-									}`}
-								>
-									<SparklesIcon className="w-3 h-3" />
-									{form.isSubsidized ? "SUBSIDIZED" : "MARK AS SUBSIDIZED"}
-								</button>
-							</div>
-						)}
-					</div>
+					<TransactionFormAmount form={form} onAmountChange={handleAmountChange} />
 
 					{/* Account Selection */}
 					<div className="grid grid-cols-1 gap-4">
@@ -435,39 +375,11 @@ const TransactionForm: React.FC<Props> = ({
 					{/* Category Selection (Expense & Income) */}
 					{(form.type === TransactionType.EXPENSE ||
 						form.type === TransactionType.INCOME) && (
-						<div>
-							<div className="flex justify-between items-center mb-1">
-								<label className="block text-xs font-medium text-gray-400">
-									Category
-								</label>
-								<button
-									type="button"
-									onClick={onManageCategories}
-									className="text-[10px] text-primary hover:text-white font-bold flex items-center gap-1"
-								>
-									<PlusIcon className="w-3 h-3" /> Manage
-								</button>
-							</div>
-							<div className="grid grid-cols-4 sm:grid-cols-4 gap-2">
-								{categories.map((cat) => (
-									<button
-										key={cat.id}
-										type="button"
-										onClick={() => form.setCategoryId(cat.id)}
-										className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all aspect-square sm:aspect-auto sm:min-h-15 ${
-											form.categoryId === cat.id
-												? "bg-primary text-white border-primary"
-												: "bg-surface border-gray-800 text-gray-400 hover:border-gray-600"
-										}`}
-									>
-										<span className="text-xl sm:text-lg">{cat.icon}</span>
-										<span className="text-[8px] sm:text-[9px] font-medium truncate w-full text-center mt-1">
-											{cat.name}
-										</span>
-									</button>
-								))}
-							</div>
-						</div>
+						<TransactionFormCategory
+							form={form}
+							categories={categories}
+							onManageCategories={onManageCategories}
+						/>
 					)}
 
 					{/* Subscription Linking */}
@@ -516,51 +428,7 @@ const TransactionForm: React.FC<Props> = ({
 					</div>
 
 					{/* Historical Checkboxes */}
-					<div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-4">
-						<div className="space-y-3">
-							<div className="flex items-center gap-3">
-								<input
-									type="checkbox"
-									id="isHistorical"
-									checked={form.isHistorical}
-									onChange={(e) => form.setIsHistorical(e.target.checked)}
-									className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
-								/>
-								<label
-									htmlFor="isHistorical"
-									className="text-xs font-bold text-amber-200 cursor-pointer"
-								>
-									{form.type === TransactionType.TRANSFER
-										? "Source Account: Historical Record"
-										: "Historical Record (No Balance Change)"}
-								</label>
-							</div>
-
-							{form.type === TransactionType.TRANSFER && (
-								<div className="flex items-center gap-3">
-									<input
-										type="checkbox"
-										id="isToAccountHistorical"
-										checked={form.isToAccountHistorical}
-										onChange={(e) => form.setIsToAccountHistorical(e.target.checked)}
-										className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
-									/>
-									<label
-										htmlFor="isToAccountHistorical"
-										className="text-xs font-bold text-amber-200 cursor-pointer"
-									>
-										Destination Account: Historical Record
-									</label>
-								</div>
-							)}
-						</div>
-
-						<p className="text-[10px] text-amber-200/60 leading-relaxed font-medium pl-7">
-							{form.type === TransactionType.TRANSFER
-								? "Historical transfers will not change the balance of their respective accounts. You can set this individually for each side of the transfer."
-								: "This will add the transaction to your history without affecting your current account balance. Perfect for old records."}
-						</p>
-					</div>
+					<TransactionFormHistorical form={form} />
 
 					{/* Amount Breakdown Section */}
 					<TransactionFormBreakdown form={form} />

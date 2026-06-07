@@ -103,55 +103,62 @@ const getHistoricalRates = async (
   return [];
 };
 
-export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
-  const cached = getCachedRate(Date.now());
-  if (cached) return cached;
+const buildLiveUrl = (dataId: string, searchDate: string): string =>
+  `${BASE_URL}?id=${dataId}&meta=true&limit=1&include=usd,rate_type,date&filter=${searchDate}@date,middle@rate_type`;
 
-  const { dataId, searchDate, today } = selectDailyRateSlot(new Date());
+const buildFallbackUrl = (dataId: string): string =>
+  `${BASE_URL}?id=${dataId}&meta=true&limit=1&include=usd,rate_type,date&filter=middle@rate_type`;
 
-  try {
-    const liveUrl = `${BASE_URL}?id=${dataId}&meta=true&limit=1&include=usd,rate_type,date&filter=${searchDate}@date,middle@rate_type`;
+const fetchLatestRateForSlot = async (
+  dataId: string,
+  searchDate: string,
+  today: string,
+): Promise<{ liveData: any[] | any; liveMeta: any }> => {
+  const liveRes = await fetch(buildLiveUrl(dataId, searchDate)).then((r) =>
+    r.json(),
+  );
+  let liveMeta = liveRes.meta;
+  let liveData = liveRes.data || liveRes;
 
-    const [liveRes, history] = await Promise.all([
-      fetch(liveUrl).then((r) => r.json()),
-      getHistoricalRates(dataId, 450),
-    ]);
-
-    let liveMeta = liveRes.meta;
-    let liveData = liveRes.data || liveRes;
-
-    if (
-      (!Array.isArray(liveData) || liveData.length === 0) &&
-      searchDate === today
-    ) {
-      // Fallback: If today's slot is empty, get absolute latest for this slot
-      const fallbackUrl = `${BASE_URL}?id=${dataId}&meta=true&limit=1&include=usd,rate_type,date&filter=middle@rate_type`;
-      const fallbackRes = await fetch(fallbackUrl);
-      const fallbackJson = await fallbackRes.json();
-      liveMeta = fallbackJson.meta;
-      liveData = fallbackJson.data || fallbackJson;
-    }
-
-    if (
-      Array.isArray(liveData) &&
-      liveData.length > 0 &&
-      typeof liveData[0].usd === "number"
-    ) {
-      const result: ExchangeRateData = {
-        rate: liveData[0].usd,
-        date: liveData[0].date,
-        source: formatSource(dataId),
-        lastUpdated: liveMeta?.last_updated,
-        history,
-      };
-      localStorage.setItem(CACHE_KEY, JSON.stringify(result));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-      return result;
-    }
-  } catch (error) {
-    logger.error("Failed to fetch exchange rate:", error);
+  const slotEmpty = !Array.isArray(liveData) || liveData.length === 0;
+  if (slotEmpty && searchDate === today) {
+    const fallbackRes = await fetch(buildFallbackUrl(dataId));
+    const fallbackJson = await fallbackRes.json();
+    liveMeta = fallbackJson.meta;
+    liveData = fallbackJson.data || fallbackJson;
   }
 
+  return { liveData, liveMeta };
+};
+
+const persistRate = (result: ExchangeRateData) => {
+  localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+  localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+};
+
+const buildRateResult = (
+  liveData: any,
+  liveMeta: any,
+  dataId: string,
+  history: { date: string; rate: number }[],
+): ExchangeRateData | null => {
+  if (
+    !Array.isArray(liveData) ||
+    liveData.length === 0 ||
+    typeof liveData[0].usd !== "number"
+  ) {
+    return null;
+  }
+  return {
+    rate: liveData[0].usd,
+    date: liveData[0].date,
+    source: formatSource(dataId),
+    lastUpdated: liveMeta?.last_updated,
+    history,
+  };
+};
+
+const getFallbackResult = (searchDate: string): ExchangeRateData => {
   const rawCache = localStorage.getItem(CACHE_KEY);
   const defaultResult: ExchangeRateData = {
     rate: 4.45,
@@ -164,4 +171,28 @@ export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
   } catch {
     return defaultResult;
   }
+};
+
+export const getUSDToMYRRate = async (): Promise<ExchangeRateData> => {
+  const cached = getCachedRate(Date.now());
+  if (cached) return cached;
+
+  const { dataId, searchDate, today } = selectDailyRateSlot(new Date());
+
+  try {
+    const [latest, history] = await Promise.all([
+      fetchLatestRateForSlot(dataId, searchDate, today),
+      getHistoricalRates(dataId, 450),
+    ]);
+
+    const result = buildRateResult(latest.liveData, latest.liveMeta, dataId, history);
+    if (result) {
+      persistRate(result);
+      return result;
+    }
+  } catch (error) {
+    logger.error("Failed to fetch exchange rate:", error);
+  }
+
+  return getFallbackResult(searchDate);
 };

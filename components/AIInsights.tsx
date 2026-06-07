@@ -26,6 +26,12 @@ import {
 	Bars3Icon,
 } from "@heroicons/react/24/outline";
 import { MessageBubble } from "./ai-insights/MessageBubble";
+import {
+	runTool,
+	buildFunctionResponseMessage,
+	buildRejectionResponseMessage,
+	appendMessageToSession,
+} from "../src/lib/domain/ai-tools";
 const neuralVault = "/images/neural-vault.png";
 
 interface Props {
@@ -88,140 +94,6 @@ const AIInsights: React.FC<Props> = ({
 		cleanText = content.replace(suggestionRegex, "").trim();
 
 		return { cleanText, suggestions };
-	};
-
-	const getCurrentLocation = (): Promise<{
-		latitude: number;
-		longitude: number;
-		accuracyMeters: number;
-	}> => {
-		return new Promise((resolve, reject) => {
-			if (!navigator.geolocation) {
-				reject(
-					new Error("Geolocation is not supported on this device/browser."),
-				);
-				return;
-			}
-
-			navigator.geolocation.getCurrentPosition(
-				(position) => {
-					resolve({
-						latitude: position.coords.latitude,
-						longitude: position.coords.longitude,
-						accuracyMeters: position.coords.accuracy,
-					});
-				},
-				(error) => {
-					reject(
-						new Error(
-							error.code === error.PERMISSION_DENIED
-								? "Location permission was denied."
-								: "Unable to get current location.",
-						),
-					);
-				},
-				{
-					enableHighAccuracy: true,
-					timeout: 10000,
-					maximumAge: 60000,
-				},
-			);
-		});
-	};
-
-	const distanceInMeters = (
-		lat1: number,
-		lon1: number,
-		lat2: number,
-		lon2: number,
-	): number => {
-		const toRad = (v: number) => (v * Math.PI) / 180;
-		const R = 6371000;
-		const dLat = toRad(lat2 - lat1);
-		const dLon = toRad(lon2 - lon1);
-		const a =
-			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-			Math.cos(toRad(lat1)) *
-				Math.cos(toRad(lat2)) *
-				Math.sin(dLon / 2) *
-				Math.sin(dLon / 2);
-		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-		return R * c;
-	};
-
-	const fetchNearbyFood = async (
-		latitude: number,
-		longitude: number,
-		radiusMeters: number,
-		limit: number,
-		cuisineKeyword?: string,
-	) => {
-		const safeRadius = Math.min(Math.max(radiusMeters || 1200, 100), 5000);
-		const safeLimit = Math.min(Math.max(limit || 10, 1), 20);
-
-		const overpassQuery = `
-[out:json][timeout:25];
-nwr(around:${safeRadius},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"];
-out center ${safeLimit * 3};`;
-
-		const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(
-			overpassQuery,
-		)}`;
-		const response = await fetch(url, {
-			headers: {
-				Accept: "application/json",
-			},
-		});
-
-		if (!response.ok) {
-			throw new Error("Failed to query nearby places from OpenStreetMap.");
-		}
-
-		const data = await response.json();
-		const keyword = cuisineKeyword?.trim().toLowerCase();
-
-		const places = (data?.elements || [])
-			.map((el: any) => {
-				const lat = el.lat ?? el.center?.lat;
-				const lon = el.lon ?? el.center?.lon;
-				if (typeof lat !== "number" || typeof lon !== "number") return null;
-
-				const name = el.tags?.name || "Unnamed place";
-				const cuisine = el.tags?.cuisine || "";
-				const amenity = el.tags?.amenity || "food";
-				const address = [el.tags?.["addr:street"], el.tags?.["addr:city"]]
-					.filter(Boolean)
-					.join(", ");
-
-				const dist = distanceInMeters(latitude, longitude, lat, lon);
-
-				return {
-					name,
-					amenity,
-					cuisine,
-					address: address || null,
-					distanceMeters: Math.round(dist),
-					latitude: lat,
-					longitude: lon,
-					osmId: el.id,
-				};
-			})
-			.filter(Boolean)
-			.filter((p: any) => {
-				if (!keyword) return true;
-				const haystack = `${p.name} ${p.cuisine} ${p.amenity}`.toLowerCase();
-				return haystack.includes(keyword);
-			})
-			.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters)
-			.slice(0, safeLimit);
-
-		return {
-			locationUsed: { latitude, longitude },
-			radiusMeters: safeRadius,
-			cuisineKeyword: cuisineKeyword || null,
-			totalFound: places.length,
-			places,
-		};
 	};
 
 	const buildOfflineSession = (
@@ -422,119 +294,29 @@ out center ${safeLimit * 3};`;
 
 		if (!approved) {
 			msg.status = "rejected";
-			const systemResponse: ChatMessage = {
-				role: "system",
-				content: "",
-				timestamp: new Date().toISOString(),
-				functionResponse: {
-					name: msg.functionCall.name,
-					response: { error: "User rejected the request" },
-				},
-			};
-
-			const updatedSession = {
-				...activeSession,
-				messages: [...messages, systemResponse],
-				updatedAt: new Date().toISOString(),
-			};
+			const updatedSession = appendMessageToSession(
+				activeSession,
+				buildRejectionResponseMessage(msg.functionCall.name),
+			);
 			onSaveSession(updatedSession);
-
-			// Trigger AI to respond to rejection
 			setTimeout(() => {
 				handleAsk(undefined, "", updatedSession, false);
 			}, 100);
 			return;
 		}
 
-		// Process tool
 		msg.status = "approved";
-		let responsePayload: any = null;
-		const functionArgs = msg.functionCall.args || {};
+		const responsePayload = await runTool(msg.functionCall.name, msg.functionCall.args || {}, {
+			transactions,
+			categories,
+		});
 
-		if (msg.functionCall.name === "get_historical_transactions") {
-			const { searchKeyword, startDate, endDate, categoryName } = functionArgs;
-
-			const toolResult = transactions
-				.filter((t) => {
-					if (
-						searchKeyword &&
-						!t.shopName.toLowerCase().includes(searchKeyword.toLowerCase())
-					)
-						return false;
-					if (startDate && t.date < startDate) return false;
-					if (endDate && t.date > endDate) return false;
-					if (categoryName) {
-						const cat = categories.find((c) => c.name === categoryName);
-						if (cat && t.categoryId !== cat.id) return false;
-					}
-					return true;
-				})
-				.slice(0, 50); // Limit results
-
-			responsePayload = {
-				totalMatches: toolResult?.length || 0,
-				appliedFilters: functionArgs,
-				transactions: toolResult || [],
-			};
-		} else if (msg.functionCall.name === "get_current_location") {
-			try {
-				const location = await getCurrentLocation();
-				responsePayload = {
-					...location,
-					retrievedAt: new Date().toISOString(),
-				};
-			} catch (err: any) {
-				responsePayload = {
-					error: err?.message || "Unable to retrieve current location.",
-				};
-			}
-		} else if (msg.functionCall.name === "get_nearby_food") {
-			try {
-				let latitude = Number(functionArgs.latitude);
-				let longitude = Number(functionArgs.longitude);
-
-				if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-					const location = await getCurrentLocation();
-					latitude = location.latitude;
-					longitude = location.longitude;
-				}
-
-				responsePayload = await fetchNearbyFood(
-					latitude,
-					longitude,
-					Number(functionArgs.radiusMeters) || 1200,
-					Number(functionArgs.limit) || 10,
-					functionArgs.cuisineKeyword,
-				);
-			} catch (err: any) {
-				responsePayload = {
-					error: err?.message || "Unable to find nearby food places right now.",
-				};
-			}
-		} else {
-			responsePayload = {
-				error: `Unsupported tool: ${msg.functionCall.name}`,
-			};
-		}
-
-		const functionResponseMessage: ChatMessage = {
-			role: "system",
-			content: "",
-			timestamp: new Date().toISOString(),
-			functionResponse: {
-				name: msg.functionCall.name,
-				response: responsePayload,
-			},
-		};
-
-		const nextSession = {
-			...activeSession,
-			messages: [...messages, functionResponseMessage],
-			updatedAt: new Date().toISOString(),
-		};
+		const nextSession = appendMessageToSession(
+			activeSession,
+			buildFunctionResponseMessage(msg.functionCall.name, responsePayload),
+		);
 		onSaveSession(nextSession);
 
-		// Automatically trigger next AI turn with the tool result
 		setTimeout(() => {
 			handleAsk(undefined, "", nextSession, false);
 		}, 100);

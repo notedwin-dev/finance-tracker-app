@@ -50,6 +50,120 @@ const mergeAndPersist = <T extends { id: string; updatedAt?: any }>(
   return merged;
 };
 
+const mergeStandardEntities = (
+  cloudData: Awaited<ReturnType<typeof SheetService.loadFromGoogleSheets>>,
+  useCloudAsAuthority: boolean,
+  store: ReturnType<typeof useFinanceStore.getState>,
+) => {
+  const categories = mergeAndPersist(
+    StorageService.getStoredCategories(),
+    cloudData.categories,
+    useCloudAsAuthority,
+    "categories",
+    store,
+  );
+  const transactions = mergeAndPersist(
+    StorageService.getStoredTransactions(),
+    cloudData.transactions,
+    useCloudAsAuthority,
+    "transactions",
+    store,
+  );
+  const goals = mergeAndPersist(
+    StorageService.getStoredGoals(),
+    cloudData.goals,
+    useCloudAsAuthority,
+    "goals",
+    store,
+  );
+  const subscriptions = mergeAndPersist(
+    StorageService.getStoredSubscriptions(),
+    cloudData.subscriptions || [],
+    useCloudAsAuthority,
+    "subscriptions",
+    store,
+  );
+  const pots = mergeAndPersist(
+    StorageService.getStoredPots(),
+    cloudData.pots || [],
+    useCloudAsAuthority,
+    "pots",
+    store,
+  );
+  const pockets = mergeAndPersist(
+    StorageService.getStoredPockets(),
+    cloudData.pockets || [],
+    useCloudAsAuthority,
+    "pockets",
+    store,
+  );
+  const chatSessions = mergeAndPersist(
+    StorageService.getStoredChatSessions(),
+    cloudData.chatSessions || [],
+    useCloudAsAuthority,
+    "chatSessions",
+    store,
+  );
+  return { categories, transactions, goals, subscriptions, pots, pockets, chatSessions };
+};
+
+const mergeAccounts = async (
+  cloudAccounts: Account[] | undefined,
+  useCloudAsAuthority: boolean,
+  store: ReturnType<typeof useFinanceStore.getState>,
+): Promise<Account[]> => {
+  const localAccounts: Account[] = StorageService.getStoredAccounts();
+  const merged = mergeEntities(
+    localAccounts,
+    cloudAccounts || [],
+    useCloudAsAuthority,
+  ).map(stripVaultFromAccount);
+  store.setAccounts(merged);
+  await StorageService.saveAccounts(merged);
+  return merged;
+};
+
+const finishSync = (): void => {
+  syncInProgress = false;
+  useSyncStore.getState().setIsSyncing(false);
+};
+
+const ensureGapiReady = async (): Promise<boolean> => {
+  try {
+    await SheetService.initGapiClient();
+  } catch (e) {
+    logger.warn("GAPI init failed, likely offline.");
+    finishSync();
+    return false;
+  }
+  const savedToken = localStorage.getItem("google_access_token");
+  const savedExpiry = localStorage.getItem("google_token_expiry");
+  if (savedToken) {
+    const expiresIn = savedExpiry
+      ? (parseInt(savedExpiry) - Date.now()) / 1000
+      : undefined;
+    SheetService.setGapiAccessToken(savedToken, expiresIn);
+  }
+  return true;
+};
+
+const persistPostSubscriptionState = async (): Promise<{
+  accounts: Account[];
+  transactions: Transaction[];
+  subscriptions: Subscription[];
+}> => {
+  const storeAfterSubs = useFinanceStore.getState();
+  const accounts = storeAfterSubs.accounts.map(stripVaultFromAccount);
+  await StorageService.saveAccounts(accounts);
+  await StorageService.saveTransactions(storeAfterSubs.transactions);
+  await StorageService.saveSubscriptions(storeAfterSubs.subscriptions);
+  return {
+    accounts,
+    transactions: storeAfterSubs.transactions,
+    subscriptions: storeAfterSubs.subscriptions,
+  };
+};
+
 const hasAnyData = (...counts: number[]): boolean => counts.some((c) => c > 0);
 
 const decideMergeAuthority = (
@@ -358,26 +472,6 @@ export async function syncData(
   const userId = currentProfile.id || profile.id;
   if (userId) SheetService.setSheetUser(userId);
 
-  async function ensureGapiReady(): Promise<boolean> {
-    try {
-      await SheetService.initGapiClient();
-    } catch (e) {
-      logger.warn("GAPI init failed, likely offline.");
-      syncInProgress = false;
-      useSyncStore.getState().setIsSyncing(false);
-      return false;
-    }
-    const savedToken = localStorage.getItem("google_access_token");
-    const savedExpiry = localStorage.getItem("google_token_expiry");
-    if (savedToken) {
-      const expiresIn = savedExpiry
-        ? (parseInt(savedExpiry) - Date.now()) / 1000
-        : undefined;
-      SheetService.setGapiAccessToken(savedToken, expiresIn);
-    }
-    return true;
-  }
-
   try {
     if (!SheetService.isClientReady()) {
       const ok = await ensureGapiReady();
@@ -386,14 +480,12 @@ export async function syncData(
 
     if (!SheetService.isClientReady()) {
       if (!navigator.onLine) {
-        syncInProgress = false;
-        useSyncStore.getState().setIsSyncing(false);
+        finishSync();
         return;
       }
       useSyncStore.getState().showToast("Session expired. Please sign in again.", "info");
       loginWithGoogle();
-      syncInProgress = false;
-      useSyncStore.getState().setIsSyncing(false);
+      finishSync();
       return;
     }
 
@@ -413,81 +505,27 @@ export async function syncData(
 
     const store = useFinanceStore.getState();
 
-    const cloudAccounts: Account[] = cloudData.accounts || [];
-    const localAccounts: Account[] = StorageService.getStoredAccounts();
-    const mergedAccounts = mergeEntities(localAccounts, cloudAccounts, useCloudAsAuthority)
-      .map(stripVaultFromAccount);
-    store.setAccounts(mergedAccounts);
-    await StorageService.saveAccounts(mergedAccounts);
+    await mergeAccounts(cloudData.accounts, useCloudAsAuthority, store);
 
-    const mergedCategories = mergeAndPersist(
-      StorageService.getStoredCategories(),
-      cloudData.categories,
-      useCloudAsAuthority,
-      "categories",
-      store,
-    );
-    const mergedTransactions = mergeAndPersist(
-      StorageService.getStoredTransactions(),
-      cloudData.transactions,
-      useCloudAsAuthority,
-      "transactions",
-      store,
-    );
-    const mergedGoals = mergeAndPersist(
-      StorageService.getStoredGoals(),
-      cloudData.goals,
-      useCloudAsAuthority,
-      "goals",
-      store,
-    );
-    const mergedSubs = mergeAndPersist(
-      StorageService.getStoredSubscriptions(),
-      cloudData.subscriptions || [],
-      useCloudAsAuthority,
-      "subscriptions",
-      store,
-    );
-    const mergedPots = mergeAndPersist(
-      StorageService.getStoredPots(),
-      cloudData.pots || [],
-      useCloudAsAuthority,
-      "pots",
-      store,
-    );
-    const mergedPockets = mergeAndPersist(
-      StorageService.getStoredPockets(),
-      cloudData.pockets || [],
-      useCloudAsAuthority,
-      "pockets",
-      store,
-    );
-    const mergedChatSessions = mergeAndPersist(
-      StorageService.getStoredChatSessions(),
-      cloudData.chatSessions || [],
-      useCloudAsAuthority,
-      "chatSessions",
-      store,
-    );
+    const {
+      categories: mergedCategories,
+      goals: mergedGoals,
+      pots: mergedPots,
+      pockets: mergedPockets,
+      chatSessions: mergedChatSessions,
+    } = mergeStandardEntities(cloudData, useCloudAsAuthority, store);
 
     const syncTimestamp = new Date().toISOString();
     processSubscriptions(store.accounts, store.usdRate, { persist: false });
 
-    const storeAfterSubs = useFinanceStore.getState();
-    const postSubAccounts = storeAfterSubs.accounts.map(stripVaultFromAccount);
-    const postSubTxs = storeAfterSubs.transactions;
-    const postSubSubs = storeAfterSubs.subscriptions;
-
-    await StorageService.saveAccounts(postSubAccounts);
-    await StorageService.saveTransactions(postSubTxs);
-    await StorageService.saveSubscriptions(postSubSubs);
+    const postSub = await persistPostSubscriptionState();
 
     await SheetService.syncWithGoogleSheets(
-      postSubAccounts,
-      postSubTxs,
+      postSub.accounts,
+      postSub.transactions,
       mergedCategories,
       mergedGoals,
-      postSubSubs,
+      postSub.subscriptions,
       mergedPots,
       mergedPockets,
       activeProfile.syncChatToSheets ? mergedChatSessions : undefined,
@@ -505,7 +543,6 @@ export async function syncData(
       useSyncStore.getState().showToast("Cloud sync failed. Working offline.", "info");
     }
   } finally {
-    useSyncStore.getState().setIsSyncing(false);
-    syncInProgress = false;
+    finishSync();
   }
 }

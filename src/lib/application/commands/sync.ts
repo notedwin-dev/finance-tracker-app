@@ -246,6 +246,37 @@ export async function migrateData(): Promise<void> {
   showToast("Data recovered!", "success");
 }
 
+const KEYS_TO_PRESERVE_ON_RESET = [
+  "google_access_token",
+  "google_token_expiry",
+  "google_refresh_token",
+  "device_id",
+  "zenfinance_selected_sheet_id",
+  StorageService.KEYS.PROFILE,
+];
+
+const preserveAndClearLocalStorage = (): void => {
+  const saved: Record<string, string | null> = {};
+  KEYS_TO_PRESERVE_ON_RESET.forEach((k) => (saved[k] = localStorage.getItem(k)));
+  localStorage.clear();
+  KEYS_TO_PRESERVE_ON_RESET.forEach(
+    (k) => saved[k] && localStorage.setItem(k, saved[k]),
+  );
+};
+
+const applyCloudDataToStorage = (
+  cloudData: NonNullable<Awaited<ReturnType<typeof SheetService.loadFromGoogleSheets>>>,
+): void => {
+  StorageService.saveAccounts(cloudData.accounts || []);
+  StorageService.saveTransactions(cloudData.transactions || []);
+  StorageService.saveCategories(cloudData.categories || []);
+  StorageService.saveGoals(cloudData.goals || []);
+  StorageService.saveSubscriptions(cloudData.subscriptions || []);
+  StorageService.savePots(cloudData.pots || []);
+  StorageService.savePockets(cloudData.pockets || []);
+  StorageService.saveChatSessions(cloudData.chatSessions || []);
+};
+
 export async function resetAndSync(
   profile: UserProfile,
   onProfileUpdate?: (updates: Partial<UserProfile>) => void,
@@ -256,19 +287,7 @@ export async function resetAndSync(
   if (!confirm("Reset local cache?")) return;
 
   setIsSyncing(true);
-
-  const keysToKeep = [
-    "google_access_token",
-    "google_token_expiry",
-    "google_refresh_token",
-    "device_id",
-    "zenfinance_selected_sheet_id",
-    StorageService.KEYS.PROFILE,
-  ];
-  const saved: Record<string, string | null> = {};
-  keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-  localStorage.clear();
-  keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
+  preserveAndClearLocalStorage();
 
   try {
     const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
@@ -282,14 +301,7 @@ export async function resetAndSync(
       StorageService.saveProfile(mergedProfile);
       if (onProfileUpdate) onProfileUpdate(mergedProfile);
     }
-    StorageService.saveAccounts(cloudData.accounts || []);
-    StorageService.saveTransactions(cloudData.transactions || []);
-    StorageService.saveCategories(cloudData.categories || []);
-    StorageService.saveGoals(cloudData.goals || []);
-    StorageService.saveSubscriptions(cloudData.subscriptions || []);
-    StorageService.savePots(cloudData.pots || []);
-    StorageService.savePockets(cloudData.pockets || []);
-    StorageService.saveChatSessions(cloudData.chatSessions || []);
+    applyCloudDataToStorage(cloudData);
     showToast("Sync reset complete", "success");
   } catch (e: any) {
     if (e?.status === 401) {

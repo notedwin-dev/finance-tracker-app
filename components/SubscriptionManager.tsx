@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { parseDateSafe } from "../helpers/transactions.helper";
 import { useMask } from "../helpers/useMask";
+import { formatCalculatorAmount } from "../helpers/amount-calculator";
 import DatePicker from "./DatePicker";
 
 interface Props {
@@ -49,39 +50,7 @@ const SubscriptionManager: React.FC<Props> = ({
   );
 
   const handleAmountFormat = (val: string) => {
-    if (!val) {
-      setAmount("");
-      return;
-    }
-
-    if (val.endsWith(".") && !amount.endsWith(".")) {
-      const d = amount.replace(/\D/g, "");
-      setAmount(parseInt(d || "0", 10).toString() + ".");
-      return;
-    }
-
-    if (amount.endsWith(".") || amount.match(/\.\d$/)) {
-      const parts = amount.split(".");
-      const newChar = val.length > amount.length ? val.slice(-1) : "";
-      if (/\d/.test(newChar)) {
-        if (parts[1] === "") {
-          setAmount(parts[0] + "." + newChar);
-          return;
-        }
-        if (parts[1].length === 1) {
-          setAmount(parts[0] + "." + parts[1] + newChar);
-          return;
-        }
-      }
-    }
-
-    const digits = val.replace(/\D/g, "");
-    if (!digits) {
-      setAmount("");
-      return;
-    }
-    const cents = parseInt(digits, 10);
-    setAmount((cents / 100).toFixed(2));
+    setAmount(formatCalculatorAmount(val, amount));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

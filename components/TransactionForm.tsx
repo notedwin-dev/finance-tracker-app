@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
 	Account,
 	Category,
 	TransactionType,
 	Transaction,
-	Currency,
 	Pot,
 	SavingPocket,
 	AmountBreakdownItem,
 	Subscription,
-	SubscriptionFrequency,
 } from "../types";
 import {
 	XMarkIcon,
@@ -24,10 +22,12 @@ import {
 import { TrashIcon } from "@heroicons/react/24/solid";
 import DatePicker from "./DatePicker";
 import { formatCalculatorAmount } from "../helpers/amount-calculator";
+import { validateTransactionForm } from "../src/lib/domain/transaction-form.validation";
 import {
-	validateTransactionForm,
-	serializeBreakdownItems,
-} from "../src/lib/domain/transaction-form.validation";
+	buildTransactionPayload,
+	buildSubscriptionPayload,
+} from "../src/lib/domain/transaction-payload";
+import { useTransactionFormState } from "./useTransactionFormState";
 
 interface Props {
 	accounts: Account[];
@@ -45,6 +45,27 @@ interface Props {
 	onManageCategories: () => void;
 }
 
+const TRANSACTION_TYPES: TransactionType[] = [
+	TransactionType.EXPENSE,
+	TransactionType.INCOME,
+	TransactionType.TRANSFER,
+];
+
+const ALL_TRANSACTION_TYPES: TransactionType[] = [
+	TransactionType.EXPENSE,
+	TransactionType.INCOME,
+	TransactionType.TRANSFER,
+	TransactionType.ADJUSTMENT,
+	TransactionType.ACCOUNT_OPENING,
+];
+
+const FREQUENCIES: Subscription["frequency"][] = [
+	"DAILY",
+	"WEEKLY",
+	"MONTHLY",
+	"YEARLY",
+];
+
 const TransactionForm: React.FC<Props> = ({
 	accounts,
 	categories,
@@ -56,163 +77,20 @@ const TransactionForm: React.FC<Props> = ({
 	onSubmit,
 	onManageCategories,
 }) => {
-	const [type, setType] = useState<TransactionType>(
-		initialTransaction ? initialTransaction.type : TransactionType.EXPENSE,
-	);
-	const [amount, setAmount] = useState(
-		initialTransaction
-			? typeof initialTransaction.amount === "number"
-				? initialTransaction.amount.toFixed(2)
-				: String(initialTransaction.amount || "0.00")
-			: "",
-	);
-	const [currency, setCurrency] = useState<Currency>(
-		initialTransaction ? initialTransaction.currency : "MYR",
-	);
-	const [accountId, setAccountId] = useState(
-		initialTransaction ? initialTransaction.accountId : accounts[0]?.id || "",
-	);
-	const [potId, setPotId] = useState(
-		initialTransaction ? initialTransaction.potId || "" : "",
-	);
-	const [savingPocketId, setSavingPocketId] = useState(
-		initialTransaction ? initialTransaction.savingPocketId || "" : "",
-	);
-	const [toSavingPocketId, setToSavingPocketId] = useState(
-		initialTransaction ? initialTransaction.toSavingPocketId || "" : "",
-	);
-	const [fee, setFee] = useState(
-		initialTransaction
-			? typeof initialTransaction.fee === "number"
-				? initialTransaction.fee.toFixed(2)
-				: String(initialTransaction.fee || "")
-			: "",
-	);
-	const [feeType, setFeeType] = useState<"INCLUSIVE" | "EXCLUSIVE">(
-		initialTransaction?.feeType || "INCLUSIVE",
-	);
-	const [subscriptionId, setSubscriptionId] = useState(
-		initialTransaction ? initialTransaction.subscriptionId || "" : "",
-	);
-	const [isSubscription, setIsSubscription] = useState(false);
-	const [frequency, setFrequency] = useState<SubscriptionFrequency>("MONTHLY");
-
-	const [toAccountId, setToAccountId] = useState(
-		initialTransaction
-			? initialTransaction.toAccountId || ""
-			: accounts.length > 1
-				? accounts[1].id
-				: "",
-	);
-	const [categoryId, setCategoryId] = useState(
-		initialTransaction
-			? initialTransaction.categoryId || ""
-			: categories[0]?.id || "",
-	);
-	const [shopName, setShopName] = useState(
-		initialTransaction ? initialTransaction.shopName : "",
-	);
-	const [date, setDate] = useState(
-		initialTransaction
-			? initialTransaction.date
-			: new Date().toLocaleDateString("en-CA"),
-	);
-	const [time, setTime] = useState(
-		initialTransaction ? initialTransaction.time || "" : "",
-	);
-	const [breakdownEnabled, setBreakdownEnabled] = useState(
-		Array.isArray(initialTransaction?.amountBreakdown) &&
-			initialTransaction.amountBreakdown.length > 0
-			? true
-			: false,
-	);
-	const [breakdownItems, setBreakdownItems] = useState<any[]>(
-		Array.isArray(initialTransaction?.amountBreakdown)
-			? initialTransaction.amountBreakdown.map((item) => ({
-					...item,
-					amount:
-						typeof item.amount === "number"
-							? item.amount.toFixed(2)
-							: String(item.amount || "0.00"),
-				}))
-			: [],
-	);
-	const [isSubsidized, setIsSubsidized] = useState(
-		initialTransaction?.isSubsidized || false,
-	);
-	const [marketValue, setMarketValue] = useState(
-		initialTransaction?.marketValue?.toString() || "",
-	);
-	const [isHistorical, setIsHistorical] = useState(
-		initialTransaction?.isHistorical || false,
-	);
-	const [isToAccountHistorical, setIsToAccountHistorical] = useState(
-		(initialTransaction as any)?.linkedTransaction?.isHistorical ||
-			(initialTransaction as any)?.isToAccountHistorical ||
-			false,
-	);
+	const form = useTransactionFormState(accounts, categories, initialTransaction, pockets);
 	const [validationError, setValidationError] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const handleAmountChange = (val: string) => {
-		setAmount(formatCalculatorAmount(val, amount));
-	};
-	// Update currency based on selected account
-	useEffect(() => {
-		if (!initialTransaction) {
-			const acc = accounts.find((a) => a.id === accountId);
-			if (acc) setCurrency(acc.currency);
-		}
-	}, [accountId, accounts, initialTransaction]);
-
-	const addBreakdownItem = () => {
-		setBreakdownItems([
-			...breakdownItems,
-			{ id: crypto.randomUUID(), description: "", amount: "" },
-		]);
+		form.setAmount(formatCalculatorAmount(val, form.amount));
 	};
 
-	const removeBreakdownItem = (id: string) => {
-		setBreakdownItems(breakdownItems.filter((i) => i.id !== id));
-	};
-
-	const updateBreakdownItem = (
-		id: string,
-		field: keyof AmountBreakdownItem,
-		value: any,
-	) => {
-		setBreakdownItems(
-			breakdownItems.map((item) =>
-				item.id === id ? { ...item, [field]: value } : item,
-			),
-		);
-	};
-
-	const filteredPots = pots.filter((p) => p.accountId === accountId);
-	const selectedPot = filteredPots.find((p) => p.id === potId);
+	const filteredPots = pots.filter((p) => p.accountId === form.accountId);
+	const selectedPot = filteredPots.find((p) => p.id === form.potId);
 	const isPotLow =
 		selectedPot &&
 		(selectedPot.amountLeft <= 0 ||
 			selectedPot.amountLeft / selectedPot.limitAmount <= 0.1);
-
-	// Handle account change effect on pockets
-	useEffect(() => {
-		if (savingPocketId) {
-			const pocket = pockets.find((p) => p.id === savingPocketId);
-			if (pocket?.accountId && pocket.accountId !== accountId) {
-				setSavingPocketId("");
-			}
-		}
-	}, [accountId, pockets, savingPocketId]);
-
-	useEffect(() => {
-		if (toSavingPocketId) {
-			const pocket = pockets.find((p) => p.id === toSavingPocketId);
-			if (pocket?.accountId && pocket.accountId !== toAccountId) {
-				setToSavingPocketId("");
-			}
-		}
-	}, [toAccountId, pockets, toSavingPocketId]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -221,16 +99,16 @@ const TransactionForm: React.FC<Props> = ({
 		setValidationError(null);
 
 		const error = validateTransactionForm({
-			type,
-			amount,
-			marketValue,
-			accountId,
-			toAccountId,
-			categoryId,
-			date,
-			isSubsidized,
-			breakdownEnabled,
-			breakdownItems,
+			type: form.type,
+			amount: form.amount,
+			marketValue: form.marketValue,
+			accountId: form.accountId,
+			toAccountId: form.toAccountId,
+			categoryId: form.categoryId,
+			date: form.date,
+			isSubsidized: form.isSubsidized,
+			breakdownEnabled: form.breakdownEnabled,
+			breakdownItems: form.breakdownItems,
 		});
 		if (error) {
 			setValidationError(error);
@@ -239,57 +117,47 @@ const TransactionForm: React.FC<Props> = ({
 
 		setIsSubmitting(true);
 		try {
-			const txData: Omit<Transaction, "userId"> = {
-				id: initialTransaction?.id || crypto.randomUUID(),
-				accountId,
-				potId: potId || undefined,
-				savingPocketId: savingPocketId || undefined,
-				toSavingPocketId:
-					type === TransactionType.TRANSFER ? toSavingPocketId : undefined,
-				subscriptionId: subscriptionId || undefined,
-				toAccountId:
-					type === TransactionType.TRANSFER ? toAccountId : undefined,
-				amount: isSubsidized ? 0 : Math.abs(parseFloat(amount)),
-				isSubsidized,
-				marketValue: isSubsidized ? parseFloat(marketValue) : undefined,
-				isHistorical,
-				fee:
-					type === TransactionType.TRANSFER && fee
-						? Math.abs(parseFloat(fee))
-						: undefined,
-				feeType: type === TransactionType.TRANSFER && fee ? feeType : undefined,
-				currency,
-				type,
-				categoryId:
-					type === TransactionType.EXPENSE || type === TransactionType.INCOME
-						? categoryId
-						: undefined,
-				shopName,
-				date,
-				time: time || undefined,
-				amountBreakdown: serializeBreakdownItems(breakdownEnabled, breakdownItems),
-				createdAt: initialTransaction?.createdAt || new Date().toISOString(),
-				linkedTransactionId: initialTransaction?.linkedTransactionId,
-				transferDirection: initialTransaction?.transferDirection,
-			};
+			const txData = buildTransactionPayload({
+				initialTransaction,
+				type: form.type,
+				accountId: form.accountId,
+				potId: form.potId,
+				savingPocketId: form.savingPocketId,
+				toSavingPocketId: form.toSavingPocketId,
+				toAccountId: form.toAccountId,
+				amount: form.amount,
+				currency: form.currency,
+				categoryId: form.categoryId,
+				shopName: form.shopName,
+				date: form.date,
+				time: form.time,
+				fee: form.fee,
+				feeType: form.feeType,
+				isSubsidized: form.isSubsidized,
+				marketValue: form.marketValue,
+				isHistorical: form.isHistorical,
+				breakdownEnabled: form.breakdownEnabled,
+				breakdownItems: form.breakdownItems,
+			});
 
-			const newSubData = isSubscription
-				? {
-						name: shopName || "New Subscription",
-						amount: Math.abs(parseFloat(amount)),
-						currency,
-						accountId,
-						categoryId,
-						frequency,
-						nextPaymentDate: date,
-						active: true,
-					}
+			const newSubData = form.isSubscription
+				? buildSubscriptionPayload(
+						form.shopName,
+						form.amount,
+						form.currency,
+						form.accountId,
+						form.categoryId,
+						form.frequency,
+						form.date,
+					)
 				: undefined;
 
 			await onSubmit(
 				txData,
 				newSubData,
-				type === TransactionType.TRANSFER ? isToAccountHistorical : undefined,
+				form.type === TransactionType.TRANSFER
+					? form.isToAccountHistorical
+					: undefined,
 			);
 			onClose();
 		} finally {
@@ -314,17 +182,13 @@ const TransactionForm: React.FC<Props> = ({
 
 				{!initialTransaction && (
 					<div className="p-1.5 flex gap-1 bg-surface m-3 sm:m-4 rounded-xl border border-gray-800">
-						{[
-							TransactionType.EXPENSE,
-							TransactionType.INCOME,
-							TransactionType.TRANSFER,
-						].map((t) => (
+						{TRANSACTION_TYPES.map((t) => (
 							<button
 								key={t}
 								type="button"
-								onClick={() => setType(t)}
+								onClick={() => form.setType(t)}
 								className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${
-									type === t
+									form.type === t
 										? "bg-primary text-white shadow"
 										: "text-gray-400 hover:text-white hover:bg-white/5"
 								}`}
@@ -346,17 +210,11 @@ const TransactionForm: React.FC<Props> = ({
 								Transaction Type
 							</label>
 							<select
-								value={type}
-								onChange={(e) => setType(e.target.value as TransactionType)}
+								value={form.type}
+								onChange={(e) => form.setType(e.target.value as TransactionType)}
 								className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none font-bold"
 							>
-								{[
-									TransactionType.EXPENSE,
-									TransactionType.INCOME,
-									TransactionType.TRANSFER,
-									TransactionType.ADJUSTMENT,
-									TransactionType.ACCOUNT_OPENING,
-								].map((t) => (
+								{ALL_TRANSACTION_TYPES.map((t) => (
 									<option key={t} value={t} className="bg-surface">
 										{t.replace("_", " ")}
 									</option>
@@ -368,12 +226,12 @@ const TransactionForm: React.FC<Props> = ({
 					{/* Amount & Currency */}
 					<div>
 						<label className="block text-xs font-medium text-gray-400 mb-1.5">
-							{isSubsidized ? "Cash Outflow (Usually 0.00)" : "Amount"}
+							{form.isSubsidized ? "Cash Outflow (Usually 0.00)" : "Amount"}
 						</label>
 						<div className="flex gap-2">
 							<select
-								value={currency}
-								onChange={(e) => setCurrency(e.target.value as Currency)}
+								value={form.currency}
+								onChange={(e) => form.setCurrency(e.target.value as any)}
 								className="bg-surface border border-gray-700 rounded-xl px-2 sm:px-3 text-white text-sm sm:text-base font-bold focus:outline-none shrink-0"
 							>
 								<option value="MYR">MYR</option>
@@ -382,28 +240,28 @@ const TransactionForm: React.FC<Props> = ({
 							<input
 								type="text"
 								inputMode="decimal"
-								required={!isSubsidized}
-								value={amount}
+								required={!form.isSubsidized}
+								value={form.amount}
 								onChange={(e) => handleAmountChange(e.target.value)}
 								className="flex-1 min-w-0 bg-surface border border-gray-700 rounded-xl py-2.5 sm:py-3 px-3 sm:px-4 text-white text-lg sm:text-xl font-bold focus:outline-none focus:border-primary"
 								placeholder="0.00"
 								autoFocus
 							/>
 						</div>
-						{isSubsidized && (
+						{form.isSubsidized && (
 							<div className="mt-3 animate-fadeIn">
 								<label className="block text-xs font-medium text-indigo-400 mb-1.5">
 									Market Value (Original Price)
 								</label>
 								<div className="relative">
 									<div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">
-										{currency === "MYR" ? "RM" : "$"}
+										{form.currency === "MYR" ? "RM" : "$"}
 									</div>
 									<input
 										type="text"
 										inputMode="decimal"
-										value={marketValue}
-										onChange={(e) => setMarketValue(e.target.value)}
+										value={form.marketValue}
+										onChange={(e) => form.setMarketValue(e.target.value)}
 										className="w-full bg-surface border border-indigo-500/30 rounded-xl py-2.5 px-10 text-white font-bold focus:outline-none focus:border-indigo-500"
 										placeholder="0.00"
 									/>
@@ -413,19 +271,19 @@ const TransactionForm: React.FC<Props> = ({
 								</p>
 							</div>
 						)}
-						{type === TransactionType.EXPENSE && (
+						{form.type === TransactionType.EXPENSE && (
 							<div className="mt-2 text-right">
 								<button
 									type="button"
-									onClick={() => setIsSubsidized(!isSubsidized)}
+									onClick={() => form.setIsSubsidized(!form.isSubsidized)}
 									className={`inline-flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-										isSubsidized
+										form.isSubsidized
 											? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
 											: "text-gray-500 hover:text-white"
 									}`}
 								>
 									<SparklesIcon className="w-3 h-3" />
-									{isSubsidized ? "SUBSIDIZED" : "MARK AS SUBSIDIZED"}
+									{form.isSubsidized ? "SUBSIDIZED" : "MARK AS SUBSIDIZED"}
 								</button>
 							</div>
 						)}
@@ -435,20 +293,17 @@ const TransactionForm: React.FC<Props> = ({
 					<div className="grid grid-cols-1 gap-4">
 						<div>
 							<label className="block text-xs font-medium text-gray-400 mb-1">
-								{type === TransactionType.EXPENSE
+								{form.type === TransactionType.EXPENSE
 									? "Deduct From"
-									: type === TransactionType.INCOME
+									: form.type === TransactionType.INCOME
 										? "Deposit To"
-										: type === TransactionType.TRANSFER
+										: form.type === TransactionType.TRANSFER
 											? "From"
 											: "Account"}
 							</label>
 							<select
-								value={accountId}
-								onChange={(e) => {
-									setAccountId(e.target.value);
-									setPotId("");
-								}}
+								value={form.accountId}
+								onChange={(e) => form.resetPotIfAccountChanged(e.target.value)}
 								className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none"
 							>
 								{accounts.map((acc) => (
@@ -466,7 +321,7 @@ const TransactionForm: React.FC<Props> = ({
 									<span>Spending Limit / Pot (Optional)</span>
 									{selectedPot && (
 										<span className="text-secondary text-[10px] font-bold">
-											AVAILABLE: {currency === "MYR" ? "RM" : "$"}{" "}
+											AVAILABLE: {form.currency === "MYR" ? "RM" : "$"}{" "}
 											{selectedPot.amountLeft.toLocaleString(undefined, {
 												minimumFractionDigits: 2,
 											})}
@@ -475,8 +330,8 @@ const TransactionForm: React.FC<Props> = ({
 								</label>
 								<div className="relative">
 									<select
-										value={potId}
-										onChange={(e) => setPotId(e.target.value)}
+										value={form.potId}
+										onChange={(e) => form.setPotId(e.target.value)}
 										className={`w-full bg-surface border rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors ${
 											isPotLow ? "border-amber-500/50" : "border-gray-700"
 										}`}
@@ -484,7 +339,7 @@ const TransactionForm: React.FC<Props> = ({
 										<option value="">No Limit / Pot</option>
 										{filteredPots.map((p) => (
 											<option key={p.id} value={p.id}>
-												{p.icon} {p.name} ({currency === "MYR" ? "RM" : "$"}
+												{p.icon} {p.name} ({form.currency === "MYR" ? "RM" : "$"}
 												{p.amountLeft.toLocaleString()} left)
 											</option>
 										))}
@@ -505,31 +360,31 @@ const TransactionForm: React.FC<Props> = ({
 							</div>
 						)}
 
-						{/* Saving Pocket (Available for Expense, Income & Transfer) */}
-						{(type === TransactionType.EXPENSE ||
-							type === TransactionType.INCOME ||
-							type === TransactionType.TRANSFER) &&
+						{/* Saving Pocket */}
+						{(form.type === TransactionType.EXPENSE ||
+							form.type === TransactionType.INCOME ||
+							form.type === TransactionType.TRANSFER) &&
 							pockets.length > 0 && (
 								<div className="animate-fadeIn space-y-4">
 									<div>
 										<label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
 											<SparklesIcon className="w-3.5 h-3.5 text-indigo-400" />
 											<span>
-												{type === TransactionType.TRANSFER
+												{form.type === TransactionType.TRANSFER
 													? "Source Pocket (Optional)"
 													: "Saving Pocket (Optional)"}
 											</span>
 										</label>
 										<div className="relative">
 											<select
-												value={savingPocketId}
-												onChange={(e) => setSavingPocketId(e.target.value)}
+												value={form.savingPocketId}
+												onChange={(e) => form.setSavingPocketId(e.target.value)}
 												className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
 											>
 												<option value="">No Pocket Selected</option>
 												{pockets
 													.filter(
-														(p) => !p.accountId || p.accountId === accountId,
+														(p) => !p.accountId || p.accountId === form.accountId,
 													)
 													.map((p) => (
 														<option key={p.id} value={p.id}>
@@ -541,18 +396,18 @@ const TransactionForm: React.FC<Props> = ({
 										</div>
 									</div>
 
-									{type === TransactionType.EXPENSE && savingPocketId && (
+									{form.type === TransactionType.EXPENSE && form.savingPocketId && (
 										<p className="mt-1 text-[9px] text-gray-500 italic">
 											This will deduct from the pocket balance.
 										</p>
 									)}
-									{type === TransactionType.INCOME && savingPocketId && (
+									{form.type === TransactionType.INCOME && form.savingPocketId && (
 										<p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
 											This will add to your pocket savings!
 										</p>
 									)}
-									{type === TransactionType.TRANSFER &&
-										(savingPocketId || toSavingPocketId) && (
+									{form.type === TransactionType.TRANSFER &&
+										(form.savingPocketId || form.toSavingPocketId) && (
 											<p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
 												Balances will be updated for the selected pockets.
 											</p>
@@ -560,18 +415,18 @@ const TransactionForm: React.FC<Props> = ({
 								</div>
 							)}
 
-						{type === TransactionType.TRANSFER && (
+						{form.type === TransactionType.TRANSFER && (
 							<div>
 								<label className="block text-xs font-medium text-gray-400 mb-1">
 									To
 								</label>
 								<select
-									value={toAccountId}
-									onChange={(e) => setToAccountId(e.target.value)}
+									value={form.toAccountId}
+									onChange={(e) => form.setToAccountId(e.target.value)}
 									className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none"
 								>
 									{accounts
-										.filter((a) => a.id !== accountId)
+										.filter((a) => a.id !== form.accountId)
 										.map((acc) => (
 											<option key={acc.id} value={acc.id}>
 												{acc.name}
@@ -582,7 +437,7 @@ const TransactionForm: React.FC<Props> = ({
 						)}
 					</div>
 
-					{type === TransactionType.TRANSFER && (
+					{form.type === TransactionType.TRANSFER && (
 						<div className="animate-fadeIn grid grid-cols-2 gap-4">
 							<div>
 								<label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
@@ -591,16 +446,16 @@ const TransactionForm: React.FC<Props> = ({
 								</label>
 								<div className="relative">
 									<select
-										value={toSavingPocketId}
-										onChange={(e) => setToSavingPocketId(e.target.value)}
+										value={form.toSavingPocketId}
+										onChange={(e) => form.setToSavingPocketId(e.target.value)}
 										className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
 									>
 										<option value="">No Pocket Selected</option>
 										{pockets
 											.filter(
 												(p) =>
-													p.id !== savingPocketId &&
-													(!p.accountId || p.accountId === toAccountId),
+													p.id !== form.savingPocketId &&
+													(!p.accountId || p.accountId === form.toAccountId),
 											)
 											.map((p) => (
 												<option key={p.id} value={p.id}>
@@ -620,20 +475,20 @@ const TransactionForm: React.FC<Props> = ({
 									<input
 										type="text"
 										inputMode="decimal"
-										value={fee}
+										value={form.fee}
 										onChange={(e) =>
-											setFee(formatCalculatorAmount(e.target.value, fee))
+											form.setFee(formatCalculatorAmount(e.target.value, form.fee))
 										}
 										className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
 										placeholder="0.00"
 									/>
-									{fee && (
+									{form.fee && (
 										<div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-500 uppercase">
-											{currency}
+											{form.currency}
 										</div>
 									)}
 								</div>
-								{parseFloat(fee) > 0 && (
+								{parseFloat(form.fee) > 0 && (
 									<div className="mt-2 flex items-center gap-2">
 										<span className="text-[10px] text-gray-400 uppercase font-bold">
 											Fee Type:
@@ -641,9 +496,9 @@ const TransactionForm: React.FC<Props> = ({
 										<div className="flex bg-card p-1 rounded-lg border border-gray-800">
 											<button
 												type="button"
-												onClick={() => setFeeType("INCLUSIVE")}
+												onClick={() => form.setFeeType("INCLUSIVE")}
 												className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-													feeType === "INCLUSIVE"
+													form.feeType === "INCLUSIVE"
 														? "bg-primary text-white shadow-lg"
 														: "text-gray-500 hover:text-white"
 												}`}
@@ -652,9 +507,9 @@ const TransactionForm: React.FC<Props> = ({
 											</button>
 											<button
 												type="button"
-												onClick={() => setFeeType("EXCLUSIVE")}
+												onClick={() => form.setFeeType("EXCLUSIVE")}
 												className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-													feeType === "EXCLUSIVE"
+													form.feeType === "EXCLUSIVE"
 														? "bg-primary text-white shadow-lg"
 														: "text-gray-500 hover:text-white"
 												}`}
@@ -664,21 +519,21 @@ const TransactionForm: React.FC<Props> = ({
 										</div>
 									</div>
 								)}
-								{parseFloat(fee) > 0 && parseFloat(amount) > 0 && (
+								{parseFloat(form.fee) > 0 && parseFloat(form.amount) > 0 && (
 									<p className="mt-1 text-[10px] text-gray-500 italic">
-										{feeType === "INCLUSIVE"
+										{form.feeType === "INCLUSIVE"
 											? `Amount includes fee. Source pays ${parseFloat(
-													amount,
+													form.amount,
 												).toFixed(
 													2,
-												)} ${currency}, Destination receives ${parseFloat(
-													amount,
-												).toFixed(2)} ${currency}.`
+												)} ${form.currency}, Destination receives ${parseFloat(
+													form.amount,
+												).toFixed(2)} ${form.currency}.`
 											: `Fee is excluded from received amount. Source pays ${parseFloat(
-													amount,
-												).toFixed(2)} ${currency}, Destination receives ${(
-													parseFloat(amount) - parseFloat(fee)
-												).toFixed(2)} ${currency}.`}
+													form.amount,
+												).toFixed(2)} ${form.currency}, Destination receives ${(
+													parseFloat(form.amount) - parseFloat(form.fee)
+												).toFixed(2)} ${form.currency}.`}
 									</p>
 								)}
 							</div>
@@ -686,8 +541,8 @@ const TransactionForm: React.FC<Props> = ({
 					)}
 
 					{/* Category Selection (Expense & Income) */}
-					{(type === TransactionType.EXPENSE ||
-						type === TransactionType.INCOME) && (
+					{(form.type === TransactionType.EXPENSE ||
+						form.type === TransactionType.INCOME) && (
 						<div>
 							<div className="flex justify-between items-center mb-1">
 								<label className="block text-xs font-medium text-gray-400">
@@ -706,9 +561,9 @@ const TransactionForm: React.FC<Props> = ({
 									<button
 										key={cat.id}
 										type="button"
-										onClick={() => setCategoryId(cat.id)}
+										onClick={() => form.setCategoryId(cat.id)}
 										className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all aspect-square sm:aspect-auto sm:min-h-15 ${
-											categoryId === cat.id
+											form.categoryId === cat.id
 												? "bg-primary text-white border-primary"
 												: "bg-surface border-gray-800 text-gray-400 hover:border-gray-600"
 										}`}
@@ -724,73 +579,62 @@ const TransactionForm: React.FC<Props> = ({
 					)}
 
 					{/* Subscription Linking */}
-					{type === TransactionType.EXPENSE && (
+					{form.type === TransactionType.EXPENSE && (
 						<div className="space-y-3 bg-white/5 p-3 rounded-2xl border border-gray-800">
 							<div className="flex items-center justify-between">
 								<label className="text-xs font-medium text-gray-400 flex items-center gap-2">
 									<ArrowPathIcon className="w-3.5 h-3.5" />
 									Subscription
 								</label>
-								{!subscriptionId && (
+								{!form.subscriptionId && (
 									<button
 										type="button"
-										onClick={() => setIsSubscription(!isSubscription)}
+										onClick={() => form.setIsSubscription(!form.isSubscription)}
 										className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-all ${
-											isSubscription
+											form.isSubscription
 												? "bg-primary/20 text-primary border border-primary/30"
 												: "text-gray-500 border border-gray-800"
 										}`}
 									>
-										{isSubscription ? "CREATE NEW" : "SET AS REPEATING"}
+										{form.isSubscription ? "CREATE NEW" : "SET AS REPEATING"}
 									</button>
 								)}
 							</div>
 
-							{isSubscription && !subscriptionId && (
+							{form.isSubscription && !form.subscriptionId && (
 								<div className="animate-fadeIn space-y-3">
 									<div className="flex gap-2">
-										{(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const).map(
-											(f) => (
-												<button
-													key={f}
-													type="button"
-													onClick={() => setFrequency(f)}
-													className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
-														frequency === f
-															? "bg-primary border-primary text-white"
-															: "bg-surface border-gray-700 text-gray-400"
-													}`}
-												>
-													{f}
-												</button>
-											),
-										)}
+										{FREQUENCIES.map((f) => (
+											<button
+												key={f}
+												type="button"
+												onClick={() => form.setFrequency(f)}
+												className={`flex-1 py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
+													form.frequency === f
+														? "bg-primary border-primary text-white"
+														: "bg-surface border-gray-700 text-gray-400"
+												}`}
+											>
+												{f}
+											</button>
+										))}
 									</div>
 									<p className="text-[10px] text-gray-500 italic">
-										This will create a new subscription starting from {date}.
+										This will create a new subscription starting from {form.date}.
 									</p>
 								</div>
 							)}
 
-							{subscriptions.length > 0 && !isSubscription && (
+							{subscriptions.length > 0 && !form.isSubscription && (
 								<div className="relative">
 									<select
-										value={subscriptionId}
+										value={form.subscriptionId}
 										onChange={(e) => {
 											const subId = e.target.value;
-											setSubscriptionId(subId);
+											form.setSubscriptionId(subId);
 											if (subId) {
 												const sub = subscriptions.find((s) => s.id === subId);
-												if (sub) {
-													setCategoryId(sub.categoryId);
-													setAmount(
-														typeof sub.amount === "number"
-															? sub.amount.toFixed(2)
-															: String(sub.amount || "0.00"),
-													);
-													setCurrency(sub.currency);
-													if (!shopName) setShopName(sub.name);
-												}
+												if (sub) form.applySubscription(sub);
 											}
 										}}
 										className="w-full bg-surface border border-gray-700 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-primary appearance-none"
@@ -803,10 +647,10 @@ const TransactionForm: React.FC<Props> = ({
 											</option>
 										))}
 									</select>
-									{subscriptionId && (
+									{form.subscriptionId && (
 										<button
 											type="button"
-											onClick={() => setSubscriptionId("")}
+											onClick={() => form.setSubscriptionId("")}
 											className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
 										>
 											<XMarkIcon className="w-4 h-4" />
@@ -820,17 +664,17 @@ const TransactionForm: React.FC<Props> = ({
 					{/* Details */}
 					<div>
 						<label className="block text-xs font-medium text-gray-400 mb-1">
-							{type === TransactionType.TRANSFER ? "Reference" : "Description"}
+							{form.type === TransactionType.TRANSFER ? "Reference" : "Description"}
 						</label>
 						<input
 							type="text"
-							value={shopName}
-							onChange={(e) => setShopName(e.target.value)}
+							value={form.shopName}
+							onChange={(e) => form.setShopName(e.target.value)}
 							className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
 							placeholder={
-								type === TransactionType.EXPENSE
+								form.type === TransactionType.EXPENSE
 									? "e.g., Starbucks"
-									: type === TransactionType.TRANSFER
+									: form.type === TransactionType.TRANSFER
 										? "e.g., Monthly Rent"
 										: "e.g., Paycheck"
 							}
@@ -842,7 +686,7 @@ const TransactionForm: React.FC<Props> = ({
 							<label className="block text-xs font-medium text-gray-400 mb-1">
 								Date
 							</label>
-							<DatePicker value={date} onChange={setDate} />
+							<DatePicker value={form.date} onChange={form.setDate} />
 						</div>
 						<div>
 							<label className="block text-xs font-medium text-gray-400 mb-1">
@@ -850,8 +694,8 @@ const TransactionForm: React.FC<Props> = ({
 							</label>
 							<input
 								type="time"
-								value={time}
-								onChange={(e) => setTime(e.target.value)}
+								value={form.time}
+								onChange={(e) => form.setTime(e.target.value)}
 								className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary"
 							/>
 						</div>
@@ -864,27 +708,27 @@ const TransactionForm: React.FC<Props> = ({
 								<input
 									type="checkbox"
 									id="isHistorical"
-									checked={isHistorical}
-									onChange={(e) => setIsHistorical(e.target.checked)}
+									checked={form.isHistorical}
+									onChange={(e) => form.setIsHistorical(e.target.checked)}
 									className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
 								/>
 								<label
 									htmlFor="isHistorical"
 									className="text-xs font-bold text-amber-200 cursor-pointer"
 								>
-									{type === TransactionType.TRANSFER
+									{form.type === TransactionType.TRANSFER
 										? "Source Account: Historical Record"
 										: "Historical Record (No Balance Change)"}
 								</label>
 							</div>
 
-							{type === TransactionType.TRANSFER && (
+							{form.type === TransactionType.TRANSFER && (
 								<div className="flex items-center gap-3">
 									<input
 										type="checkbox"
 										id="isToAccountHistorical"
-										checked={isToAccountHistorical}
-										onChange={(e) => setIsToAccountHistorical(e.target.checked)}
+										checked={form.isToAccountHistorical}
+										onChange={(e) => form.setIsToAccountHistorical(e.target.checked)}
 										className="w-4 h-4 rounded border-gray-700 bg-surface text-primary focus:ring-primary"
 									/>
 									<label
@@ -898,7 +742,7 @@ const TransactionForm: React.FC<Props> = ({
 						</div>
 
 						<p className="text-[10px] text-amber-200/60 leading-relaxed font-medium pl-7">
-							{type === TransactionType.TRANSFER
+							{form.type === TransactionType.TRANSFER
 								? "Historical transfers will not change the balance of their respective accounts. You can set this individually for each side of the transfer."
 								: "This will add the transaction to your history without affecting your current account balance. Perfect for old records."}
 						</p>
@@ -908,30 +752,30 @@ const TransactionForm: React.FC<Props> = ({
 					<div className="border-t border-gray-800 pt-5">
 						<button
 							type="button"
-							onClick={() => setBreakdownEnabled(!breakdownEnabled)}
+							onClick={() => form.setBreakdownEnabled(!form.breakdownEnabled)}
 							className="flex items-center justify-between w-full text-xs font-bold text-gray-400 mb-3 hover:text-white transition-colors"
 						>
 							<span className="flex items-center gap-2">
 								<PlusIcon className="w-3 h-3" />
 								Add Amount Breakdown
 							</span>
-							{breakdownEnabled ? (
+							{form.breakdownEnabled ? (
 								<ChevronUpIcon className="w-4 h-4" />
 							) : (
 								<ChevronDownIcon className="w-4 h-4" />
 							)}
 						</button>
 
-						{breakdownEnabled && (
+						{form.breakdownEnabled && (
 							<div className="space-y-3 animate-fadeIn mb-4">
-								{breakdownItems.map((item) => (
+								{form.breakdownItems.map((item) => (
 									<div key={item.id} className="flex gap-2 items-center group">
 										<input
 											type="text"
 											placeholder="e.g., Burger"
 											value={item.description}
 											onChange={(e) =>
-												updateBreakdownItem(
+												form.updateBreakdownItem(
 													item.id,
 													"description",
 													e.target.value,
@@ -946,7 +790,7 @@ const TransactionForm: React.FC<Props> = ({
 												placeholder="0.00"
 												value={item.amount || ""}
 												onChange={(e) =>
-													updateBreakdownItem(
+													form.updateBreakdownItem(
 														item.id,
 														"amount",
 														formatCalculatorAmount(e.target.value, item.amount),
@@ -957,7 +801,7 @@ const TransactionForm: React.FC<Props> = ({
 										</div>
 										<button
 											type="button"
-											onClick={() => removeBreakdownItem(item.id)}
+											onClick={() => form.removeBreakdownItem(item.id)}
 											className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
 										>
 											<TrashIconOutline className="w-4 h-4" />
@@ -967,21 +811,21 @@ const TransactionForm: React.FC<Props> = ({
 
 								<button
 									type="button"
-									onClick={addBreakdownItem}
+									onClick={form.addBreakdownItem}
 									className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-all"
 								>
 									<PlusIcon className="w-3 h-3" /> Add Item
 								</button>
 
-								{breakdownItems.length > 0 && (
+								{form.breakdownItems.length > 0 && (
 									<div className="flex justify-between items-center px-3 py-3 bg-gray-900/40 rounded-xl border border-gray-800">
 										<div className="flex flex-col">
 											<span className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-0.5">
 												Allocated
 											</span>
 											<span className="text-xs font-mono font-bold text-indigo-400">
-												{currency === "MYR" ? "RM" : "$"}{" "}
-												{breakdownItems
+												{form.currency === "MYR" ? "RM" : "$"}{" "}
+												{form.breakdownItems
 													.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
 													.toLocaleString(undefined, {
 														minimumFractionDigits: 2,
@@ -995,8 +839,8 @@ const TransactionForm: React.FC<Props> = ({
 											</span>
 											<span
 												className={`text-xs font-mono font-bold ${
-													parseFloat(amount || "0") -
-														breakdownItems.reduce(
+													parseFloat(form.amount || "0") -
+														form.breakdownItems.reduce(
 															(s, i) => s + (parseFloat(i.amount) || 0),
 															0,
 														) <
@@ -1005,10 +849,10 @@ const TransactionForm: React.FC<Props> = ({
 														: "text-gray-400"
 												}`}
 											>
-												{currency === "MYR" ? "RM" : "$"}{" "}
+												{form.currency === "MYR" ? "RM" : "$"}{" "}
 												{(
-													parseFloat(amount || "0") -
-													breakdownItems.reduce(
+													parseFloat(form.amount || "0") -
+													form.breakdownItems.reduce(
 														(s, i) => s + (parseFloat(i.amount) || 0),
 														0,
 													)

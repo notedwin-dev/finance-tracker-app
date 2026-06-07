@@ -126,6 +126,32 @@ export function computePotChange(
   return potChanges;
 }
 
+const addsToPocket = (t: Transaction): boolean =>
+  t.type === TransactionType.INCOME || t.type === TransactionType.ACCOUNT_OPENING;
+
+const isUnlinkedTransfer = (t: Transaction): boolean =>
+  t.type === TransactionType.TRANSFER &&
+  !!t.toSavingPocketId &&
+  !t.transferDirection &&
+  !t.linkedTransactionId;
+
+const transferDestinationAmount = (t: Transaction): number => {
+  const fee = t.fee || 0;
+  const feeType = t.feeType || "INCLUSIVE";
+  return feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
+};
+
+const applyPocketChange = (
+  changes: Map<string, number>,
+  pocketId: string,
+  delta: number,
+): void => {
+  changes.set(pocketId, (changes.get(pocketId) || 0) + delta);
+};
+
+const sourcePocketDelta = (t: Transaction, factor: 1 | -1): number =>
+  addsToPocket(t) ? t.amount * factor : -t.amount * factor;
+
 export function computePocketChange(
   t: Transaction,
   factor: 1 | -1,
@@ -137,34 +163,18 @@ export function computePocketChange(
 
   if (t.savingPocketId) {
     const txDateStr = normalizeDate(t.date);
-    const isAfterReset = isActivePocket(t.savingPocketId, pockets, txDateStr);
-    if (isAfterReset) {
-      const addsToPocket =
-        t.type === TransactionType.INCOME ||
-        t.type === TransactionType.ACCOUNT_OPENING;
-      const change = addsToPocket ? t.amount * factor : -t.amount * factor;
-      pocketChanges.set(
-        t.savingPocketId,
-        (pocketChanges.get(t.savingPocketId) || 0) + change,
-      );
+    if (isActivePocket(t.savingPocketId, pockets, txDateStr)) {
+      applyPocketChange(pocketChanges, t.savingPocketId, sourcePocketDelta(t, factor));
     }
   }
 
-  if (
-    t.type === TransactionType.TRANSFER &&
-    t.toSavingPocketId &&
-    !t.transferDirection &&
-    !t.linkedTransactionId
-  ) {
+  if (isUnlinkedTransfer(t) && t.toSavingPocketId) {
     const txDateStr = normalizeDate(t.date);
-    const isAfterReset = isActivePocket(t.toSavingPocketId, pockets, txDateStr);
-    if (isAfterReset) {
-      const fee = t.fee || 0;
-      const feeType = t.feeType || "INCLUSIVE";
-      const targetAmount = feeType === "EXCLUSIVE" ? t.amount - fee : t.amount;
-      pocketChanges.set(
+    if (isActivePocket(t.toSavingPocketId, pockets, txDateStr)) {
+      applyPocketChange(
+        pocketChanges,
         t.toSavingPocketId,
-        (pocketChanges.get(t.toSavingPocketId) || 0) + targetAmount * factor,
+        transferDestinationAmount(t) * factor,
       );
     }
   }

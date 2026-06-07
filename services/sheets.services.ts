@@ -45,7 +45,7 @@ let tokenExpiryTime = 0;
 
 // Helper to get profile sheet name (supports legacy "Users" sheet for existing users)
 let cachedSheetName: string | null = null;
-const getProfileSheetName = async (fileId: string): Promise<string> => {
+export const getProfileSheetName = async (fileId: string): Promise<string> => {
 	if (cachedSheetName) return cachedSheetName;
 
 	try {
@@ -276,7 +276,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
   return createNewSheet();
 };
 
-const getSheetNames = async (
+export const getSheetNames = async (
 	spreadsheetId: string,
 ): Promise<string[] | null> => {
 	try {
@@ -1167,7 +1167,7 @@ export const syncWithGoogleSheets = async (
 	await Promise.all(tasks);
 };
 
-const hasRequiredAuth = (): boolean => {
+export const hasRequiredAuth = (): boolean => {
 	if (!gapiInited) {
 		logger.error("GAPI not initialized");
 		return false;
@@ -1179,7 +1179,7 @@ const hasRequiredAuth = (): boolean => {
 	return true;
 };
 
-const resolveSpreadsheetId = async (): Promise<string | null> => {
+export const resolveSpreadsheetId = async (): Promise<string | null> => {
 	const fileId = await getSpreadsheetId();
 	if (!fileId) {
 		logger.warn("Could not retrieve spreadsheet ID");
@@ -1201,7 +1201,7 @@ const NUMERIC_SHEET_FIELDS = new Set([
 	"amountLeft",
 ]);
 
-const isProfileSheet = (name: string) => name === "Profile" || name === "Users";
+export const isProfileSheet = (name: string) => name === "Profile" || name === "Users";
 
 const coerceSheetValue = (header: string, val: unknown): unknown => {
 	if (val === undefined) return val;
@@ -1220,7 +1220,7 @@ const coerceSheetValue = (header: string, val: unknown): unknown => {
 	return coerced;
 };
 
-const parseDataRow = (headers: string[], row: unknown[]): any => {
+export const parseDataRow = (headers: string[], row: unknown[]): any => {
 	const obj: any = {};
 	headers.forEach((header, index) => {
 		const val = coerceSheetValue(header, row[index]);
@@ -1229,7 +1229,7 @@ const parseDataRow = (headers: string[], row: unknown[]): any => {
 	return obj;
 };
 
-const parseProfileSheet = (
+export const parseProfileSheet = (
 	headers: string[],
 	dataRows: unknown[][],
 	userEmail?: string,
@@ -1241,103 +1241,12 @@ const parseProfileSheet = (
 	return userRow ? parseUserRow(headers, userRow) : undefined;
 };
 
-const filterByCurrentUser = (rows: any[]): any[] =>
+export const filterByCurrentUser = (rows: any[]): any[] =>
 	rows.filter(
 		(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
 	);
 
-export const loadFromGoogleSheets = async (
-	userEmail?: string,
-): Promise<{
-	accounts: Account[];
-	transactions: Transaction[];
-	categories: Category[];
-	goals: Goal[];
-	subscriptions: Subscription[];
-	pots: Pot[];
-	pockets: SavingPocket[];
-	chatSessions: ChatSession[];
-	profile?: any;
-} | null> => {
-	if (!hasRequiredAuth()) return null;
-
-	const fileId = await resolveSpreadsheetId();
-	if (!fileId) return null;
-
-	const result: any = {};
-
-	const sheetName = await getProfileSheetName(fileId);
-	const sheetNamesToLoad = [
-		"Accounts",
-		"Transactions",
-		"Categories",
-		"Goals",
-		"Subscriptions",
-		"Pots",
-		"Pockets",
-		"ChatSessions",
-		sheetName,
-	];
-
-	const names = await getSheetNames(fileId);
-	const existingSheets = names || [];
-
-	const validSheets = sheetNamesToLoad.filter((s) =>
-		existingSheets.includes(s),
-	);
-	if (validSheets.length === 0) return null;
-
-	try {
-		const response =
-			await window.gapi.client.sheets.spreadsheets.values.batchGet({
-				spreadsheetId: fileId,
-				ranges: validSheets.map((s) => `'${s}'!A:Z`),
-				valueRenderOption: "UNFORMATTED_VALUE",
-			});
-
-		const valueRanges = response.result.valueRanges || [];
-
-		validSheets.forEach((sheetName, rangeIndex) => {
-			const rows = valueRanges[rangeIndex]?.values;
-			if (!rows || rows.length <= 1) {
-				result[sheetName.toLowerCase()] = [];
-				return;
-			}
-
-			const headers = rows[0] as string[];
-			const dataRows = rows.slice(1);
-
-			if (isProfileSheet(sheetName)) {
-				result.profile = parseProfileSheet(headers, dataRows, userEmail);
-				return;
-			}
-
-			result[sheetName.toLowerCase()] = filterByCurrentUser(
-				dataRows.map((row: any[]) => parseDataRow(headers, row)),
-			);
-		});
-	} catch (err: any) {
-		if (err?.status === 401) {
-			clearGapiAccessToken();
-			throw err;
-		}
-		logger.warn("Batch load failed", err);
-	}
-
-	const pots = (result.pots || []).map((p: any) => migrateLegacyPot(p));
-
-	return {
-		accounts: result.accounts || [],
-		transactions: result.transactions || [],
-		categories: result.categories || [],
-		goals: result.goals || [],
-		subscriptions: result.subscriptions || [],
-		pots,
-		pockets: result.pockets || [],
-		chatSessions: result.chatsessions || [],
-		profile: result.profile,
-	};
-};
+export { loadFromGoogleSheets } from "./sheets-load";
 /**
  * Opens a Google Picker to let the user select a specific spreadsheet.
  * This is crucial for the drive.file scope to gain access to a file

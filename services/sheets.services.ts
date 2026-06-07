@@ -353,44 +353,45 @@ export const findUser = async (email: string) => {
 /**
  * Helper to parse a raw user row into a structured object.
  */
+const normalizeEmptyCell = (val: any): any =>
+	val === undefined || val === "" ? null : val;
+
+const parseStringBoolean = (val: any): any => {
+	if (typeof val !== "string") return val;
+	const lower = val.toLowerCase();
+	if (lower === "true") return true;
+	if (lower === "false") return false;
+	return val;
+};
+
+const parseTimestampField = (val: any, header: string): any => {
+	if (typeof val !== "string" || val.trim() === "") return val;
+	if (header !== "lastSyncAt" && header !== "updatedAt") return val;
+	const num = Number(val);
+	return isNaN(num) ? val : num;
+};
+
+const parseJsonString = (val: any): any => {
+	if (typeof val !== "string") return val;
+	const looksLikeJson =
+		(val.startsWith("{") && val.endsWith("}")) ||
+		(val.startsWith("[") && val.endsWith("]"));
+	if (!looksLikeJson) return val;
+	try {
+		return JSON.parse(val);
+	} catch {
+		return val;
+	}
+};
+
 const parseUserRow = (headers: string[], userRow: any[]) => {
 	const user: any = {};
 	headers.forEach((h: string, i: number) => {
 		let val = userRow[i];
-
-		// Handle empty cells
-		if (val === undefined || val === "") {
-			val = null;
-		}
-
-		// Convert booleans and handle JSON
-		if (typeof val === "string") {
-			const lower = val.toLowerCase();
-			if (lower === "true") val = true;
-			else if (lower === "false") val = false;
-		}
-
-		// Convert numeric fields
-		if (
-			typeof val === "string" &&
-			val.trim() !== "" &&
-			(h === "lastSyncAt" || h === "updatedAt")
-		) {
-			const num = Number(val);
-			if (!isNaN(num)) val = num;
-		}
-
-		if (
-			typeof val === "string" &&
-			((val.startsWith("{") && val.endsWith("}")) ||
-				(val.startsWith("[") && val.endsWith("]")))
-		) {
-			try {
-				val = JSON.parse(val);
-			} catch {
-				/* ignore */
-			}
-		}
+		val = normalizeEmptyCell(val);
+		val = parseStringBoolean(val);
+		val = parseTimestampField(val, h);
+		val = parseJsonString(val);
 		user[h] = val;
 	});
 	return user;

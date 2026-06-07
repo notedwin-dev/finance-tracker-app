@@ -23,6 +23,56 @@ type ConfirmationRequester = (opts: {
 	onConfirm: () => void;
 }) => void;
 
+type ActionProps = {
+	icon: any;
+	label: string;
+	description: string;
+	color: string;
+	onClick?: () => void;
+	action?: React.ReactNode;
+};
+
+const CloudActionItem = (props: ActionProps) => <SettingItem {...props} />;
+
+const LinkBadge = ({ offlineMode }: { offlineMode: boolean }) => (
+	<div
+		className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
+			offlineMode
+				? "bg-gray-800 text-gray-400"
+				: "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+		}`}
+	>
+		{offlineMode ? "Unlinked" : "Linked"}
+	</div>
+);
+
+const requestUnlinkConfirmation = (
+	requestConfirmation: ConfirmationRequester,
+	onUnlink: () => void,
+) => {
+	requestConfirmation({
+		title: "Disconnect Cloud",
+		description:
+			"Disconnect from Google Sheets? Your data will remain on this device but won't sync to the cloud until re-linked.",
+		confirmLabel: "Disconnect",
+		isDestructive: true,
+		icon: ArrowRightOnRectangleIcon,
+		onConfirm: onUnlink,
+	});
+};
+
+const requestV1MigrationConfirmation = (
+	requestConfirmation: ConfirmationRequester,
+) => {
+	requestConfirmation({
+		title: "Run v1 → v2 Migration",
+		description:
+			"This will strip legacy vault fields from your local data and push the cleaned data to Google Sheets. Run on the device with the most complete data, while online. This cannot be undone.",
+		confirmLabel: "Run Migration",
+		onConfirm: runProfileMigration,
+	});
+};
+
 type Props = {
 	profile: UserProfile;
 	accounts: Account[];
@@ -53,52 +103,35 @@ export const CloudDataSection: React.FC<Props> = ({
 	requestConfirmation,
 }) => {
 	const showV1Migration = needsV1Migration(profile, accounts);
+	const offlineMode = profile.offlineMode;
 
 	return (
 		<>
 			<SectionHeader title="Cloud & Data" />
 
-			<SettingItem
+			<CloudActionItem
 				icon={CloudArrowUpIcon}
 				label="Google Sheets Connection"
 				description={
-					profile.offlineMode
+					offlineMode
 						? "Not linked to Google Sheets"
 						: `Linked to ${profile.email || "Google Account"}`
 				}
-				color={profile.offlineMode ? "text-gray-400" : "text-sky-400"}
+				color={offlineMode ? "text-gray-400" : "text-sky-400"}
 				onClick={
-					profile.offlineMode
+					offlineMode
 						? onLogin
-						: () => {
-								requestConfirmation({
-									title: "Disconnect Cloud",
-									description:
-										"Disconnect from Google Sheets? Your data will remain on this device but won't sync to the cloud until re-linked.",
-									confirmLabel: "Disconnect",
-									isDestructive: true,
-									icon: ArrowRightOnRectangleIcon,
-									onConfirm: () => {
-										if (onUnlinkCloud) onUnlinkCloud();
-									},
-								});
-							}
+						: () =>
+								requestUnlinkConfirmation(
+									requestConfirmation,
+									() => onUnlinkCloud?.(),
+								)
 				}
-				action={
-					<div
-						className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
-							profile.offlineMode
-								? "bg-gray-800 text-gray-400"
-								: "bg-sky-500/20 text-sky-400 border border-sky-500/30"
-						}`}
-					>
-						{profile.offlineMode ? "Unlinked" : "Linked"}
-					</div>
-				}
+				action={<LinkBadge offlineMode={offlineMode} />}
 			/>
 
-			{!profile.offlineMode && onSync && (
-				<SettingItem
+			{!offlineMode && onSync && (
+				<CloudActionItem
 					icon={ArrowPathIcon}
 					label="Sync Now"
 					description={
@@ -115,12 +148,12 @@ export const CloudDataSection: React.FC<Props> = ({
 					}
 				/>
 			)}
-			{!profile.offlineMode && onSelectSheet && (
+			{!offlineMode && onSelectSheet && (
 				<GoogleDrivePicker
 					onPicked={(fileId) => onSelectSheet(fileId)}
 					onCancel={() => logger.log("Picker canceled")}
 				>
-					<SettingItem
+					<CloudActionItem
 						icon={DocumentArrowDownIcon}
 						label="Re-link Google Sheet"
 						description="Manually select your data file if it's missing"
@@ -129,7 +162,7 @@ export const CloudDataSection: React.FC<Props> = ({
 				</GoogleDrivePicker>
 			)}
 			{onResetSync && (
-				<SettingItem
+				<CloudActionItem
 					icon={ArrowPathIcon}
 					label="Force Cloud Restore"
 					description="Clear cache and re-download data"
@@ -138,7 +171,7 @@ export const CloudDataSection: React.FC<Props> = ({
 				/>
 			)}
 			{onMigrate && (
-				<SettingItem
+				<CloudActionItem
 					icon={InboxArrowDownIcon}
 					label="Import Data"
 					description="Recover data from browser storage"
@@ -146,7 +179,7 @@ export const CloudDataSection: React.FC<Props> = ({
 					color="text-purple-400"
 				/>
 			)}
-			<SettingItem
+			<CloudActionItem
 				icon={DocumentArrowDownIcon}
 				label="Export Backup"
 				description="Download all data as JSON"
@@ -154,7 +187,7 @@ export const CloudDataSection: React.FC<Props> = ({
 				color="text-gray-400"
 			/>
 			{onRecalculateBalances && (
-				<SettingItem
+				<CloudActionItem
 					icon={CalculatorIcon}
 					label="Recalculate Balances"
 					description="Fix account balance desyncs from history"
@@ -163,20 +196,12 @@ export const CloudDataSection: React.FC<Props> = ({
 				/>
 			)}
 			{showV1Migration && (
-				<SettingItem
+				<CloudActionItem
 					icon={ArrowPathIcon}
 					label="Migrate v1 data"
 					description="One-time v1 → v2 cleanup. Strips legacy vault fields and syncs to cloud."
 					color="text-amber-400"
-					onClick={() => {
-						requestConfirmation({
-							title: "Run v1 → v2 Migration",
-							description:
-								"This will strip legacy vault fields from your local data and push the cleaned data to Google Sheets. Run on the device with the most complete data, while online. This cannot be undone.",
-							confirmLabel: "Run Migration",
-							onConfirm: runProfileMigration,
-						});
-					}}
+					onClick={() => requestV1MigrationConfirmation(requestConfirmation)}
 				/>
 			)}
 		</>

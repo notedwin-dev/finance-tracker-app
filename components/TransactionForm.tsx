@@ -126,15 +126,15 @@ const TransactionForm: React.FC<Props> = ({
 			});
 
 			const newSubData = form.isSubscription
-				? buildSubscriptionPayload(
-						form.shopName,
-						form.amount,
-						form.currency,
-						form.accountId,
-						form.categoryId,
-						form.frequency,
-						form.date,
-					)
+				? buildSubscriptionPayload({
+						shopName: form.shopName,
+						amount: form.amount,
+						currency: form.currency,
+						accountId: form.accountId,
+						categoryId: form.categoryId,
+						frequency: form.frequency,
+						date: form.date,
+					})
 				: undefined;
 
 			await onSubmit(

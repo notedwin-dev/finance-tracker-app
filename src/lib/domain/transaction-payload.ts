@@ -1,9 +1,6 @@
 import {
-	Account,
-	Category,
 	Transaction,
 	TransactionType,
-	Subscription,
 } from "../../../types";
 import { serializeBreakdownItems } from "../../lib/domain/transaction-form.validation";
 
@@ -32,78 +29,101 @@ type PayloadArgs = {
 	breakdownItems: BreakdownItem[];
 };
 
-export const buildTransactionPayload = (
-	args: PayloadArgs,
-): Omit<Transaction, "userId"> => {
-	const {
-		initialTransaction,
-		type,
-		accountId,
-		potId,
-		savingPocketId,
-		toSavingPocketId,
-		toAccountId,
-		amount,
-		currency,
-		categoryId,
-		shopName,
-		date,
-		time,
-		fee,
-		feeType,
-		isSubsidized,
-		marketValue,
-		isHistorical,
-		breakdownEnabled,
-		breakdownItems,
-	} = args;
+const buildLinkedFields = (t: Transaction | undefined) => ({
+	linkedTransactionId: t?.linkedTransactionId,
+	transferDirection: t?.transferDirection,
+});
 
+const buildIdentificationFields = (
+	t: Transaction | undefined,
+): Pick<Transaction, "id" | "createdAt"> => ({
+	id: t?.id || crypto.randomUUID(),
+	createdAt: t?.createdAt || new Date().toISOString(),
+});
+
+const buildAccountLinks = (
+	type: TransactionType,
+	args: Pick<PayloadArgs, "potId" | "savingPocketId" | "toSavingPocketId" | "toAccountId">,
+) => {
 	const isTransfer = type === TransactionType.TRANSFER;
-	const isExpenseOrIncome =
-		type === TransactionType.EXPENSE || type === TransactionType.INCOME;
-
 	return {
-		id: initialTransaction?.id || crypto.randomUUID(),
-		accountId,
-		potId: potId || undefined,
-		savingPocketId: savingPocketId || undefined,
-		toSavingPocketId: isTransfer ? toSavingPocketId : undefined,
-		subscriptionId: undefined,
-		toAccountId: isTransfer ? toAccountId : undefined,
-		amount: isSubsidized ? 0 : Math.abs(parseFloat(amount)),
-		isSubsidized,
-		marketValue: isSubsidized ? parseFloat(marketValue) : undefined,
-		isHistorical,
-		fee: isTransfer && fee ? Math.abs(parseFloat(fee)) : undefined,
-		feeType: isTransfer && fee ? feeType : undefined,
-		currency,
-		type,
-		categoryId: isExpenseOrIncome ? categoryId : undefined,
-		shopName,
-		date,
-		time: time || undefined,
-		amountBreakdown: serializeBreakdownItems(breakdownEnabled, breakdownItems),
-		createdAt: initialTransaction?.createdAt || new Date().toISOString(),
-		linkedTransactionId: initialTransaction?.linkedTransactionId,
-		transferDirection: initialTransaction?.transferDirection,
+		potId: args.potId || undefined,
+		savingPocketId: args.savingPocketId || undefined,
+		toSavingPocketId: isTransfer ? args.toSavingPocketId : undefined,
+		toAccountId: isTransfer ? args.toAccountId : undefined,
 	};
 };
 
-export const buildSubscriptionPayload = (
-	shopName: string,
-	amount: string,
-	currency: Transaction["currency"],
-	accountId: string,
-	categoryId: string,
-	frequency: Subscription["frequency"],
-	date: string,
-): Omit<Subscription, "userId" | "id"> => ({
-	name: shopName || "New Subscription",
-	amount: Math.abs(parseFloat(amount)),
-	currency,
-	accountId,
-	categoryId,
-	frequency,
-	nextPaymentDate: date,
+const buildAmountFields = (
+	type: TransactionType,
+	args: Pick<PayloadArgs, "amount" | "fee" | "feeType" | "isSubsidized" | "marketValue">,
+) => {
+	const isTransfer = type === TransactionType.TRANSFER;
+	const hasFee = isTransfer && !!args.fee;
+	const finalAmount = args.isSubsidized ? 0 : Math.abs(parseFloat(args.amount));
+	return {
+		amount: finalAmount,
+		fee: hasFee ? Math.abs(parseFloat(args.fee)) : undefined,
+		feeType: hasFee ? args.feeType : undefined,
+		marketValue: args.isSubsidized ? parseFloat(args.marketValue) : undefined,
+	};
+};
+
+const buildCategoryField = (type: TransactionType, categoryId: string): string | undefined => {
+	const isExpenseOrIncome =
+		type === TransactionType.EXPENSE || type === TransactionType.INCOME;
+	return isExpenseOrIncome ? categoryId : undefined;
+};
+
+const buildBreakdown = (
+	breakdownEnabled: boolean,
+	breakdownItems: BreakdownItem[],
+) => serializeBreakdownItems(breakdownEnabled, breakdownItems);
+
+export const buildTransactionPayload = (
+	args: PayloadArgs,
+): Omit<Transaction, "userId"> => {
+	const identification = buildIdentificationFields(args.initialTransaction);
+	const linked = buildLinkedFields(args.initialTransaction);
+	const accountLinks = buildAccountLinks(args.type, args);
+	const amount = buildAmountFields(args.type, args);
+
+	return {
+		...identification,
+		accountId: args.accountId,
+		...accountLinks,
+		subscriptionId: undefined,
+		...amount,
+		isSubsidized: args.isSubsidized,
+		isHistorical: args.isHistorical,
+		currency: args.currency,
+		type: args.type,
+		categoryId: buildCategoryField(args.type, args.categoryId),
+		shopName: args.shopName,
+		date: args.date,
+		time: args.time || undefined,
+		amountBreakdown: buildBreakdown(args.breakdownEnabled, args.breakdownItems),
+		...linked,
+	};
+};
+
+type SubscriptionPayloadArgs = {
+	shopName: string;
+	amount: string;
+	currency: Transaction["currency"];
+	accountId: string;
+	categoryId: string;
+	frequency: import("../../../types").Subscription["frequency"];
+	date: string;
+};
+
+export const buildSubscriptionPayload = (args: SubscriptionPayloadArgs) => ({
+	name: args.shopName || "New Subscription",
+	amount: Math.abs(parseFloat(args.amount)),
+	currency: args.currency,
+	accountId: args.accountId,
+	categoryId: args.categoryId,
+	frequency: args.frequency,
+	nextPaymentDate: args.date,
 	active: true,
 });

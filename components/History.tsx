@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
 	Transaction,
 	Category,
@@ -13,15 +13,18 @@ import {
 	ChevronRightIcon,
 	MagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
-import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helper";
 import { useMask } from "../helpers/useMask";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { batchDeleteTransaction, batchEditTransactions } from "../src/lib/application/commands";
-import { logger } from "../src/lib/infrastructure/logger";
 import { cn } from "./history/cn";
-import { SCROLL_THRESHOLD } from "./history/constants";
-import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
 import { formatDateHeader } from "./history/formatDateHeader";
+import {
+	useHistoryFilters,
+	useDateAccountFilter,
+	hasActiveFilters,
+} from "./history/useHistoryFilters";
+import { useBackToTop, useSearchKeyboard } from "./history/useHistoryUiState";
+import { useHistoryHandlers } from "./history/useHistoryHandlers";
+import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
 import { useFilteredTransactions } from "./history/useFilteredTransactions";
 import { useSwipeGesture } from "./history/useSwipeGesture";
 import { useBatchSelection } from "./history/useBatchSelection";
@@ -58,176 +61,66 @@ const History: React.FC<Props> = ({
 	const usdRate = useFinanceStore((s) => s.usdRate);
 	const { pots } = useFinanceStore();
 
-	const [startDate, setStartDate] = useState("");
-	const [endDate, setEndDate] = useState("");
-	const [searchQuery, setSearchQuery] = useState("");
-	const [filterAccountIds, setFilterAccountIds] = useState<string[]>([]);
-	const [showFilters, setShowFilters] = useState(false);
+	const filters = useHistoryFilters();
+	const showBackToTop = useBackToTop();
 	const [showSearchOverlay, setShowSearchOverlay] = useState(false);
-	const [showBackToTop, setShowBackToTop] = useState(false);
+
+	useSearchKeyboard(
+		() => setShowSearchOverlay(true),
+		() => {
+			setShowSearchOverlay(false);
+			filters.setSearchQuery("");
+		},
+		!showSearchOverlay,
+	);
 
 	const batch = useBatchSelection();
 	const swipe = useSwipeGesture();
 
 	const {
 		filteredTransactions,
-		paginatedGrouped,
 		grouped,
 		sortedDates,
 		visibleCount,
 		setVisibleCount,
 	} = useFilteredTransactions(
 		transactions,
-		startDate,
-		endDate,
-		searchQuery,
+		filters.startDate,
+		filters.endDate,
+		filters.searchQuery,
 		categories,
 		accounts,
-		filterAccountIds,
+		filters.filterAccountIds,
 	);
 
-	const dateAccountFilteredTransactions = useMemo(() => {
-		return transactions.filter((t) => {
-			if (startDate || endDate) {
-				const tDate = normalizeDate(t.date);
-				if (startDate && tDate < startDate) return false;
-				if (endDate && tDate > endDate) return false;
-			}
-			if (filterAccountIds.length > 0 && !filterAccountIds.includes(t.accountId)) return false;
-			return true;
-		});
-	}, [transactions, startDate, endDate, filterAccountIds]);
-
-	useEffect(() => {
-		const handleScroll = () => {
-			setShowBackToTop(window.scrollY > SCROLL_THRESHOLD);
-		};
-		window.addEventListener("scroll", handleScroll, { passive: true });
-		return () => window.removeEventListener("scroll", handleScroll);
-	}, []);
-
-	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-				e.preventDefault();
-				setShowSearchOverlay(true);
-			}
-			if (e.key === "/" && !showSearchOverlay) {
-				e.preventDefault();
-				setShowSearchOverlay(true);
-			}
-			if (e.key === "Escape") {
-				setShowSearchOverlay(false);
-				setSearchQuery("");
-			}
-		};
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [showSearchOverlay]);
-
-	const handleItemClick = useCallback(
-		(t: GroupedTransaction) => {
-			if (swipe.isGestureActive.current) {
-				swipe.isGestureActive.current = false;
-				return;
-			}
-
-			if (swipe.swipedId) {
-				swipe.setSwipedId(null);
-				return;
-			}
-
-			if (batch.isBatchMode || batch.selectedIds.length > 0) {
-				batch.toggleSelection(t.id);
-			} else {
-				const txToEdit = prepareTransactionForEdit(t, transactions);
-				onEditTransaction(txToEdit);
-			}
-		},
-		[swipe, batch, transactions, onEditTransaction],
+	const dateAccountFilteredTransactions = useDateAccountFilter(
+		transactions,
+		filters.startDate,
+		filters.endDate,
+		filters.filterAccountIds,
 	);
 
-	const handleSwipeEdit = useCallback(
-		(t: GroupedTransaction) => {
-			const txToEdit = prepareTransactionForEdit(t, transactions);
-			onEditTransaction(txToEdit);
-			swipe.setSwipedId(null);
-		},
-		[transactions, onEditTransaction, swipe.setSwipedId],
-	);
-
-	const handleSwipeDelete = useCallback(
-		async (t: GroupedTransaction) => {
-			if (
-				window.confirm(
-					"Delete this transaction? This cannot be undone.",
-				)
-			) {
-				try {
-					await onDeleteTransaction(t.id);
-					swipe.setSwipedId(null);
-				} catch (e) {
-					logger.error("Failed to delete transaction", e);
-				}
-			}
-		},
-		[onDeleteTransaction, swipe.setSwipedId],
-	);
-
-	const handleBatchDelete = useCallback(async () => {
-		batch.startSubmit();
-		try {
-			if (
-				window.confirm(
-					`Delete ${batch.selectedIds.length} transactions? This cannot be undone.`,
-				)
-			) {
-				await batchDeleteTransaction(batch.selectedIds, accounts, pots, pockets, usdRate, transactions);
-				batch.clearSelection();
-			}
-		} finally {
-			batch.endSubmit();
-		}
-	}, [batch, batchDeleteTransaction, accounts, pots, pockets, usdRate, transactions]);
-
-	const handleBatchEditSubmit = useCallback(async () => {
-		batch.startSubmit();
-		try {
-			await batchEditTransactions(
-				batch.selectedIds,
-				batch.batchUpdates,
-				transactions,
-				accounts,
-				pots,
-				pockets,
-				usdRate,
-				false,
-			);
-		} finally {
-			batch.endSubmit();
-		}
-	}, [batch, batchEditTransactions, transactions, accounts, pots, pockets, usdRate]);
-
-	const handleChevronClick = useCallback(
-		(e: React.MouseEvent, id: string) => {
-			e.stopPropagation();
-			swipe.setSwipedId(swipe.swipedId === id ? null : id);
-		},
-		[swipe],
-	);
+	const handlers = useHistoryHandlers({
+		transactions,
+		accounts,
+		pots,
+		pockets,
+		usdRate,
+		swipe,
+		batch,
+		onEditTransaction,
+		onDeleteTransaction,
+	});
 
 	const scrollToTop = () => {
 		window.scrollTo({ top: 0, behavior: "smooth" });
 	};
 
-	const clearAllFilters = () => {
-		setStartDate("");
-		setEndDate("");
-		setSearchQuery("");
-		setFilterAccountIds([]);
-	};
-
-	const hasActiveFilters = !!(startDate || endDate || filterAccountIds.length > 0);
+	const filtersActive = hasActiveFilters(
+		filters.startDate,
+		filters.endDate,
+		filters.filterAccountIds,
+	);
 
 	if (transactions.length === 0) {
 		return (
@@ -267,7 +160,7 @@ const History: React.FC<Props> = ({
 								onClick={() => setShowSearchOverlay(true)}
 								className={cn(
 									"flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
-									searchQuery
+									filters.searchQuery
 										? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
 										: "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10",
 								)}
@@ -280,16 +173,16 @@ const History: React.FC<Props> = ({
 							</button>
 
 							<button
-								onClick={() => setShowFilters(!showFilters)}
+								onClick={() => filters.setShowFilters(!filters.showFilters)}
 								className={cn(
 									"flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
-									showFilters || hasActiveFilters
+									filters.showFilters || filtersActive
 										? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
 										: "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10",
 								)}
 							>
 								<FunnelIcon className="w-3.5 h-3.5" />
-								Filter {hasActiveFilters ? "(Active)" : ""}
+								Filter {filtersActive ? "(Active)" : ""}
 							</button>
 
 							<button
@@ -325,17 +218,17 @@ const History: React.FC<Props> = ({
 				</div>
 			)}
 
-			{showFilters && (
+			{filters.showFilters && (
 				<FiltersPanel
-					startDate={startDate}
-					endDate={endDate}
-					onStartDateChange={setStartDate}
-					onEndDateChange={setEndDate}
-					onClear={clearAllFilters}
-					accountIds={filterAccountIds}
+					startDate={filters.startDate}
+					endDate={filters.endDate}
+					onStartDateChange={filters.setStartDate}
+					onEndDateChange={filters.setEndDate}
+					onClear={filters.clearAllFilters}
+					accountIds={filters.filterAccountIds}
 					accounts={accounts}
-					onAccountIdsChange={setFilterAccountIds}
-					onClose={() => setShowFilters(false)}
+					onAccountIdsChange={filters.setFilterAccountIds}
+					onClose={() => filters.setShowFilters(false)}
 				/>
 			)}
 
@@ -345,7 +238,7 @@ const History: React.FC<Props> = ({
 					<BatchActionBar
 						selectedCount={batch.selectedIds.length}
 						onBatchEdit={batch.openEditModal}
-						onBatchDelete={handleBatchDelete}
+						onBatchDelete={handlers.handleBatchDelete}
 						onClear={batch.clearSelection}
 					/>
 				)}
@@ -381,12 +274,12 @@ const History: React.FC<Props> = ({
 				<div className="flex flex-col items-center justify-center h-64 text-gray-600 bg-surface/20 rounded-4xl border border-white/5 border-dashed">
 					<MagnifyingGlassIcon className="w-12 h-12 mb-4 opacity-20" />
 					<p className="font-bold">
-						{searchQuery
-							? `No results for "${searchQuery}".`
+						{filters.searchQuery
+							? `No results for "${filters.searchQuery}".`
 							: "No transactions match your filters."}
 					</p>
 					<button
-						onClick={clearAllFilters}
+						onClick={filters.clearAllFilters}
 						className="mt-4 text-xs font-black text-indigo-400 uppercase tracking-widest"
 					>
 						Clear Filters & Search
@@ -416,10 +309,10 @@ const History: React.FC<Props> = ({
 									categories={categories}
 									maskAmount={maskAmount as any}
 									maskText={maskText as any}
-									onSwipeEdit={() => handleSwipeEdit(t)}
-									onSwipeDelete={() => handleSwipeDelete(t)}
+									onSwipeEdit={() => handlers.handleSwipeEdit(t)}
+									onSwipeDelete={() => handlers.handleSwipeDelete(t)}
 									onSwipeClose={() => swipe.setSwipedId(null)}
-									onClick={() => handleItemClick(t)}
+									onClick={() => handlers.handleItemClick(t)}
 									onPointerDown={(e) =>
 										swipe.handlePointerDown(e, t.id)
 									}
@@ -428,7 +321,7 @@ const History: React.FC<Props> = ({
 										swipe.handlePointerUp(e, t.id)
 									}
 									onChevronClick={(e) =>
-										handleChevronClick(e, t.id)
+										handlers.handleChevronClick(e, t.id)
 									}
 								/>
 							))}
@@ -459,16 +352,16 @@ const History: React.FC<Props> = ({
 				isSubmitting={batch.isSubmitting}
 				onClose={batch.closeEditModal}
 				onBatchUpdatesChange={batch.setBatchUpdates}
-				onSubmit={handleBatchEditSubmit}
+				onSubmit={handlers.handleBatchEditSubmit}
 			/>
 
 			<SearchOverlay
 				isOpen={showSearchOverlay}
-				query={searchQuery}
-				onQueryChange={setSearchQuery}
+				query={filters.searchQuery}
+				onQueryChange={filters.setSearchQuery}
 				onClose={() => {
 					setShowSearchOverlay(false);
-					setSearchQuery("");
+					filters.setSearchQuery("");
 				}}
 				transactions={dateAccountFilteredTransactions}
 				categories={categories}

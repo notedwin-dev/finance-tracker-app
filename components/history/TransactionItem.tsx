@@ -40,24 +40,42 @@ const isIncomeTx = (t: GroupedTransaction): boolean =>
 	(t.type === TransactionType.TRANSFER && t.transferDirection === "IN") ||
 	(t.type === TransactionType.ADJUSTMENT && t.amount >= 0);
 
+const getTransferLegs = (
+	t: GroupedTransaction,
+): { sourceId: string | undefined; destId: string | undefined } => {
+	const isIn = t.transferDirection === "IN";
+	return {
+		sourceId: isIn ? t.toAccountId : t.accountId,
+		destId: isIn ? t.accountId : t.toAccountId,
+	};
+};
+
+const getAccountName = (
+	accounts: Account[],
+	id: string | undefined,
+): string => accounts.find((a) => a.id === id)?.name || "???";
+
+const getTransferDisplayName = (
+	t: GroupedTransaction,
+	accounts: Account[],
+	maskText: MaskText,
+): React.ReactNode => {
+	if (t.shopName) return maskText(t.shopName);
+	const { sourceId, destId } = getTransferLegs(t);
+	return (
+		<>
+			{maskText(getAccountName(accounts, sourceId))} → {maskText(getAccountName(accounts, destId))}
+		</>
+	);
+};
+
 const getDisplayName = (
 	t: GroupedTransaction,
 	isTransfer: boolean,
 	accounts: Account[],
 	maskText: MaskText,
 ): React.ReactNode => {
-	if (isTransfer) {
-		if (t.shopName) return maskText(t.shopName);
-		const sourceId = t.transferDirection === "IN" ? t.toAccountId : t.accountId;
-		const destId = t.transferDirection === "IN" ? t.accountId : t.toAccountId;
-		const sourceAccount = accounts.find((a) => a.id === sourceId);
-		const destAccount = accounts.find((a) => a.id === destId);
-		return (
-			<>
-				{maskText(sourceAccount?.name || "???")} → {maskText(destAccount?.name || "???")}
-			</>
-		);
-	}
+	if (isTransfer) return getTransferDisplayName(t, accounts, maskText);
 	return maskText(t.shopName || "UNTITLED");
 };
 

@@ -1,35 +1,43 @@
+const isTrailingDotInput = (val: string, current: string): boolean =>
+	val.endsWith(".") && !current.endsWith(".");
+
+const buildTrailingDotValue = (current: string): string => {
+	const d = current.replace(/\D/g, "");
+	return parseInt(d || "0", 10).toString() + ".";
+};
+
+const isMidDecimalState = (current: string): boolean =>
+	current.endsWith(".") || /\.\d$/.test(current);
+
+const buildMidDecimalValue = (val: string, current: string): string | null => {
+	const newChar = val.length > current.length ? val.slice(-1) : "";
+	if (!/\d/.test(newChar)) return null;
+	const [whole, frac = ""] = current.split(".");
+	if (frac === "") return `${whole}.${newChar}`;
+	if (frac.length === 1) return `${whole}.${frac}${newChar}`;
+	return null;
+};
+
+const digitsToAmount = (val: string): string => {
+	const digits = val.replace(/\D/g, "");
+	if (!digits) return "";
+	const cents = parseInt(digits, 10);
+	return (cents / 100).toFixed(2);
+};
+
 export const formatCalculatorAmount = (
 	val: string,
 	currentVal: string,
 ): string => {
 	if (!val) return "";
+	const current = String(currentVal || "");
 
-	const cleanCurrent = String(currentVal || "");
-
-	if (val.endsWith(".") && !cleanCurrent.endsWith(".")) {
-		const d = cleanCurrent.replace(/\D/g, "");
-		return parseInt(d || "0", 10).toString() + ".";
+	if (isTrailingDotInput(val, current)) return buildTrailingDotValue(current);
+	if (isMidDecimalState(current)) {
+		const mid = buildMidDecimalValue(val, current);
+		if (mid !== null) return mid;
 	}
-
-	if (cleanCurrent.endsWith(".") || cleanCurrent.match(/\.\d$/)) {
-		const parts = cleanCurrent.split(".");
-		const newChar = val.length > cleanCurrent.length ? val.slice(-1) : "";
-
-		if (/\d/.test(newChar)) {
-			if (parts[1] === "") {
-				return parts[0] + "." + newChar;
-			}
-			if (parts[1].length === 1) {
-				return parts[0] + "." + parts[1] + newChar;
-			}
-		}
-	}
-
-	const digits = val.replace(/\D/g, "");
-	if (!digits) return "";
-
-	const cents = parseInt(digits, 10);
-	return (cents / 100).toFixed(2);
+	return digitsToAmount(val);
 };
 
 const CRYPTO_AMOUNT_PATTERN = /^\d*\.?\d*$/;

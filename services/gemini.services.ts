@@ -510,19 +510,10 @@ export const generateChatTitle = async (
 /**
  * Parses a bank statement (PDF, Image or CSV) and returns structured transactions.
  */
-export const parseBankStatement = async (
-	apiKey: string,
-	fileBase64: string,
-	mimeType: string,
-): Promise<Partial<Transaction>[]> => {
-	try {
-		const ai = getClient(apiKey);
-		const isText = mimeType.includes("text") || mimeType.includes("csv");
-
-		const prompt = `
-      Extract all transactions from this ${isText ? "CSV file" : "bank statement"}. 
+const buildParsePrompt = (isText: boolean): string => `
+      Extract all transactions from this ${isText ? "CSV file" : "bank statement"}.
       Analyze the data thoroughly and find every single transaction record.
-      
+
       Return a JSON array of objects with the following keys:
       - date: string (YYYY-MM-DD)
       - amount: number (positive for both income and expense)
@@ -530,7 +521,7 @@ export const parseBankStatement = async (
       - shopName: string (clean merchant name)
       - note: string (original description)
       - currency: string (e.g. "MYR", "USD")
-      
+
       Business Rules:
       1. Dates must be converted to YYYY-MM-DD.
       2. Type should be "INCOME" if money is entering the account, "EXPENSE" if leaving.
@@ -538,45 +529,53 @@ export const parseBankStatement = async (
       4. If it looks like a Transfer between own accounts (e.g. "To Savings"), use "TRANSFER".
     `;
 
-		let parts: any[] = [{ text: prompt }];
+const buildParseParts = (
+	isText: boolean,
+	fileBase64: string,
+	mimeType: string,
+): any[] => {
+	const parts: any[] = [{ text: buildParsePrompt(isText) }];
+	if (isText) {
+		parts.push({ text: `DATA CONTENT:\n${atob(fileBase64)}` });
+	} else {
+		parts.push({ inlineData: { data: fileBase64, mimeType } });
+	}
+	return parts;
+};
 
-		if (isText) {
-			// For CSV/Text, we decode and send as part of the prompt text for better accuracy
-			const textContent = atob(fileBase64);
-			parts.push({ text: `DATA CONTENT:\n${textContent}` });
-		} else {
-			parts.push({ inlineData: { data: fileBase64, mimeType } });
-		}
+const extractParsedTransactions = (text: string | unknown): Partial<Transaction>[] => {
+	const parsed = typeof text === "string" ? JSON.parse(text) : text;
+	return Array.isArray(parsed) ? parsed : parsed.transactions || [];
+};
 
+const handleParseError = (error: unknown): never => {
+	logger.error("Bank Statement Parsing Error:", error);
+	if (isInvalidApiKeyError(error)) {
+		throw new Error(
+			"Gemini API key is invalid. Please update your key in Profile settings and try again.",
+		);
+	}
+	throw new Error(
+		"Failed to parse bank statement. Please ensure the file is clear and supported.",
+	);
+};
+
+export const parseBankStatement = async (
+	apiKey: string,
+	fileBase64: string,
+	mimeType: string,
+): Promise<Partial<Transaction>[]> => {
+	const ai = getClient(apiKey);
+	const isText = mimeType.includes("text") || mimeType.includes("csv");
+	try {
 		const response = await ai.models.generateContent({
 			model: "gemini-3.1-flash-lite",
-			contents: [
-				{
-					role: "user",
-					parts,
-				},
-			],
-			config: {
-				responseMimeType: "application/json",
-			},
+			contents: [{ role: "user", parts: buildParseParts(isText, fileBase64, mimeType) }],
+			config: { responseMimeType: "application/json" },
 		});
-
-		const text = response.text;
-		if (!text) throw new Error("No data extracted from statement");
-
-		// The new SDK might already parse this if responseMimeType is application/json
-		// but usually it returns a string in .text.
-		const parsed = typeof text === "string" ? JSON.parse(text) : text;
-		return Array.isArray(parsed) ? parsed : parsed.transactions || [];
+		if (!response.text) throw new Error("No data extracted from statement");
+		return extractParsedTransactions(response.text);
 	} catch (error) {
-		logger.error("Bank Statement Parsing Error:", error);
-		if (isInvalidApiKeyError(error)) {
-			throw new Error(
-				"Gemini API key is invalid. Please update your key in Profile settings and try again.",
-			);
-		}
-		throw new Error(
-			"Failed to parse bank statement. Please ensure the file is clear and supported.",
-		);
+		return handleParseError(error);
 	}
 };

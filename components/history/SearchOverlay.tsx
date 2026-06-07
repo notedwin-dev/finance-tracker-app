@@ -27,6 +27,81 @@ const CategoryIcon: React.FC<{ catId?: string; categories: Category[] }> = ({ ca
   return <span>{cat ? cat.icon : "📄"}</span>;
 };
 
+type SearchResultProps = {
+  result: MergedResult;
+  active: boolean;
+  index: number;
+  categories: Category[];
+  accounts: Account[];
+  maskText: (text: string, isSensitive?: boolean, permanentMask?: boolean) => React.ReactNode;
+  maskAmount: (amount: number | string, currency?: string, isSensitive?: boolean) => React.ReactNode;
+  getAccountName: (id?: string) => string;
+  getCategoryName: (catId?: string, fallback?: string) => string;
+  getDisplayAmount: (t: Transaction) => string;
+  getColor: (t: Transaction) => string;
+  onSelect: () => void;
+  onHover: () => void;
+};
+
+const SearchResult: React.FC<SearchResultProps> = ({
+  result,
+  active,
+  index,
+  categories,
+  accounts,
+  maskText,
+  maskAmount,
+  getAccountName,
+  getCategoryName,
+  getDisplayAmount,
+  getColor,
+  onSelect,
+  onHover,
+}) => {
+  const { transaction: t, linkedIn } = result;
+  const isTransfer = t.type === TransactionType.TRANSFER;
+  return (
+    <button
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all text-left ${
+        active
+          ? "bg-indigo-500/10 border border-indigo-500/20"
+          : "hover:bg-white/5 border border-transparent"
+      }`}
+    >
+      <div className="shrink-0 w-10 h-10 rounded-xl bg-surface border border-white/5 flex items-center justify-center text-md">
+        {isTransfer ? "↔️" : t.type === TransactionType.INCOME ? "💰" : <CategoryIcon catId={t.categoryId} categories={categories} />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-white text-sm truncate">
+          {isTransfer && linkedIn
+            ? `${getAccountName(t.accountId)} → ${getAccountName(t.toAccountId)}`
+            : maskText(t.shopName || "UNTITLED")}
+        </p>
+        <p className="text-[10px] text-gray-500 font-bold truncate">
+          {t.date}
+          {t.time && <> at {t.time}</>}
+          {" · "}
+          {isTransfer ? "Transfer" : getCategoryName(t.categoryId, t.type)}
+          {!isTransfer && (
+            <>
+              {" · "}
+              {getAccountName(t.accountId)}
+            </>
+          )}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className={`font-black text-sm ${getColor(t)}`}>
+          {isTransfer ? "" : getDisplayAmount(t)}
+        </p>
+        <p className="text-[9px] text-gray-600 font-bold">{t.currency}</p>
+      </div>
+    </button>
+  );
+};
+
 const SearchOverlay: React.FC<Props> = ({
   isOpen,
   query,
@@ -192,56 +267,27 @@ const SearchOverlay: React.FC<Props> = ({
               <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest px-3 py-2">
                 {results.length} result{results.length !== 1 ? "s" : ""}
               </p>
-              {results.map((r, i) => {
-                const { transaction: t, linkedIn } = r;
-                const isTransfer = t.type === TransactionType.TRANSFER;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      onSelectTransaction(t);
-                      onClose();
-                    }}
-                    onMouseEnter={() => setActiveIndex(i)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all text-left ${
-                      i === activeIndex
-                        ? "bg-indigo-500/10 border border-indigo-500/20"
-                        : "hover:bg-white/5 border border-transparent"
-                    }`}
-                  >
-                    <div className="shrink-0 w-10 h-10 rounded-xl bg-surface border border-white/5 flex items-center justify-center text-md">
-                      {isTransfer ? "↔️" : t.type === TransactionType.INCOME ? "💰" : <CategoryIcon catId={t.categoryId} categories={categories} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-white text-sm truncate">
-                        {isTransfer && linkedIn
-                          ? `${getAccountName(t.accountId)} → ${getAccountName(t.toAccountId)}`
-                          : maskText(t.shopName || "UNTITLED")}
-                      </p>
-                      <p className="text-[10px] text-gray-500 font-bold truncate">
-                        {t.date}
-                        {t.time && <> at {t.time}</>}
-                        {" · "}
-                        {isTransfer
-                          ? "Transfer"
-                          : getCategoryName(t.categoryId, t.type)}
-                        {!isTransfer && (
-                          <>
-                            {" · "}
-                            {getAccountName(t.accountId)}
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className={`font-black text-sm ${getColor(t)}`}>
-                        {isTransfer ? "" : getDisplayAmount(t)}
-                      </p>
-                      <p className="text-[9px] text-gray-600 font-bold">{t.currency}</p>
-                    </div>
-                  </button>
-                );
-              })}
+              {results.map((r, i) => (
+                <SearchResult
+                  key={r.id}
+                  result={r}
+                  index={i}
+                  active={i === activeIndex}
+                  categories={categories}
+                  accounts={accounts}
+                  maskText={maskText}
+                  maskAmount={maskAmount}
+                  getAccountName={getAccountName}
+                  getCategoryName={getCategoryName}
+                  getDisplayAmount={getDisplayAmount}
+                  getColor={getColor}
+                  onSelect={() => {
+                    onSelectTransaction(r.transaction);
+                    onClose();
+                  }}
+                  onHover={() => setActiveIndex(i)}
+                />
+              ))}
             </div>
           )}
 

@@ -397,6 +397,32 @@ const parseUserRow = (headers: string[], userRow: any[]) => {
 	return user;
 };
 
+const buildUserRow = (headers: string[], userData: any): string[] =>
+	headers.map((h) => {
+		switch (h) {
+			case "email":
+				return userData.email;
+			case "password":
+				return userData.password;
+			case "name":
+				return userData.name;
+			case "createdAt":
+				return new Date().toISOString();
+			case "maskMode":
+				return userData.maskMode || false;
+			case "schemaVersion":
+				return userData.schemaVersion ?? 2;
+			case "showAIAssistant":
+				return userData.showAIAssistant !== false;
+			case "syncChatToSheets":
+				return userData.syncChatToSheets !== false;
+			case "lastUpdatedAt":
+				return new Date().toISOString();
+			default:
+				return "";
+		}
+	});
+
 export const createUser = async (userData: any) => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
@@ -444,18 +470,7 @@ export const createUser = async (userData: any) => {
 		});
 		const headers = headersRes.result.values?.[0] || [];
 
-		const row = headers.map((h: string) => {
-			if (h === "email") return userData.email;
-			if (h === "password") return userData.password;
-			if (h === "name") return userData.name;
-			if (h === "createdAt") return new Date().toISOString();
-			if (h === "maskMode") return userData.maskMode || false;
-			if (h === "schemaVersion") return userData.schemaVersion ?? 2;
-			if (h === "showAIAssistant") return userData.showAIAssistant !== false;
-			if (h === "syncChatToSheets") return userData.syncChatToSheets !== false;
-			if (h === "lastUpdatedAt") return new Date().toISOString();
-			return "";
-		});
+		const row = buildUserRow(headers, userData);
 
 		await window.gapi.client.sheets.spreadsheets.values.append({
 			spreadsheetId: fileId,

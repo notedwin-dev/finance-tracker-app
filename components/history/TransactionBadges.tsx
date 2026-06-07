@@ -35,79 +35,10 @@ const PocketBadge = ({
 	);
 };
 
-type Props = {
-	transaction: GroupedTransaction;
-	isTransfer: boolean;
-	pockets: SavingPocket[];
-	categories: Category[];
-};
-
-export const TransactionBadges = ({
-	transaction: t,
-	isTransfer,
-	pockets,
-	categories,
-}: Props) => {
-	const subtitle = getSubtitleLabel(t, isTransfer, categories);
-	const sourcePocketName = t.savingPocketId
-		? pockets.find((p) => p.id === t.savingPocketId)?.name
-		: undefined;
-	const destPocketName =
-		isTransfer && t.toSavingPocketId
-			? pockets.find((p) => p.id === t.toSavingPocketId)?.name
-			: undefined;
-
-	return (
-		<div className="flex items-center gap-2 mt-0.5 sm:mt-1 flex-wrap">
-			{t.time && (
-				<span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-					{t.time}
-				</span>
-			)}
-			{t.time && <Dot />}
-
-			{t.isHistorical && !t.linkedTransaction && (
-				<>
-					<HistBadge label="Hist." />
-					<Dot />
-				</>
-			)}
-
-			{t.linkedTransaction && (
-				<>
-					{t.isHistorical && <HistBadge label="Src Hist." />}
-					{t.linkedTransaction.isHistorical && <HistBadge label="Dest Hist." />}
-					{(t.isHistorical || t.linkedTransaction.isHistorical) && <Dot />}
-				</>
-			)}
-
-			{sourcePocketName && (
-				<>
-					<PocketBadge name={sourcePocketName} color="indigo" />
-					<Dot />
-				</>
-			)}
-
-			{destPocketName && (
-				<>
-					<PocketBadge name={destPocketName} color="emerald" />
-					<Dot />
-				</>
-			)}
-
-			<p
-				className={cn(
-					"text-[11px] sm:text-[11px] font-semibold sm:font-bold truncate uppercase tracking-[0.05em]",
-					isTransfer
-						? "text-indigo-400/70 tracking-wider"
-						: "text-gray-500/70",
-				)}
-			>
-				{subtitle}
-			</p>
-		</div>
-	);
-};
+const findPocketName = (
+	pockets: SavingPocket[],
+	id: string | undefined,
+): string | undefined => (id ? pockets.find((p) => p.id === id)?.name : undefined);
 
 const getSubtitleLabel = (
 	t: GroupedTransaction,
@@ -123,5 +54,86 @@ const getSubtitleLabel = (
 	return (
 		categories.find((c) => c.id === t.categoryId)?.name ||
 		(t.type === TransactionType.ACCOUNT_OPENING ? "OPENING BALANCE" : t.type)
+	);
+};
+
+const TimeBadge = ({ time }: { time: string }) => (
+	<>
+		<span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+			{time}
+		</span>
+		<Dot />
+	</>
+);
+
+const HistGroup = ({ label }: { label: string }) => (
+	<>
+		<HistBadge label={label} />
+		<Dot />
+	</>
+);
+
+const LinkedHistGroup = ({ transaction }: { transaction: GroupedTransaction }) => (
+	<>
+		{transaction.isHistorical && <HistBadge label="Src Hist." />}
+		{transaction.linkedTransaction?.isHistorical && <HistBadge label="Dest Hist." />}
+		{(transaction.isHistorical || transaction.linkedTransaction?.isHistorical) && <Dot />}
+	</>
+);
+
+const PocketGroup = ({ name, color }: { name: string; color: "indigo" | "emerald" }) => (
+	<>
+		<PocketBadge name={name} color={color} />
+		<Dot />
+	</>
+);
+
+const Subtitle = ({
+	label,
+	isTransfer,
+}: {
+	label: string;
+	isTransfer: boolean;
+}) => (
+	<p
+		className={cn(
+			"text-[11px] sm:text-[11px] font-semibold sm:font-bold truncate uppercase tracking-[0.05em]",
+			isTransfer
+				? "text-indigo-400/70 tracking-wider"
+				: "text-gray-500/70",
+		)}
+	>
+		{label}
+	</p>
+);
+
+type Props = {
+	transaction: GroupedTransaction;
+	isTransfer: boolean;
+	pockets: SavingPocket[];
+	categories: Category[];
+};
+
+export const TransactionBadges = ({
+	transaction: t,
+	isTransfer,
+	pockets,
+	categories,
+}: Props) => {
+	const subtitle = getSubtitleLabel(t, isTransfer, categories);
+	const sourcePocketName = findPocketName(pockets, t.savingPocketId);
+	const destPocketName = isTransfer
+		? findPocketName(pockets, t.toSavingPocketId)
+		: undefined;
+
+	return (
+		<div className="flex items-center gap-2 mt-0.5 sm:mt-1 flex-wrap">
+			{t.time && <TimeBadge time={t.time} />}
+			{t.isHistorical && !t.linkedTransaction && <HistGroup label="Hist." />}
+			{t.linkedTransaction && <LinkedHistGroup transaction={t} />}
+			{sourcePocketName && <PocketGroup name={sourcePocketName} color="indigo" />}
+			{destPocketName && <PocketGroup name={destPocketName} color="emerald" />}
+			<Subtitle label={subtitle} isTransfer={isTransfer} />
+		</div>
 	);
 };

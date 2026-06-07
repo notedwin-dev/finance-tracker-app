@@ -36,6 +36,10 @@ import {
 	normalizeDate,
 	formatDateReadable,
 } from "../helpers/transactions.helper";
+import {
+	filterTransactionsForAccount,
+	sortTransactionsByDateDesc,
+} from "../src/lib/domain/account-view";
 
 // Register ChartJS components
 ChartJS.register(
@@ -84,47 +88,10 @@ const AccountPage: React.FC = () => {
 		[pots, id],
 	);
 
-	const filteredTransactions = useMemo(() => {
-		const results: any[] = [];
-		const seen = new Set<string>();
-		transactions.forEach((t) => {
-			const isLegacySingleRecordTransfer =
-				t.type === TransactionType.TRANSFER &&
-				t.toAccountId &&
-				!t.transferDirection &&
-				!t.linkedTransactionId;
-
-			if (isLegacySingleRecordTransfer) {
-				if (t.accountId === id) {
-					if (!seen.has(t.id)) {
-						results.push({ ...t, transferDirection: "OUT" });
-						seen.add(t.id);
-					}
-				} else if (t.toAccountId === id) {
-					const inId = t.id + "_in";
-					if (!seen.has(inId)) {
-						results.push({
-							...t,
-							id: inId,
-							accountId: t.toAccountId,
-							toAccountId: t.accountId,
-							transferDirection: "IN",
-						});
-						seen.add(inId);
-					}
-				}
-			} else if (
-				t.accountId === id ||
-				(t.type === TransactionType.TRANSFER && t.toAccountId === id)
-			) {
-				if (!seen.has(t.id)) {
-					results.push(t);
-					seen.add(t.id);
-				}
-			}
-		});
-		return results;
-	}, [transactions, id]);
+	const filteredTransactions = useMemo(
+		() => filterTransactionsForAccount(transactions, id),
+		[transactions, id],
+	);
 
 	const historyHandlers = useHistoryHandlers();
 
@@ -189,9 +156,7 @@ const AccountPage: React.FC = () => {
 		// Calculate retrospective balance
 		let runningBalance = account.balance;
 		// Sort transactions descending (newest first)
-		const accountTrans = filteredTransactions.sort((a, b) =>
-			normalizeDate(b.date).localeCompare(normalizeDate(a.date)),
-		);
+		const accountTrans = sortTransactionsByDateDesc(filteredTransactions);
 
 		// We need bucket transactions by day to subtract/add them from current balance efficiently
 		const transByDay: Record<string, number> = {};

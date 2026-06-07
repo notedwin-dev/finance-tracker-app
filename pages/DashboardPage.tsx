@@ -8,6 +8,7 @@ import { useUIStore } from "../src/stores/ui.store";
 import { RevenueChart, MonthlyBreakdown } from "../components/Charts";
 import AccountCard from "../components/AccountCard";
 import { groupTransactions, formatDateReadable } from "../helpers/transactions.helper";
+import { convertToDisplayCurrency } from "../src/lib/domain/currency";
 import {
 	getTrendStartLimit,
 	applyTransactionToBalance,
@@ -184,11 +185,13 @@ const DashboardPage: React.FC = () => {
 		for (const t of filteredTransactions) {
 			if (t.type !== TransactionType.EXPENSE) continue;
 			const catName = categories.find((c) => c.id === t.categoryId)?.name || "Other";
-			let amountInUSD = t.amount;
-			if (t.currency === "MYR") amountInUSD = t.amount / usdRate;
-			else if (t.currency === "BTC") amountInUSD = t.amount * cryptoPrices.BTC;
-			else if (t.currency === "ETH") amountInUSD = t.amount * cryptoPrices.ETH;
-			const amount = displayCurrency === "USD" ? amountInUSD : amountInUSD * usdRate;
+			const amount = convertToDisplayCurrency(
+				t.amount,
+				t.currency,
+				displayCurrency,
+				usdRate,
+				cryptoPrices,
+			);
 			groups[catName] = (groups[catName] || 0) + amount;
 		}
 		return Object.entries(groups).sort((a, b) => b[1] - a[1]);

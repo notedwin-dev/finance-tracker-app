@@ -1,18 +1,13 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
 	Transaction,
 	Category,
 	Account,
 	SavingPocket,
 } from "../types";
-import {
-	PlusIcon,
-	ChevronRightIcon,
-	MagnifyingGlassIcon,
-} from "@heroicons/react/24/solid";
+import { PlusIcon } from "@heroicons/react/24/solid";
 import { useMask } from "../helpers/useMask";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { formatDateHeader } from "./history/formatDateHeader";
 import {
 	useHistoryFilters,
 	useDateAccountFilter,
@@ -24,7 +19,6 @@ import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
 import { useFilteredTransactions } from "./history/useFilteredTransactions";
 import { useSwipeGesture } from "./history/useSwipeGesture";
 import { useBatchSelection } from "./history/useBatchSelection";
-import TransactionItem from "./history/TransactionItem";
 import BatchActionBar from "./history/BatchActionBar";
 import FiltersPanel from "./history/FiltersPanel";
 import BatchEditModal from "./history/BatchEditModal";
@@ -32,6 +26,9 @@ import SearchOverlay from "./history/SearchOverlay";
 import { HistoryHeader } from "./history/HistoryHeader";
 import { BatchSelectAllBar } from "./history/BatchSelectAllBar";
 import { BackToTopButton } from "./history/BackToTopButton";
+import { HistoryGroupedList } from "./history/HistoryGroupedList";
+import { HistoryEmptyResults } from "./history/HistoryEmptyResults";
+import { HistoryShowMoreButton } from "./history/HistoryShowMoreButton";
 
 interface Props {
 	transactions: Transaction[];
@@ -204,76 +201,29 @@ const History: React.FC<Props> = ({
 			)}
 
 			{sortedDates.length === 0 ? (
-				<div className="flex flex-col items-center justify-center h-64 text-gray-600 bg-surface/20 rounded-4xl border border-white/5 border-dashed">
-					<MagnifyingGlassIcon className="w-12 h-12 mb-4 opacity-20" />
-					<p className="font-bold">
-						{filters.searchQuery
-							? `No results for "${filters.searchQuery}".`
-							: "No transactions match your filters."}
-					</p>
-					<button
-						onClick={filters.clearAllFilters}
-						className="mt-4 text-xs font-black text-indigo-400 uppercase tracking-widest"
-					>
-						Clear Filters & Search
-					</button>
-				</div>
+				<HistoryEmptyResults
+					hasSearchQuery={!!filters.searchQuery}
+					onClearFilters={filters.clearAllFilters}
+				/>
 			) : (
-				sortedDates.map((dateStr) => (
-					<div key={dateStr} className="animate-slideUp">
-						<h3 className="text-[10px] font-extrabold text-gray-500 uppercase tracking-[0.2em] mb-4 pl-4 flex items-center gap-3">
-							<span className="w-1.5 h-1.5 rounded-full bg-indigo-500/40" />
-							{formatDateHeader(dateStr)}
-						</h3>
-						<div className="space-y-3 sm:space-y-4">
-							{grouped[dateStr].map((t) => (
-								<TransactionItem
-									key={t.id}
-									transaction={t}
-									swipedId={swipe.swipedId}
-									isSelected={batch.selectedIds.includes(t.id)}
-									showSelection={
-										batch.isBatchMode ||
-										batch.selectedIds.length > 0
-									}
-									isBatchMode={batch.isBatchMode}
-									accounts={accounts}
-									pockets={pockets}
-									categories={categories}
-									maskAmount={maskAmount as any}
-									maskText={maskText as any}
-									onSwipeEdit={() => handlers.handleSwipeEdit(t)}
-									onSwipeDelete={() => handlers.handleSwipeDelete(t)}
-									onSwipeClose={() => swipe.setSwipedId(null)}
-									onClick={() => handlers.handleItemClick(t)}
-									onPointerDown={(e) =>
-										swipe.handlePointerDown(e, t.id)
-									}
-									onPointerMove={swipe.handlePointerMove}
-									onPointerUp={(e) =>
-										swipe.handlePointerUp(e, t.id)
-									}
-									onChevronClick={(e) =>
-										handlers.handleChevronClick(e, t.id)
-									}
-								/>
-							))}
-						</div>
-					</div>
-				))
+				<HistoryGroupedList
+					grouped={grouped}
+					sortedDates={sortedDates}
+					accounts={accounts}
+					pockets={pockets}
+					categories={categories}
+					swipe={swipe}
+					batch={batch}
+					handlers={handlers}
+					maskAmount={maskAmount}
+					maskText={maskText}
+				/>
 			)}
 
-			{visibleCount < filteredTransactions.length && (
-				<div className="flex justify-center pt-8">
-					<button
-						onClick={() => setVisibleCount((prev) => prev + 30)}
-						className="flex items-center gap-3 bg-surface/40 hover:bg-surface/60 text-gray-400 hover:text-white px-8 py-4 rounded-3xl font-black text-[10px] uppercase tracking-[0.2em] border border-white/5 transition-all active:scale-95"
-					>
-						Show Older Transactions
-						<ChevronRightIcon className="w-4 h-4 rotate-90" />
-					</button>
-				</div>
-			)}
+			<HistoryShowMoreButton
+				hasMore={visibleCount < filteredTransactions.length}
+				onClick={() => setVisibleCount((prev) => prev + 30)}
+			/>
 
 			<BatchEditModal
 				isOpen={batch.showBatchEditModal}

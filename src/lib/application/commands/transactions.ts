@@ -580,38 +580,45 @@ export async function batchEditTransactions(
   const { accounts: updatedAccountList, pots: updatedPotList, pockets: updatedPocketList } =
     applyChanges(accounts, pots, pockets, netChanges, now);
 
-  if (netChanges.potChanges.size > 0) {
+  const syncPots = async (): Promise<void> => {
+    if (netChanges.potChanges.size === 0) return;
     store.setPots(updatedPotList);
-    const affectedPots = updatedPotList.filter((p) => netChanges.potChanges.has(p.id));
+    const affected = updatedPotList.filter((p) => netChanges.potChanges.has(p.id));
     StorageService.savePots(updatedPotList);
-    if (isCloudEnabled && affectedPots.length > 0) {
-      await SheetService.updateMany("Pots", affectedPots);
+    if (isCloudEnabled && affected.length > 0) {
+      await SheetService.updateMany("Pots", affected);
     }
-  }
+  };
 
-  if (netChanges.pocketChanges.size > 0) {
+  const syncPockets = async (): Promise<void> => {
+    if (netChanges.pocketChanges.size === 0) return;
     store.setPockets(updatedPocketList);
-    const affectedPockets = updatedPocketList.filter((p) =>
+    const affected = updatedPocketList.filter((p) =>
       netChanges.pocketChanges.has(p.id),
     );
     StorageService.savePockets(updatedPocketList);
-    if (isCloudEnabled && affectedPockets.length > 0) {
-      await SheetService.updateMany("Pockets", affectedPockets);
+    if (isCloudEnabled && affected.length > 0) {
+      await SheetService.updateMany("Pockets", affected);
     }
-  }
+  };
 
-  if (netChanges.accountChanges.size > 0) {
+  const syncAccounts = async (): Promise<void> => {
+    if (netChanges.accountChanges.size === 0) return;
     await StorageService.saveAccounts(updatedAccountList);
     store.setAccounts(updatedAccountList);
     if (isCloudEnabled) {
-      const affectedAccounts = updatedAccountList.filter((a) =>
+      const affected = updatedAccountList.filter((a) =>
         netChanges.accountChanges.has(a.id),
       );
-      if (affectedAccounts.length > 0) {
-        await SheetService.updateMany("Accounts", affectedAccounts);
+      if (affected.length > 0) {
+        await SheetService.updateMany("Accounts", affected);
       }
     }
-  }
+  };
+
+  await syncPots();
+  await syncPockets();
+  await syncAccounts();
 
   showToast(`Updated ${finalUpdatesMap.size} transactions`, "success");
 }

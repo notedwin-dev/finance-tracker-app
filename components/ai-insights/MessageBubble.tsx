@@ -4,6 +4,78 @@ import remarkGfm from "remark-gfm";
 import { ChatMessage } from "../../types";
 import { ShieldCheckIcon, PlusIcon } from "@heroicons/react/24/outline";
 
+const getBubbleClass = (role: string, isError: boolean): string => {
+	if (role === "user") {
+		return "bg-primary text-white rounded-tr-none shadow-lg shadow-primary/10";
+	}
+	if (isError) {
+		return "bg-red-500/10 border border-red-500/30 text-gray-200 rounded-tl-none";
+	}
+	return "bg-surface border border-gray-800 text-gray-200 rounded-tl-none";
+};
+
+const getFooterClass = (role: string, isError: boolean): string => {
+	if (role === "user") return "text-white/50";
+	if (isError) return "text-red-500/50";
+	return "text-gray-600";
+};
+
+const MessageBody: React.FC<{ content: string; isUser: boolean; isError: boolean }> = ({
+	content,
+	isUser,
+	isError,
+}) => {
+	if (isUser) {
+		return (
+			<div className="text-sm sm:text-base whitespace-pre-wrap wrap-break-word">
+				{content}
+			</div>
+		);
+	}
+	return (
+		<div
+			className={`prose prose-invert prose-sm max-w-none wrap-break-word prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black ${
+				isError ? "prose-strong:text-red-400" : "prose-strong:text-primary"
+			} prose-strong:font-bold prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}
+		>
+			<ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+		</div>
+	);
+};
+
+const SuggestionChips: React.FC<{
+	suggestions: string[];
+	onClick: (s: string) => void;
+}> = ({ suggestions, onClick }) => (
+	<div className="mt-3 flex flex-wrap gap-2 max-w-[85%] sm:max-w-[75%]">
+		{suggestions.map((suggestion, idx) => (
+			<button
+				key={idx}
+				onClick={() => onClick(suggestion)}
+				className="text-xs bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 py-1.5 px-3 rounded-full transition-all flex items-center gap-1.5"
+			>
+				<PlusIcon className="w-3 h-3" />
+				{suggestion}
+			</button>
+		))}
+	</div>
+);
+
+const MessageTimestamp: React.FC<{ timestamp: string; className: string }> = ({
+	timestamp,
+	className,
+}) => {
+	const timeStr = new Date(timestamp).toLocaleTimeString([], {
+		hour: "2-digit",
+		minute: "2-digit",
+	});
+	return (
+		<p className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${className}`}>
+			{timeStr}
+		</p>
+	);
+};
+
 interface MessageBubbleProps {
 	message: ChatMessage;
 	isError: boolean;
@@ -24,46 +96,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 	onSuggestionClick,
 }) => {
 	const isUser = message.role === "user";
-	const timeStr = new Date(message.timestamp).toLocaleTimeString([], {
-		hour: "2-digit",
-		minute: "2-digit",
-	});
-
-	const bubbleClass = isUser
-		? "bg-primary text-white rounded-tr-none shadow-lg shadow-primary/10"
-		: isError
-			? "bg-red-500/10 border border-red-500/30 text-gray-200 rounded-tl-none"
-			: "bg-surface border border-gray-800 text-gray-200 rounded-tl-none";
-
-	const footerClass = isUser
-		? "text-white/50"
-		: isError
-			? "text-red-500/50"
-			: "text-gray-600";
-
 	return (
 		<div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
 			<div
-				className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 sm:p-5 ${bubbleClass}`}
+				className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 sm:p-5 ${getBubbleClass(message.role, isError)}`}
 			>
-				{isUser ? (
-					<div className="text-sm sm:text-base whitespace-pre-wrap wrap-break-word">
-						{message.content}
-					</div>
-				) : (
-					<div
-						className={`prose prose-invert prose-sm max-w-none wrap-break-word prose-p:leading-relaxed prose-headings:text-white prose-headings:font-black ${
-							isError
-								? "prose-strong:text-red-400"
-								: "prose-strong:text-primary"
-						} prose-strong:font-bold prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10`}
-					>
-						<ReactMarkdown remarkPlugins={[remarkGfm]}>
-							{cleanText}
-						</ReactMarkdown>
-					</div>
-				)}
-
+				<MessageBody
+					content={isUser ? message.content : cleanText}
+					isUser={isUser}
+					isError={isError}
+				/>
 				{message.functionCall && (
 					<ToolCallBlock
 						functionCall={message.functionCall}
@@ -72,27 +114,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 						onReject={onRejectTool}
 					/>
 				)}
-
-				<p
-					className={`text-[9px] mt-2 font-bold uppercase tracking-widest ${footerClass}`}
-				>
-					{timeStr}
-				</p>
+				<MessageTimestamp
+					timestamp={message.timestamp}
+					className={getFooterClass(message.role, isError)}
+				/>
 			</div>
-
 			{!isUser && !isError && suggestions.length > 0 && (
-				<div className="mt-3 flex flex-wrap gap-2 max-w-[85%] sm:max-w-[75%]">
-					{suggestions.map((suggestion, idx) => (
-						<button
-							key={idx}
-							onClick={() => onSuggestionClick(suggestion)}
-							className="text-xs bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 py-1.5 px-3 rounded-full transition-all flex items-center gap-1.5"
-						>
-							<PlusIcon className="w-3 h-3" />
-							{suggestion}
-						</button>
-					))}
-				</div>
+				<SuggestionChips
+					suggestions={suggestions}
+					onClick={onSuggestionClick}
+				/>
 			)}
 		</div>
 	);

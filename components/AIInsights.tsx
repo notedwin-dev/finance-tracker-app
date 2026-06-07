@@ -100,6 +100,44 @@ const AIInsights: React.FC<Props> = ({
 		if (!activeSession) onSelectSession(offlineSession.id);
 	};
 
+	const prepareAskSession = (
+		userQuery: string,
+		sessionOverride: ChatSession | undefined,
+		includeUserMessage: boolean,
+	): ChatSession => {
+		const userMessage: ChatMessage | null = includeUserMessage
+			? { role: "user", content: userQuery, timestamp: new Date().toISOString() }
+			: null;
+		const sessionForTurn = sessionOverride || activeSession;
+		return buildCurrentSession(sessionForTurn ?? null, userMessage, accounts[0]?.userId);
+	};
+
+	const streamAndPersistResponse = async (
+		currentSession: ChatSession,
+		userQuery: string,
+	): Promise<ChatSession> => {
+		const result = await streamFinancialAdvice(
+			apiKey || "",
+			accounts,
+			transactions,
+			categories,
+			pots,
+			goals,
+			subscriptions,
+			currentSession.messages,
+			(chunk) => setStreamingText((prev) => prev + chunk),
+		);
+		const updatedSession = appendModelResponse(currentSession, result);
+		if (isFirstExchange(currentSession, true) && result.text) {
+			updatedSession.title = await generateChatTitle(
+				apiKey || "",
+				userQuery,
+				result.text,
+			);
+		}
+		return updatedSession;
+	};
+
 	const handleAsk = async (
 		e?: React.FormEvent,
 		overrideQuery?: string,
@@ -111,9 +149,7 @@ const AIInsights: React.FC<Props> = ({
 		if ((includeUserMessage && !activeQuery.trim()) || loading) return;
 
 		const userQuery = activeQuery.trim();
-		if (includeUserMessage) {
-			setQuery("");
-		}
+		if (includeUserMessage) setQuery("");
 
 		if (!navigator.onLine) {
 			handleOfflineAsk(userQuery, includeUserMessage);
@@ -123,45 +159,12 @@ const AIInsights: React.FC<Props> = ({
 		setLoading(true);
 		setStreamingText("");
 
-		const userMessage: ChatMessage | null = includeUserMessage
-			? { role: "user", content: userQuery, timestamp: new Date().toISOString() }
-			: null;
-
-		const sessionForTurn = sessionOverride || activeSession;
-		const currentSession = buildCurrentSession(
-			sessionForTurn ?? null,
-			userMessage,
-			accounts[0]?.userId,
-		);
+		const currentSession = prepareAskSession(userQuery, sessionOverride, includeUserMessage);
 		onSaveSession(currentSession);
-		if (!sessionForTurn) onSelectSession(currentSession.id);
+		if (!sessionOverride) onSelectSession(currentSession.id);
 
 		try {
-			const history = currentSession.messages;
-			const result = await streamFinancialAdvice(
-				apiKey || "",
-				accounts,
-				transactions,
-				categories,
-				pots,
-				goals,
-				subscriptions,
-				history,
-				(chunk) => {
-					setStreamingText((prev) => prev + chunk);
-				},
-			);
-
-			let updatedSession = appendModelResponse(currentSession, result);
-
-			if (isFirstExchange(currentSession, includeUserMessage) && result.text) {
-				updatedSession.title = await generateChatTitle(
-					apiKey || "",
-					userQuery,
-					result.text,
-				);
-			}
-
+			const updatedSession = await streamAndPersistResponse(currentSession, userQuery);
 			onSaveSession(updatedSession);
 			setStreamingText("");
 		} catch (err: any) {

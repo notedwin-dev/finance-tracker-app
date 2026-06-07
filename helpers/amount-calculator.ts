@@ -48,3 +48,11 @@ export const formatAccountBalance = (
 	}
 	return formatCalculatorAmount(val, currentVal);
 };
+
+export const applyAmountFormat = (
+	val: string,
+	currentVal: string,
+	setter: (v: string) => void,
+): void => {
+	setter(formatCalculatorAmount(val, currentVal));
+};

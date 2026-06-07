@@ -43,6 +43,52 @@ type SearchResultProps = {
   onHover: () => void;
 };
 
+const getResultIcon = (
+  t: Transaction,
+  categories: Category[],
+): React.ReactNode => {
+  if (t.type === TransactionType.TRANSFER) return "↔️";
+  if (t.type === TransactionType.INCOME) return "💰";
+  return <CategoryIcon catId={t.categoryId} categories={categories} />;
+};
+
+const getResultTitle = (
+  t: Transaction,
+  linkedIn: Transaction | undefined,
+  isTransfer: boolean,
+  getAccountName: (id?: string) => string,
+  maskText: (text: string) => React.ReactNode,
+): React.ReactNode =>
+  isTransfer && linkedIn
+    ? `${getAccountName(t.accountId)} → ${getAccountName(t.toAccountId)}`
+    : maskText(t.shopName || "UNTITLED");
+
+const getResultSubtitle = (
+  t: Transaction,
+  isTransfer: boolean,
+  getCategoryName: (catId?: string, fallback?: string) => string,
+  getAccountName: (id?: string) => string,
+): React.ReactNode => (
+  <>
+    {t.date}
+    {t.time && <> at {t.time}</>}
+    {" · "}
+    {isTransfer ? "Transfer" : getCategoryName(t.categoryId, t.type)}
+    {!isTransfer && (
+      <>
+        {" · "}
+        {getAccountName(t.accountId)}
+      </>
+    )}
+  </>
+);
+
+const getResultAmountText = (
+  t: Transaction,
+  isTransfer: boolean,
+  getDisplayAmount: (t: Transaction) => string,
+): string => (isTransfer ? "" : getDisplayAmount(t));
+
 const SearchResult: React.FC<SearchResultProps> = ({
   result,
   active,
@@ -71,30 +117,19 @@ const SearchResult: React.FC<SearchResultProps> = ({
       }`}
     >
       <div className="shrink-0 w-10 h-10 rounded-xl bg-surface border border-white/5 flex items-center justify-center text-md">
-        {isTransfer ? "↔️" : t.type === TransactionType.INCOME ? "💰" : <CategoryIcon catId={t.categoryId} categories={categories} />}
+        {getResultIcon(t, categories)}
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-bold text-white text-sm truncate">
-          {isTransfer && linkedIn
-            ? `${getAccountName(t.accountId)} → ${getAccountName(t.toAccountId)}`
-            : maskText(t.shopName || "UNTITLED")}
+          {getResultTitle(t, linkedIn, isTransfer, getAccountName, maskText)}
         </p>
         <p className="text-[10px] text-gray-500 font-bold truncate">
-          {t.date}
-          {t.time && <> at {t.time}</>}
-          {" · "}
-          {isTransfer ? "Transfer" : getCategoryName(t.categoryId, t.type)}
-          {!isTransfer && (
-            <>
-              {" · "}
-              {getAccountName(t.accountId)}
-            </>
-          )}
+          {getResultSubtitle(t, isTransfer, getCategoryName, getAccountName)}
         </p>
       </div>
       <div className="shrink-0 text-right">
         <p className={`font-black text-sm ${getColor(t)}`}>
-          {isTransfer ? "" : getDisplayAmount(t)}
+          {getResultAmountText(t, isTransfer, getDisplayAmount)}
         </p>
         <p className="text-[9px] text-gray-600 font-bold">{t.currency}</p>
       </div>

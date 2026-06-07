@@ -7,15 +7,11 @@ import {
 } from "../types";
 import {
 	PlusIcon,
-	CheckIcon,
-	FunnelIcon,
-	ArrowUpIcon,
 	ChevronRightIcon,
 	MagnifyingGlassIcon,
 } from "@heroicons/react/24/solid";
 import { useMask } from "../helpers/useMask";
 import { useFinanceStore } from "../src/stores/finance.store";
-import { cn } from "./history/cn";
 import { formatDateHeader } from "./history/formatDateHeader";
 import {
 	useHistoryFilters,
@@ -33,6 +29,9 @@ import BatchActionBar from "./history/BatchActionBar";
 import FiltersPanel from "./history/FiltersPanel";
 import BatchEditModal from "./history/BatchEditModal";
 import SearchOverlay from "./history/SearchOverlay";
+import { HistoryHeader } from "./history/HistoryHeader";
+import { BatchSelectAllBar } from "./history/BatchSelectAllBar";
+import { BackToTopButton } from "./history/BackToTopButton";
 
 interface Props {
 	transactions: Transaction[];
@@ -140,82 +139,29 @@ const History: React.FC<Props> = ({
 
 	return (
 		<div className="space-y-6 sm:space-y-8 relative">
-			{showBackToTop &&
-				!isAssetPage &&
-				!batch.showBatchEditModal &&
-				!showAddModal && (
-					<button
-						onClick={scrollToTop}
-						className="fixed bottom-44 right-6 sm:right-10 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl shadow-indigo-500/40 hover:scale-110 active:scale-95 transition-all animate-bounce"
-					>
-						<ArrowUpIcon className="w-6 h-6" />
-					</button>
-				)}
+			<BackToTopButton
+				show={
+					showBackToTop &&
+					!isAssetPage &&
+					!batch.showBatchEditModal &&
+					!showAddModal
+				}
+				onClick={scrollToTop}
+			/>
 
 			{!batch.showBatchEditModal && !showAddModal && (
-				<div className="sticky top-20 lg:top-4 z-60 -mx-4 px-4 py-2 sm:py-3 bg-background/80 backdrop-blur-md border-b sm:border-b-0 border-white/5 sm:bg-transparent sm:backdrop-blur-none transition-all">
-					<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-						<div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-							<button
-								onClick={() => setShowSearchOverlay(true)}
-								className={cn(
-									"flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
-									filters.searchQuery
-										? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-										: "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10",
-								)}
-							>
-								<MagnifyingGlassIcon className="w-3.5 h-3.5" />
-								Search
-								<span className="hidden sm:inline text-[8px] text-gray-600 ml-1">
-									Ctrl+K
-								</span>
-							</button>
-
-							<button
-								onClick={() => filters.setShowFilters(!filters.showFilters)}
-								className={cn(
-									"flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
-									filters.showFilters || filtersActive
-										? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-										: "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10",
-								)}
-							>
-								<FunnelIcon className="w-3.5 h-3.5" />
-								Filter {filtersActive ? "(Active)" : ""}
-							</button>
-
-							<button
-								onClick={() => {
-									if (batch.isBatchMode) {
-										batch.exitBatchMode();
-									} else {
-										batch.enterBatchMode();
-									}
-								}}
-								className={cn(
-									"flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
-									batch.isBatchMode
-										? "bg-amber-500 text-white shadow-lg shadow-amber-500/20"
-										: "bg-surface/40 text-gray-500 border border-white/5 hover:border-white/10",
-								)}
-							>
-								<CheckIcon className="w-3.5 h-3.5" />
-								{batch.isBatchMode ? "Exit Batch" : "Batch Actions"}
-							</button>
-						</div>
-
-						<div className="hidden lg:block">
-							<button
-								onClick={onAddTransaction}
-								className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-3xl font-black tracking-tight shadow-xl shadow-indigo-500/20 transition-all active:scale-95"
-							>
-								<PlusIcon className="w-5 h-5" />
-								NEW TRANSACTION
-							</button>
-						</div>
-					</div>
-				</div>
+				<HistoryHeader
+					hasSearchQuery={!!filters.searchQuery}
+					showFilters={filters.showFilters}
+					filtersActive={filtersActive}
+					isBatchMode={batch.isBatchMode}
+					onOpenSearch={() => setShowSearchOverlay(true)}
+					onToggleFilters={() => filters.setShowFilters(!filters.showFilters)}
+					onToggleBatchMode={() =>
+						batch.isBatchMode ? batch.exitBatchMode() : batch.enterBatchMode()
+					}
+					onAddTransaction={onAddTransaction}
+				/>
 			)}
 
 			{filters.showFilters && (
@@ -244,30 +190,17 @@ const History: React.FC<Props> = ({
 				)}
 
 			{batch.isBatchMode && !batch.showBatchEditModal && !showAddModal && (
-				<div className="flex justify-between items-center bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-4 animate-slideDown">
-					<button
-						onClick={() => {
-							if (
-								batch.selectedIds.length === filteredTransactions.length
-							) {
-								batch.clearSelection();
-							} else {
-								batch.selectAll(
-									filteredTransactions.map((t) => t.id),
-								);
-							}
-						}}
-						className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] hover:text-indigo-300 transition-colors"
-					>
-						{batch.selectedIds.length === filteredTransactions.length
-							? "Deselect All"
-							: `Select All (${filteredTransactions.length})`}
-					</button>
-					<p className="text-[10px] font-bold text-indigo-400/60 uppercase tracking-widest">
-						{batch.selectedIds.length} of {filteredTransactions.length}{" "}
-						selected
-					</p>
-				</div>
+				<BatchSelectAllBar
+					selectedCount={batch.selectedIds.length}
+					totalCount={filteredTransactions.length}
+					onToggleSelectAll={() => {
+						if (batch.selectedIds.length === filteredTransactions.length) {
+							batch.clearSelection();
+						} else {
+							batch.selectAll(filteredTransactions.map((t) => t.id));
+						}
+					}}
+				/>
 			)}
 
 			{sortedDates.length === 0 ? (

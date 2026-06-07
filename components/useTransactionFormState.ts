@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
 	Account,
 	Category,
 	TransactionType,
 	Transaction,
 	Currency,
-	Pot,
 	SavingPocket,
 	AmountBreakdownItem,
 	Subscription,
@@ -85,205 +84,175 @@ const formatInitialOptional = (val: number | string | undefined): string => {
 	return String(val || "");
 };
 
+const pickInitialString = (val: string | undefined, fallback: string): string =>
+	val || fallback;
+
+const pickInitialNumber = (val: number | undefined, fallback: number): number =>
+	val ?? fallback;
+
+const defaultBreakdownItems = (
+	tx: Transaction | undefined,
+): Array<{ id: string; description: string; amount: string }> =>
+	Array.isArray(tx?.amountBreakdown)
+		? tx.amountBreakdown.map((item) => ({
+				...item,
+				amount: formatInitialNumber(item.amount),
+			}))
+		: [];
+
+const initFormState = (
+	accounts: Account[],
+	categories: Category[],
+	tx: Transaction | undefined,
+): TransactionFormState => ({
+	type: tx?.type ?? TransactionType.EXPENSE,
+	amount: tx ? formatInitialNumber(tx.amount) : "",
+	currency: tx?.currency ?? "MYR",
+	accountId: tx?.accountId ?? accounts[0]?.id ?? "",
+	potId: tx?.potId ?? "",
+	savingPocketId: tx?.savingPocketId ?? "",
+	toSavingPocketId: tx?.toSavingPocketId ?? "",
+	fee: tx ? formatInitialOptional(tx.fee) : "",
+	feeType: tx?.feeType ?? "INCLUSIVE",
+	subscriptionId: tx?.subscriptionId ?? "",
+	isSubscription: false,
+	frequency: "MONTHLY",
+	toAccountId:
+		tx?.toAccountId ?? (accounts.length > 1 ? accounts[1].id : ""),
+	categoryId: tx?.categoryId ?? categories[0]?.id ?? "",
+	shopName: tx?.shopName ?? "",
+	date: tx?.date ?? new Date().toLocaleDateString("en-CA"),
+	time: tx?.time ?? "",
+	breakdownEnabled: Array.isArray(tx?.amountBreakdown) && tx.amountBreakdown.length > 0,
+	breakdownItems: defaultBreakdownItems(tx),
+	isSubsidized: tx?.isSubsidized ?? false,
+	marketValue: tx?.marketValue?.toString() ?? "",
+	isHistorical: tx?.isHistorical ?? false,
+	isToAccountHistorical:
+		(tx as any)?.linkedTransaction?.isHistorical ??
+		(tx as any)?.isToAccountHistorical ??
+		false,
+});
+
+const findPocketAccountMismatch = (
+	pockets: SavingPocket[],
+	pocketId: string,
+	accountId: string,
+): boolean => {
+	if (!pocketId) return false;
+	const pocket = pockets.find((p) => p.id === pocketId);
+	return !!(pocket?.accountId && pocket.accountId !== accountId);
+};
+
+const setter = <K extends keyof TransactionFormState>(key: K) =>
+	<T>(setState: React.Dispatch<React.SetStateAction<TransactionFormState>>) =>
+	(value: T) =>
+		setState((prev) => ({ ...prev, [key]: value as TransactionFormState[K] }));
+
 export const useTransactionFormState = (
 	accounts: Account[],
 	categories: Category[],
 	initialTransaction: Transaction | undefined,
 	pockets: SavingPocket[],
 ): TransactionFormState & TransactionFormActions => {
-	const [type, setType] = useState<TransactionType>(
-		initialTransaction ? initialTransaction.type : TransactionType.EXPENSE,
-	);
-	const [amount, setAmount] = useState(
-		initialTransaction
-			? formatInitialNumber(initialTransaction.amount)
-			: "",
-	);
-	const [currency, setCurrency] = useState<Currency>(
-		initialTransaction ? initialTransaction.currency : "MYR",
-	);
-	const [accountId, setAccountId] = useState(
-		initialTransaction ? initialTransaction.accountId : accounts[0]?.id || "",
-	);
-	const [potId, setPotId] = useState(
-		initialTransaction ? initialTransaction.potId || "" : "",
-	);
-	const [savingPocketId, setSavingPocketId] = useState(
-		initialTransaction ? initialTransaction.savingPocketId || "" : "",
-	);
-	const [toSavingPocketId, setToSavingPocketId] = useState(
-		initialTransaction ? initialTransaction.toSavingPocketId || "" : "",
-	);
-	const [fee, setFee] = useState(
-		initialTransaction ? formatInitialOptional(initialTransaction.fee) : "",
-	);
-	const [feeType, setFeeType] = useState<"INCLUSIVE" | "EXCLUSIVE">(
-		initialTransaction?.feeType || "INCLUSIVE",
-	);
-	const [subscriptionId, setSubscriptionId] = useState(
-		initialTransaction ? initialTransaction.subscriptionId || "" : "",
-	);
-	const [isSubscription, setIsSubscription] = useState(false);
-	const [frequency, setFrequency] = useState<SubscriptionFrequency>("MONTHLY");
-	const [toAccountId, setToAccountId] = useState(
-		initialTransaction
-			? initialTransaction.toAccountId || ""
-			: accounts.length > 1
-				? accounts[1].id
-				: "",
-	);
-	const [categoryId, setCategoryId] = useState(
-		initialTransaction
-			? initialTransaction.categoryId || ""
-			: categories[0]?.id || "",
-	);
-	const [shopName, setShopName] = useState(
-		initialTransaction ? initialTransaction.shopName : "",
-	);
-	const [date, setDate] = useState(
-		initialTransaction
-			? initialTransaction.date
-			: new Date().toLocaleDateString("en-CA"),
-	);
-	const [time, setTime] = useState(
-		initialTransaction ? initialTransaction.time || "" : "",
-	);
-	const [breakdownEnabled, setBreakdownEnabled] = useState(
-		Array.isArray(initialTransaction?.amountBreakdown) &&
-			initialTransaction.amountBreakdown.length > 0,
-	);
-	const [breakdownItems, setBreakdownItems] = useState<
-		Array<{ id: string; description: string; amount: string }>
-	>(
-		Array.isArray(initialTransaction?.amountBreakdown)
-			? initialTransaction.amountBreakdown.map((item) => ({
-					...item,
-					amount: formatInitialNumber(item.amount),
-				}))
-			: [],
-	);
-	const [isSubsidized, setIsSubsidized] = useState(
-		initialTransaction?.isSubsidized || false,
-	);
-	const [marketValue, setMarketValue] = useState(
-		initialTransaction?.marketValue?.toString() || "",
-	);
-	const [isHistorical, setIsHistorical] = useState(
-		initialTransaction?.isHistorical || false,
-	);
-	const [isToAccountHistorical, setIsToAccountHistorical] = useState(
-		(initialTransaction as any)?.linkedTransaction?.isHistorical ||
-			(initialTransaction as any)?.isToAccountHistorical ||
-			false,
+	const [state, setState] = useState<TransactionFormState>(() =>
+		initFormState(accounts, categories, initialTransaction),
 	);
 
 	useEffect(() => {
 		if (!initialTransaction) {
-			const acc = accounts.find((a) => a.id === accountId);
-			if (acc) setCurrency(acc.currency);
+			const acc = accounts.find((a) => a.id === state.accountId);
+			if (acc) setState((prev) => ({ ...prev, currency: acc.currency }));
 		}
-	}, [accountId, accounts, initialTransaction]);
+	}, [state.accountId, accounts, initialTransaction]);
 
 	useEffect(() => {
-		if (savingPocketId) {
-			const pocket = pockets.find((p) => p.id === savingPocketId);
-			if (pocket?.accountId && pocket.accountId !== accountId) {
-				setSavingPocketId("");
-			}
+		if (findPocketAccountMismatch(pockets, state.savingPocketId, state.accountId)) {
+			setState((prev) => ({ ...prev, savingPocketId: "" }));
 		}
-	}, [accountId, pockets, savingPocketId]);
+	}, [state.accountId, pockets, state.savingPocketId]);
 
 	useEffect(() => {
-		if (toSavingPocketId) {
-			const pocket = pockets.find((p) => p.id === toSavingPocketId);
-			if (pocket?.accountId && pocket.accountId !== toAccountId) {
-				setToSavingPocketId("");
-			}
+		if (findPocketAccountMismatch(pockets, state.toSavingPocketId, state.toAccountId)) {
+			setState((prev) => ({ ...prev, toSavingPocketId: "" }));
 		}
-	}, [toAccountId, pockets, toSavingPocketId]);
+	}, [state.toAccountId, pockets, state.toSavingPocketId]);
 
-	const addBreakdownItem = () => {
-		setBreakdownItems([
-			...breakdownItems,
-			{ id: crypto.randomUUID(), description: "", amount: "" },
-		]);
-	};
+	const addBreakdownItem = useCallback(() => {
+		setState((prev) => ({
+			...prev,
+			breakdownItems: [
+				...prev.breakdownItems,
+				{ id: crypto.randomUUID(), description: "", amount: "" },
+			],
+		}));
+	}, []);
 
-	const removeBreakdownItem = (id: string) => {
-		setBreakdownItems(breakdownItems.filter((i) => i.id !== id));
-	};
+	const removeBreakdownItem = useCallback((id: string) => {
+		setState((prev) => ({
+			...prev,
+			breakdownItems: prev.breakdownItems.filter((i) => i.id !== id),
+		}));
+	}, []);
 
-	const updateBreakdownItem = (
-		id: string,
-		field: keyof AmountBreakdownItem,
-		value: any,
-	) => {
-		setBreakdownItems(
-			breakdownItems.map((item) =>
-				item.id === id ? { ...item, [field]: value } : item,
-			),
-		);
-	};
+	const updateBreakdownItem = useCallback(
+		(id: string, field: keyof AmountBreakdownItem, value: any) => {
+			setState((prev) => ({
+				...prev,
+				breakdownItems: prev.breakdownItems.map((item) =>
+					item.id === id ? { ...item, [field]: value } : item,
+				),
+			}));
+		},
+		[],
+	);
 
-	const applySubscription = (sub: Subscription) => {
-		setCategoryId(sub.categoryId);
-		setAmount(formatInitialNumber(sub.amount));
-		setCurrency(sub.currency);
-		if (!shopName) setShopName(sub.name);
-	};
+	const applySubscription = useCallback((sub: Subscription) => {
+		setState((prev) => ({
+			...prev,
+			categoryId: sub.categoryId,
+			amount: formatInitialNumber(sub.amount),
+			currency: sub.currency,
+			shopName: prev.shopName || sub.name,
+		}));
+	}, []);
 
-	const resetPotIfAccountChanged = (nextAccountId: string) => {
-		setAccountId(nextAccountId);
-		setPotId("");
-	};
+	const resetPotIfAccountChanged = useCallback((nextAccountId: string) => {
+		setState((prev) => ({
+			...prev,
+			accountId: nextAccountId,
+			potId: "",
+		}));
+	}, []);
+
+	const bind = <K extends keyof TransactionFormState>(key: K) =>
+		<T>(value: T) => setState((prev) => ({ ...prev, [key]: value as TransactionFormState[K] }));
 
 	return {
-		type,
-		amount,
-		currency,
-		accountId,
-		potId,
-		savingPocketId,
-		toSavingPocketId,
-		fee,
-		feeType,
-		subscriptionId,
-		isSubscription,
-		frequency,
-		toAccountId,
-		categoryId,
-		shopName,
-		date,
-		time,
-		breakdownEnabled,
-		breakdownItems,
-		isSubsidized,
-		marketValue,
-		isHistorical,
-		isToAccountHistorical,
-		setType,
-		setAmount,
-		setCurrency,
-		setAccountId,
-		setPotId,
-		setSavingPocketId,
-		setToSavingPocketId,
-		setFee,
-		setFeeType,
-		setSubscriptionId,
-		setIsSubscription,
-		setFrequency,
-		setToAccountId,
-		setCategoryId,
-		setShopName,
-		setDate,
-		setTime,
-		setBreakdownEnabled,
-		setBreakdownItems,
-		setIsSubsidized,
-		setMarketValue,
-		setIsHistorical,
-		setIsToAccountHistorical,
+		...state,
+		setType: bind("type"),
+		setAmount: bind("amount"),
+		setCurrency: bind("currency"),
+		setAccountId: bind("accountId"),
+		setPotId: bind("potId"),
+		setSavingPocketId: bind("savingPocketId"),
+		setToSavingPocketId: bind("toSavingPocketId"),
+		setFee: bind("fee"),
+		setFeeType: bind("feeType"),
+		setSubscriptionId: bind("subscriptionId"),
+		setIsSubscription: bind("isSubscription"),
+		setFrequency: bind("frequency"),
+		setToAccountId: bind("toAccountId"),
+		setCategoryId: bind("categoryId"),
+		setShopName: bind("shopName"),
+		setDate: bind("date"),
+		setTime: bind("time"),
+		setBreakdownEnabled: bind("breakdownEnabled"),
+		setBreakdownItems: bind("breakdownItems"),
+		setIsSubsidized: bind("isSubsidized"),
+		setMarketValue: bind("marketValue"),
+		setIsHistorical: bind("isHistorical"),
+		setIsToAccountHistorical: bind("isToAccountHistorical"),
 		applySubscription,
 		addBreakdownItem,
 		removeBreakdownItem,

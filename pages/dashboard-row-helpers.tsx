@@ -2,7 +2,7 @@ import React from "react";
 import { TransactionType } from "../types";
 import { GroupedTransaction } from "../helpers/transactions.helper";
 import { Account, Category } from "../types";
-import { Currency, MaskText } from "./DashboardTypes";
+import { CurrencyCode, MaskText } from "./DashboardTypes";
 
 export const isRecentRowInflow = (t: GroupedTransaction): boolean =>
 	t.type === TransactionType.INCOME ||
@@ -46,7 +46,7 @@ export const getRecentRowTitle = (
 
 export const formatRecentRowAmount = (
 	t: GroupedTransaction,
-	displayCurrency: Currency,
+	displayCurrency: CurrencyCode,
 	usdRate: number,
 ): number => {
 	if (displayCurrency === "MYR") {

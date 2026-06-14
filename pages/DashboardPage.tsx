@@ -121,22 +121,34 @@ const DashboardPage: React.FC = () => {
 	}, [transactions, timeframe, customRange]);
 
 	const timeframeStats = useMemo(() => {
-		const convert = (amount: number, currency: string) => {
-			if (currency === "MYR") {
-				return displayCurrency === "MYR" ? amount : amount / usdRate;
-			}
-			let valInUSD = amount;
-			if (currency === "BTC") valInUSD = amount * cryptoPrices.BTC;
-			else if (currency === "ETH") valInUSD = amount * cryptoPrices.ETH;
-			return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
-		};
-
 		const income = filteredTransactions
 			.filter((t) => t.type === TransactionType.INCOME)
-			.reduce((sum, t) => sum + convert(t.amount, t.currency), 0);
+			.reduce(
+				(sum, t) =>
+					sum +
+					convertToDisplayCurrency(
+						t.amount,
+						t.currency,
+						displayCurrency,
+						usdRate,
+						cryptoPrices,
+					),
+				0,
+			);
 		const expense = filteredTransactions
 			.filter((t) => t.type === TransactionType.EXPENSE)
-			.reduce((sum, t) => sum + convert(t.amount, t.currency), 0);
+			.reduce(
+				(sum, t) =>
+					sum +
+					convertToDisplayCurrency(
+						t.amount,
+						t.currency,
+						displayCurrency,
+						usdRate,
+						cryptoPrices,
+					),
+				0,
+			);
 
 		const change = income - expense;
 		const isPositive = change >= 0;

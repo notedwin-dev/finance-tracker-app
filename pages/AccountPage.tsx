@@ -28,7 +28,6 @@ import {
 	Tooltip,
 	Filler,
 	Legend,
-	ScriptableContext,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import { TransactionType } from "../types";
@@ -40,6 +39,7 @@ import {
 	filterTransactionsForAccount,
 	sortTransactionsByDateDesc,
 } from "../src/lib/domain/account-view";
+import { indigoLineFill } from "../components/chartjs-line-style";
 
 // Register ChartJS components
 ChartJS.register(
@@ -196,21 +196,13 @@ const AccountPage: React.FC = () => {
 		return {
 			labels: data.map((d) => d.date),
 			datasets: [
-				{
-					label: "Balance",
-					data: data.map((d) => d.balance),
-					fill: true,
-					backgroundColor: (context: ScriptableContext<"line">) => {
-						const ctx = context.chart.ctx;
-						const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-						gradient.addColorStop(0, "rgba(99, 102, 241, 0.4)");
-						gradient.addColorStop(1, "rgba(99, 102, 241, 0)");
-						return gradient;
-					},
-					borderColor: "#6366f1", // Indigo 500
-					borderWidth: 3,
-					pointRadius: 0,
-					pointHoverRadius: 4,
+					{
+						label: "Balance",
+						data: data.map((d) => d.balance),
+						...indigoLineFill,
+						borderWidth: 3,
+						pointRadius: 0,
+						pointHoverRadius: 4,
 					tension: 0.4,
 				},
 			],

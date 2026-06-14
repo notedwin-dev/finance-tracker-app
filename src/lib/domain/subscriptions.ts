@@ -7,6 +7,18 @@ export interface NextOccurrencesResult {
   bailed: boolean;
 }
 
+export const advanceDateByFrequency = (
+  date: Date,
+  frequency: Subscription["frequency"],
+): Date => {
+  const next = new Date(date);
+  if (frequency === "WEEKLY") next.setDate(next.getDate() + 7);
+  else if (frequency === "MONTHLY") next.setMonth(next.getMonth() + 1);
+  else if (frequency === "YEARLY") next.setFullYear(next.getFullYear() + 1);
+  else next.setDate(next.getDate() + 1);
+  return next;
+};
+
 export const computeNextOccurrences = (
   sub: Pick<Subscription, "id" | "nextPaymentDate" | "frequency">,
   today: string,
@@ -21,11 +33,7 @@ export const computeNextOccurrences = (
   while (nextDateStr <= today && iterations < maxIterations) {
     iterations++;
     generatedTxDates.push(nextDateStr);
-    const d = parseDateSafe(nextDateStr);
-    if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
-    else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
-    else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
-    else d.setDate(d.getDate() + 1);
+    const d = advanceDateByFrequency(parseDateSafe(nextDateStr), sub.frequency);
     nextDateStr = d.toLocaleDateString("en-CA");
   }
   return {

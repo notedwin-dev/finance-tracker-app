@@ -5,6 +5,35 @@ export function toTimestamp(value: unknown): number {
   return 0;
 }
 
+const withUpdatedAt = <T extends { updatedAt?: unknown }>(
+  item: T,
+  now: string,
+): T => ({ ...item, updatedAt: item.updatedAt || now });
+
+const setEntity = <T extends { id: string; updatedAt?: unknown }>(
+  map: Map<string, T>,
+  item: T,
+  now: string,
+) => {
+  if (item.id) map.set(String(item.id), withUpdatedAt(item, now));
+};
+
+const mergeNewerEntity = <T extends { id: string; updatedAt?: unknown }>(
+  map: Map<string, T>,
+  item: T,
+  now: string,
+) => {
+  const id = String(item.id);
+  if (map.has(id)) {
+    const existing = map.get(id)!;
+    if (toTimestamp(item.updatedAt) > toTimestamp(existing.updatedAt)) {
+      setEntity(map, item, now);
+    }
+  } else {
+    setEntity(map, item, now);
+  }
+};
+
 export function mergeEntities<T extends { id: string; updatedAt?: unknown }>(
   local: T[],
   cloud: T[],
@@ -13,41 +42,11 @@ export function mergeEntities<T extends { id: string; updatedAt?: unknown }>(
   const map = new Map<string, T>();
   const now = new Date().toISOString();
 
-  if (trustCloud) {
-    cloud.forEach((i) => {
-      if (i.id) {
-        map.set(String(i.id), { ...i, updatedAt: i.updatedAt || now });
-      }
-    });
-    local.forEach((i) => {
-      const id = String(i.id);
-      if (map.has(id)) {
-        const cloudItem = map.get(id)!;
-        if (toTimestamp(i.updatedAt) > toTimestamp(cloudItem.updatedAt)) {
-          map.set(id, { ...i, updatedAt: i.updatedAt || now });
-        }
-      } else if (i.id) {
-        map.set(id, { ...i, updatedAt: i.updatedAt || now });
-      }
-    });
-  } else {
-    local.forEach((i) => {
-      if (i.id) {
-        map.set(String(i.id), { ...i, updatedAt: i.updatedAt || now });
-      }
-    });
-    cloud.forEach((i) => {
-      const id = String(i.id);
-      if (map.has(id)) {
-        const localItem = map.get(id)!;
-        if (toTimestamp(i.updatedAt) > toTimestamp(localItem.updatedAt)) {
-          map.set(id, { ...i, updatedAt: i.updatedAt || now });
-        }
-      } else if (i.id) {
-        map.set(id, { ...i, updatedAt: i.updatedAt || now });
-      }
-    });
-  }
+  const primary = trustCloud ? cloud : local;
+  const secondary = trustCloud ? local : cloud;
+
+  primary.forEach((i) => setEntity(map, i, now));
+  secondary.forEach((i) => mergeNewerEntity(map, i, now));
 
   return Array.from(map.values());
 }

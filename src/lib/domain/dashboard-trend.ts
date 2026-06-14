@@ -1,5 +1,6 @@
 import { Transaction, TransactionType } from "../../../types";
 import { parseDateSafe } from "../../../helpers/transactions.helper";
+import { convertToDisplayCurrency } from "./currency";
 
 export type TrendTimeframe = "1D" | "1W" | "1M" | "YTD" | "ALL" | "CUSTOM";
 
@@ -34,21 +35,7 @@ export const getTrendStartLimit = (
 	return new Date(now);
 };
 
-export const convertValueToBaseCurrency = (
-	amount: number,
-	currency: string,
-	displayCurrency: "MYR" | "USD",
-	usdRate: number,
-	cryptoPrices: { BTC: number; ETH: number },
-): number => {
-	if (currency === "MYR") {
-		return displayCurrency === "MYR" ? amount : amount / usdRate;
-	}
-	let valInUSD = amount;
-	if (currency === "BTC") valInUSD = amount * cryptoPrices.BTC;
-	else if (currency === "ETH") valInUSD = amount * cryptoPrices.ETH;
-	return displayCurrency === "USD" ? valInUSD : valInUSD * usdRate;
-};
+export const convertValueToBaseCurrency = convertToDisplayCurrency;
 
 const isIncomeLike = (type: TransactionType) =>
 	type === TransactionType.INCOME || type === TransactionType.ACCOUNT_OPENING;

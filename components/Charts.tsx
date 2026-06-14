@@ -10,13 +10,13 @@ import {
   Tooltip,
   Filler,
   Legend,
-  ScriptableContext,
 } from "chart.js";
 import { Line, Pie } from "react-chartjs-2";
 import { Transaction } from "../types";
 import { useMask } from "../helpers/useMask";
 import Modal from "./Modal";
 import { aggregateMonthly } from "../src/lib/domain/charts";
+import { createLineGradient, indigoLineFill } from "./chartjs-line-style";
 
 // Register ChartJS components
 ChartJS.register(
@@ -40,6 +40,17 @@ interface Props {
   displayCurrency?: "MYR" | "USD";
 }
 
+const getMonthBucket = (monthsAgo: number) => {
+  const date = new Date();
+  date.setMonth(date.getMonth() - monthsAgo);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+
+  return {
+    key: `${year}-${month}`,
+    label: date.toLocaleString("default", { month: "short", year: "numeric" }),
+  };
+};
 
 // --- REVENUE CHART ---
 
@@ -64,20 +75,13 @@ export const RevenueChart: React.FC<Props> = ({
     const expenseData = [];
 
     for (let i = months; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      // Use Local time for Month generation to match user expectation
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const monthStr = `${y}-${m}`;
+      const month = getMonthBucket(i);
 
-      labels.push(
-        d.toLocaleString("default", { month: "short", year: "numeric" }),
-      );
+      labels.push(month.label);
 
       const { income, expense } = aggregateMonthly(
         transactions,
-        monthStr,
+        month.key,
         usdRate,
         displayCurrency,
       );
@@ -93,13 +97,10 @@ export const RevenueChart: React.FC<Props> = ({
           label: "Income",
           data: incomeData,
           fill: true,
-          backgroundColor: (context: ScriptableContext<"line">) => {
-            const ctx = context.chart.ctx;
-            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient.addColorStop(0, "rgba(16, 185, 129, 0.4)"); // Green
-            gradient.addColorStop(1, "rgba(16, 185, 129, 0)");
-            return gradient;
-          },
+          backgroundColor: createLineGradient(
+            "rgba(16, 185, 129, 0.4)",
+            "rgba(16, 185, 129, 0)",
+          ),
           borderColor: "#10b981",
           borderWidth: 2,
           pointRadius: 0,
@@ -109,15 +110,7 @@ export const RevenueChart: React.FC<Props> = ({
         {
           label: "Expense",
           data: expenseData,
-          fill: true,
-          backgroundColor: (context: ScriptableContext<"line">) => {
-            const ctx = context.chart.ctx;
-            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient.addColorStop(0, "rgba(99, 102, 241, 0.4)"); // Indigo
-            gradient.addColorStop(1, "rgba(99, 102, 241, 0)");
-            return gradient;
-          },
-          borderColor: "#6366f1",
+          ...indigoLineFill,
           borderWidth: 2,
           pointRadius: 0,
           pointHoverRadius: 4,
@@ -357,13 +350,7 @@ export const SparklineChart: React.FC<{
         pointHoverRadius: interactive ? 4 : 0,
         tension: 0.4,
         fill: true,
-        backgroundColor: (context: ScriptableContext<"line">) => {
-          const ctx = context.chart.ctx;
-          const gradient = ctx.createLinearGradient(0, 0, 0, height);
-          gradient.addColorStop(0, `${color}44`);
-          gradient.addColorStop(1, `${color}00`);
-          return gradient;
-        },
+        backgroundColor: createLineGradient(`${color}44`, `${color}00`, height),
       },
     ],
   };
@@ -521,19 +508,11 @@ export const MonthlyBreakdown: React.FC<Props> = ({
 
     // Last 12 months
     for (let i = 0; i < 12; i++) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const monthStr = `${y}-${m}`;
-      const monthLabel = d.toLocaleString("default", {
-        month: "short",
-        year: "numeric",
-      });
+      const month = getMonthBucket(i);
 
       const { income, expense } = aggregateMonthly(
         transactions,
-        monthStr,
+        month.key,
         usdRate,
         displayCurrency,
       );
@@ -541,7 +520,7 @@ export const MonthlyBreakdown: React.FC<Props> = ({
       if (income === 0 && expense === 0) continue;
 
       stats.push({
-        month: monthLabel,
+        month: month.label,
         income,
         expense,
         net: income - expense,

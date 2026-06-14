@@ -33,6 +33,16 @@ const asAccount = (legacy: Record<string, unknown>): Account =>
 const asProfile = (legacy: Record<string, unknown>): UserProfile =>
   ({ ...baseProfile, ...legacy }) as unknown as UserProfile;
 
+const expectAccountVaultFieldsStripped = (
+  legacy: Record<string, unknown>,
+): Account => {
+  const cleaned = stripVaultFromAccount(asAccount(legacy));
+  const bag = cleaned as unknown as Record<string, unknown>;
+  expect(bag.details).toBeUndefined();
+  expect(bag.isEncrypted).toBeUndefined();
+  return cleaned;
+};
+
 describe("CURRENT_SCHEMA_VERSION", () => {
   it("is 2", () => {
     expect(CURRENT_SCHEMA_VERSION).toBe(2);
@@ -41,24 +51,17 @@ describe("CURRENT_SCHEMA_VERSION", () => {
 
 describe("stripVaultFromAccount", () => {
   it("strips plaintext details object", () => {
-    const acc = asAccount({ details: { cardNumber: "NON_PAN_PLACEHOLDER", cvv: "123" } });
-    const cleaned = stripVaultFromAccount(acc);
-    expect((cleaned as unknown as Record<string, unknown>).details).toBeUndefined();
-    expect((cleaned as unknown as Record<string, unknown>).isEncrypted).toBeUndefined();
+    expectAccountVaultFieldsStripped({
+      details: { cardNumber: "NON_PAN_PLACEHOLDER", cvv: "123" },
+    });
   });
 
   it("strips ENC: prefixed encrypted blob", () => {
-    const acc = asAccount({ details: "ENC:abc123", isEncrypted: true });
-    const cleaned = stripVaultFromAccount(acc);
-    expect((cleaned as unknown as Record<string, unknown>).details).toBeUndefined();
-    expect((cleaned as unknown as Record<string, unknown>).isEncrypted).toBeUndefined();
+    expectAccountVaultFieldsStripped({ details: "ENC:abc123", isEncrypted: true });
   });
 
   it("strips SEC: prefixed blob", () => {
-    const acc = asAccount({ details: "SEC:xyz", isEncrypted: true });
-    const cleaned = stripVaultFromAccount(acc);
-    expect((cleaned as unknown as Record<string, unknown>).details).toBeUndefined();
-    expect((cleaned as unknown as Record<string, unknown>).isEncrypted).toBeUndefined();
+    expectAccountVaultFieldsStripped({ details: "SEC:xyz", isEncrypted: true });
   });
 
   it("strips top-level legacy sensitive fields", () => {

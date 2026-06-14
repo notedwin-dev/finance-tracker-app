@@ -297,13 +297,7 @@ export const findUser = async (email: string) => {
 		const fileId = await getSpreadsheetId();
 		if (!fileId) return null;
 
-		const sheetName = await getProfileSheetName(fileId);
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A:Z`,
-		});
-
-		const rows = res.result.values || [];
+		const { sheetName, rows } = await fetchProfileSheetRows(fileId);
 		if (rows.length <= 1) return null;
 
 		const headers = rows[0];
@@ -319,14 +313,7 @@ export const findUser = async (email: string) => {
 		];
 		const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
 		if (missingHeaders.length > 0) {
-			const sheetName = await getProfileSheetName(fileId);
-			const newHeaders = [...headers, ...missingHeaders];
-			await window.gapi.client.sheets.spreadsheets.values.update({
-				spreadsheetId: fileId,
-				range: `'${sheetName}'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
-				valueInputOption: "RAW",
-				resource: { values: [newHeaders] },
-			});
+			await appendSheetHeaders(fileId, sheetName, headers, missingHeaders);
 			// Re-fetch to get current state after header update
 			return findUser(email);
 		}
@@ -505,13 +492,7 @@ export const updateUser = async (email: string, updates: any) => {
 		const fileId = await getSpreadsheetId();
 		if (!fileId) return false;
 
-		const sheetName = await getProfileSheetName(fileId);
-		// 1. Get current user data
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!A:Z`,
-		});
-		const rows = res.result.values || [];
+		const { sheetName, rows } = await fetchProfileSheetRows(fileId);
 		if (rows.length === 0) return false;
 
 		const headers = rows[0];
@@ -524,13 +505,7 @@ export const updateUser = async (email: string, updates: any) => {
 				"➕ Adding missing headers to Profile sheet:",
 				missingHeaders,
 			);
-			const newHeaders = [...headers, ...missingHeaders];
-			await window.gapi.client.sheets.spreadsheets.values.update({
-				spreadsheetId: fileId,
-				range: `'${sheetName}'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
-				valueInputOption: "RAW",
-				resource: { values: [newHeaders] },
-			});
+			await appendSheetHeaders(fileId, sheetName, headers, missingHeaders);
 			logger.log("✅ Headers added, re-running updateUser");
 			// Re-fetch to get new headers
 			return updateUser(email, updates);
@@ -695,6 +670,72 @@ const getColumnLetter = (index: number): string => {
 		index = Math.floor(index / 26) - 1;
 	}
 	return letter;
+};
+
+const findRowIndexById = async (
+	fileId: string,
+	sheetName: string,
+	idColLetter: string,
+	id: string,
+): Promise<number> => {
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
+	});
+	const ids = res.result.values || [];
+	return ids.findIndex((row: any[]) => row[0] === id);
+};
+
+const buildColumnUpdate = (
+	sheetName: string,
+	rowIndex: number,
+	colLetter: string,
+	val: any,
+): any => ({
+	range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+	values: [[serializeCellValue(val) ?? ""]],
+});
+
+const executeBatchUpdate = async (
+	fileId: string,
+	data: any[],
+	successMessage: string,
+): Promise<void> => {
+	if (data.length === 0) return;
+	await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+		spreadsheetId: fileId,
+		resource: {
+			data,
+			valueInputOption: "USER_ENTERED",
+		},
+	});
+	logger.log(successMessage);
+};
+
+const fetchProfileSheetRows = async (
+	fileId: string,
+): Promise<{ sheetName: string; rows: any[][] }> => {
+	const sheetName = await getProfileSheetName(fileId);
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!A:Z`,
+	});
+	return { sheetName, rows: res.result.values || [] };
+};
+
+const appendSheetHeaders = async (
+	fileId: string,
+	sheetName: string,
+	currentHeaders: string[],
+	missingHeaders: string[],
+): Promise<void> => {
+	const newHeaders = [...currentHeaders, ...missingHeaders];
+	await window.gapi.client.sheets.spreadsheets.values.update({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!A1:${getColumnLetter(newHeaders.length - 1)}1`,
+		valueInputOption: "RAW",
+		resource: { values: [newHeaders] },
+	});
 };
 
 async function fetchSheetHeaders(
@@ -952,53 +993,30 @@ export const updateOne = async (sheetName: string, id: string, item: any) => {
 		}
 
 		const idColLetter = getColumnLetter(idColumnIndex);
-
-		// 2. Find the row index of the ID
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
-		});
-
-		const ids = res.result.values || [];
-		const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+		const rowIndex = await findRowIndexById(fileId, sheetName, idColLetter, id);
 
 		if (rowIndex === -1) {
 			// If not found, maybe it was deleted or just added. Fallback to insert.
 			return insertOne(sheetName, item);
 		}
 
-		// 3. Prepare the updated row
-		const row = headers.map((header: string) => {
-			const val = item[header];
-			return serializeCellValue(val) ?? "";
-		});
-
-		// 4. Update specific row (A1 notation requires 1-based indexing for rows)
+		// 2. Update specific row (A1 notation requires 1-based indexing for rows)
 		// Safe update: only update columns present in the item object to prevent clearing legacy data
 		const data: any[] = [];
 		headers.forEach((header: string, colIndex: number) => {
 			const val = item[header];
-				if (val !== undefined) {
-					const colLetter = getColumnLetter(colIndex);
-					data.push({
-						range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
-						values: [[serializeCellValue(val)]],
-					});
-				}
+			if (val !== undefined) {
+				data.push(
+					buildColumnUpdate(sheetName, rowIndex, getColumnLetter(colIndex), val),
+				);
+			}
 		});
 
-		if (data.length > 0) {
-			await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
-				spreadsheetId: fileId,
-				resource: {
-					data,
-					valueInputOption: "USER_ENTERED",
-				},
-			});
-			logger.log(
-				`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
-			);
-		}
+		await executeBatchUpdate(
+			fileId,
+			data,
+			`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
+		);
 	} catch (e) {
 		logger.warn(`Error updating row in ${sheetName}`, e);
 		// Fallback: If finding specific row fails, we might need a full sync
@@ -1055,32 +1073,26 @@ export const updateMany = async (
 					const colIndex = headers.indexOf(header);
 					if (colIndex !== -1) {
 						const val = item[header];
-						// Only update if value is present in the object
-					if (val !== undefined) {
-						const colLetter = getColumnLetter(colIndex);
-						data.push({
-							range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
-							values: [[serializeCellValue(val) ?? ""]],
-						});
-					}
+						if (val !== undefined) {
+							data.push(
+								buildColumnUpdate(
+									sheetName,
+									rowIndex,
+									getColumnLetter(colIndex),
+									val,
+								),
+							);
+						}
 					}
 				});
 			}
 		});
 
-		// 4. Execute batch update if there are items to update
-		if (data.length > 0) {
-			await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
-				spreadsheetId: fileId,
-				resource: {
-					data,
-					valueInputOption: "USER_ENTERED",
-				},
-			});
-			logger.log(
-				`Batch updated ${data.length} ${columnsToUpdate ? "cells" : "rows"} in ${sheetName}`,
-			);
-		}
+		await executeBatchUpdate(
+			fileId,
+			data,
+			`Batch updated ${data.length} ${columnsToUpdate ? "cells" : "rows"} in ${sheetName}`,
+		);
 	} catch (e) {
 		logger.warn(`Error batch updating ${sheetName}`, e);
 	}
@@ -1116,15 +1128,7 @@ export const deleteOne = async (sheetName: string, id: string) => {
 
 		if (idColumnIndex === -1) return;
 		const idColLetter = getColumnLetter(idColumnIndex);
-
-		// 2. Find the row index
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
-		});
-
-		const ids = res.result.values || [];
-		const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+		const rowIndex = await findRowIndexById(fileId, sheetName, idColLetter, id);
 
 		if (rowIndex === -1) return;
 
@@ -1261,7 +1265,6 @@ export const filterByCurrentUser = (rows: any[]): any[] =>
 		(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
 	);
 
-export { loadFromGoogleSheets } from "./sheets-load";
 /**
  * Opens a Google Picker to let the user select a specific spreadsheet.
  * This is crucial for the drive.file scope to gain access to a file
@@ -1319,4 +1322,126 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 
 		picker.setVisible(true);
 	});
+};
+
+type SheetResult = {
+	accounts: Account[];
+	transactions: Transaction[];
+	categories: Category[];
+	goals: Goal[];
+	subscriptions: Subscription[];
+	pots: Pot[];
+	pockets: SavingPocket[];
+	chatSessions: ChatSession[];
+	profile?: any;
+};
+
+const STANDARD_SHEETS = [
+	"Accounts",
+	"Transactions",
+	"Categories",
+	"Goals",
+	"Subscriptions",
+	"Pots",
+	"Pockets",
+	"ChatSessions",
+] as const;
+
+const buildSheetRanges = (sheets: string[]): string[] =>
+	sheets.map((s) => `'${s}'!A:Z`);
+
+const populateSheetResult = (
+	sheetName: string,
+	valueRanges: { values?: string[][] }[],
+	rangeIndex: number,
+	userEmail: string | undefined,
+	result: Record<string, unknown>,
+): void => {
+	const rows = valueRanges[rangeIndex]?.values;
+	if (!rows || rows.length <= 1) {
+		result[sheetName.toLowerCase()] = [];
+		return;
+	}
+
+	const headers = rows[0] as string[];
+	const dataRows = rows.slice(1);
+
+	if (isProfileSheet(sheetName)) {
+		result.profile = parseProfileSheet(headers, dataRows, userEmail);
+		return;
+	}
+
+	result[sheetName.toLowerCase()] = filterByCurrentUser(
+		dataRows.map((row: string[]) => parseDataRow(headers, row)),
+	);
+};
+
+const fetchBatchSheetData = async (
+	fileId: string,
+	validSheets: string[],
+): Promise<{ values?: string[][] }[]> => {
+	const response =
+		await window.gapi.client.sheets.spreadsheets.values.batchGet({
+			spreadsheetId: fileId,
+			ranges: buildSheetRanges(validSheets),
+			valueRenderOption: "UNFORMATTED_VALUE",
+		});
+	return response.result.valueRanges || [];
+};
+
+const handleBatchError = (err: unknown): never | void => {
+	if ((err as { status?: number })?.status === 401) {
+		clearGapiAccessToken();
+		throw err;
+	}
+	logger.warn("Batch load failed", err);
+};
+
+const mergePotsMigrated = (result: Record<string, unknown>): Pot[] =>
+	((result.pots as Pot[]) || []).map((p) =>
+		migrateLegacyPot(p as unknown as Record<string, unknown>),
+	);
+
+export const loadFromGoogleSheets = async (
+	userEmail?: string,
+): Promise<SheetResult | null> => {
+	if (!hasRequiredAuth()) return null;
+
+	const fileId = await resolveSpreadsheetId();
+	if (!fileId) return null;
+
+	const sheetName = await getProfileSheetName(fileId);
+	const sheetNamesToLoad = [...STANDARD_SHEETS, sheetName];
+	const names = await getSheetNames(fileId);
+	const existingSheets = names || [];
+
+	const validSheets = sheetNamesToLoad.filter((s) =>
+		existingSheets.includes(s),
+	);
+	if (validSheets.length === 0) return null;
+
+	const result: Record<string, unknown> = {};
+
+	try {
+		const valueRanges = await fetchBatchSheetData(fileId, validSheets);
+		validSheets.forEach((sheet, rangeIndex) => {
+			populateSheetResult(sheet, valueRanges, rangeIndex, userEmail, result);
+		});
+	} catch (err) {
+		handleBatchError(err);
+	}
+
+	const pots = mergePotsMigrated(result);
+
+	return {
+		accounts: (result.accounts as Account[]) || [],
+		transactions: (result.transactions as Transaction[]) || [],
+		categories: (result.categories as Category[]) || [],
+		goals: (result.goals as Goal[]) || [],
+		subscriptions: (result.subscriptions as Subscription[]) || [],
+		pots,
+		pockets: (result.pockets as SavingPocket[]) || [],
+		chatSessions: (result.chatsessions as ChatSession[]) || [],
+		profile: result.profile,
+	};
 };

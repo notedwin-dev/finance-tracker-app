@@ -1,18 +1,18 @@
 import React, { useState } from "react";
 import { ChevronUpDownIcon } from "@heroicons/react/24/outline";
 import { SparklineChart } from "../components/Charts";
-import { Currency, MaskAmount, TimeFrame, TimeframeStats, TrendPoints } from "./DashboardTypes";
+import { CurrencyCode, MaskAmount, TimeFrame, TimeframeStats, TrendPoints } from "./DashboardTypes";
 
 type Props = {
 	totalBalance: number;
-	displayCurrency: Currency;
+	displayCurrency: CurrencyCode;
 	usdRate: number;
 	timeframeStats: TimeframeStats;
 	timeframe: TimeFrame;
 	displayRange: string;
 	trendPoints: TrendPoints;
 	maskAmount: MaskAmount;
-	onCurrencyChange: (currency: Currency) => void;
+	onCurrencyChange: (currency: CurrencyCode) => void;
 };
 
 export const DashboardBalanceCard = ({
@@ -63,7 +63,7 @@ export const DashboardBalanceCard = ({
 											key={curr}
 											type="button"
 											onClick={() => {
-												onCurrencyChange(curr as Currency);
+												onCurrencyChange(curr as CurrencyCode);
 												setShowCurrencyDropdown(false);
 											}}
 											className={`w-full text-left px-4 py-3 text-[10px] font-black tracking-widest transition-colors ${

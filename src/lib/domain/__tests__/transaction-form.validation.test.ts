@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
 	validateTransactionForm,
 	serializeBreakdownItems,
-	TransactionFormState,
+	ValidatableTransactionFormState,
 } from "../transaction-form.validation";
 import { TransactionType } from "../../../../types";
 
-const base: TransactionFormState = {
+const base: ValidatableTransactionFormState = {
 	type: TransactionType.EXPENSE,
 	amount: "10.00",
 	marketValue: "",

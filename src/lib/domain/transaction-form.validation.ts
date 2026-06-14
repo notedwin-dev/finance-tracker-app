@@ -1,6 +1,6 @@
 import { TransactionType, AmountBreakdownItem } from "../../../types";
 
-export interface TransactionFormState {
+export interface ValidatableTransactionFormState {
 	type: TransactionType;
 	amount: string;
 	marketValue: string;
@@ -26,7 +26,7 @@ const pushIfMissing = (missing: string[], condition: boolean, label: string) => 
 	if (condition) missing.push(label);
 };
 
-const collectMissingFields = (state: TransactionFormState): string[] => {
+const collectMissingFields = (state: ValidatableTransactionFormState): string[] => {
 	const missing: string[] = [];
 	const { type, isSubsidized } = state;
 	const amountValue = isSubsidized ? state.marketValue : state.amount;
@@ -62,7 +62,7 @@ const validateTransferAccounts = (
 const sumBreakdownTotal = (items: { amount: string }[]): number =>
 	items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
-const validateBreakdownTotal = (state: TransactionFormState): string | null => {
+const validateBreakdownTotal = (state: ValidatableTransactionFormState): string | null => {
 	if (!state.breakdownEnabled) return null;
 	const total = sumBreakdownTotal(state.breakdownItems);
 	const amount = parseFloat(state.amount);
@@ -73,7 +73,7 @@ const validateBreakdownTotal = (state: TransactionFormState): string | null => {
 };
 
 export const validateTransactionForm = (
-	state: TransactionFormState,
+	state: ValidatableTransactionFormState,
 ): string | null => {
 	const missing = collectMissingFields(state);
 	if (missing.length > 0) {

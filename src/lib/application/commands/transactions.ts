@@ -138,6 +138,49 @@ const persistAndApplyOrRollback = async (
   }
 };
 
+const reverseTransactionEffects = async (
+  txsToProcess: Transaction[],
+  accounts: Account[],
+  pots: Pot[],
+  pockets: SavingPocket[],
+  usdRate: number,
+  store: ReturnType<typeof useFinanceStore.getState>,
+): Promise<void> => {
+  const now = new Date().toISOString();
+  const reversalChanges = sumChanges(txsToProcess, accounts, pots, pockets, -1, usdRate);
+  const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
+    applyChanges(accounts, pots, pockets, reversalChanges, now);
+
+  if (updatedAccounts !== accounts) {
+    await StorageService.saveAccounts(updatedAccounts);
+    store.setAccounts(updatedAccounts);
+  }
+  if (updatedPots !== pots) {
+    await StorageService.savePots(updatedPots);
+    store.setPots(updatedPots);
+  }
+  if (updatedPockets !== pockets) {
+    await StorageService.savePockets(updatedPockets);
+    store.setPockets(updatedPockets);
+  }
+};
+
+const removeDeletedTransactions = async (
+  idsToDelete: string[],
+  isCloudEnabled: boolean,
+  store: ReturnType<typeof useFinanceStore.getState>,
+): Promise<void> => {
+  const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
+  await StorageService.saveTransactions(updatedTxs);
+  store.removeTransactions(idsToDelete);
+
+  if (isCloudEnabled) {
+    for (const delId of idsToDelete) {
+      await SheetService.deleteOne("Transactions", delId);
+    }
+  }
+};
+
 export async function submitTransaction(
   tx: Omit<Transaction, "userId">,
   accounts: Account[],
@@ -277,33 +320,8 @@ export async function deleteTransaction(
     }
   }
 
-  const now = new Date().toISOString();
-  const reversalChanges = sumChanges(txsToProcess, accounts, pots, pockets, -1, usdRate);
-  const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
-    applyChanges(accounts, pots, pockets, reversalChanges, now);
-
-  if (updatedAccounts !== accounts) {
-    await StorageService.saveAccounts(updatedAccounts);
-    store.setAccounts(updatedAccounts);
-  }
-  if (updatedPots !== pots) {
-    await StorageService.savePots(updatedPots);
-    store.setPots(updatedPots);
-  }
-  if (updatedPockets !== pockets) {
-    await StorageService.savePockets(updatedPockets);
-    store.setPockets(updatedPockets);
-  }
-
-  const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
-  await StorageService.saveTransactions(updatedTxs);
-  store.removeTransactions(idsToDelete);
-
-  if (isCloudEnabled) {
-    for (const delId of idsToDelete) {
-      await SheetService.deleteOne("Transactions", delId);
-    }
-  }
+  await reverseTransactionEffects(txsToProcess, accounts, pots, pockets, usdRate, store);
+  await removeDeletedTransactions(idsToDelete, isCloudEnabled, store);
 
   showToast("Transaction deleted", "success");
 }
@@ -339,34 +357,9 @@ export async function batchDeleteTransaction(
 
   if (txsToProcess.length === 0) return;
 
-  const now = new Date().toISOString();
-  const reversalChanges = sumChanges(txsToProcess, accounts, pots, pockets, -1, usdRate);
-  const { accounts: updatedAccounts, pots: updatedPots, pockets: updatedPockets } =
-    applyChanges(accounts, pots, pockets, reversalChanges, now);
-
-  if (updatedAccounts !== accounts) {
-    await StorageService.saveAccounts(updatedAccounts);
-    store.setAccounts(updatedAccounts);
-  }
-  if (updatedPots !== pots) {
-    await StorageService.savePots(updatedPots);
-    store.setPots(updatedPots);
-  }
-  if (updatedPockets !== pockets) {
-    await StorageService.savePockets(updatedPockets);
-    store.setPockets(updatedPockets);
-  }
-
   const idsToDelete = Array.from(idsToDeleteSet);
-  const updatedTxs = store.transactions.filter((t: Transaction) => !idsToDelete.includes(t.id));
-  await StorageService.saveTransactions(updatedTxs);
-  store.removeTransactions(idsToDelete);
-
-  if (isCloudEnabled) {
-    for (const delId of idsToDelete) {
-      await SheetService.deleteOne("Transactions", delId);
-    }
-  }
+  await reverseTransactionEffects(txsToProcess, accounts, pots, pockets, usdRate, store);
+  await removeDeletedTransactions(idsToDelete, isCloudEnabled, store);
 
   showToast("Transactions deleted", "success");
 }

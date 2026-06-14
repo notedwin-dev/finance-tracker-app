@@ -1,7 +1,7 @@
 import React from "react";
 import { GroupedTransaction, normalizeDate } from "../helpers/transactions.helper";
 import { Account, Category } from "../types";
-import { Currency, MaskAmount, MaskText } from "./DashboardTypes";
+import { CurrencyCode, MaskAmount, MaskText } from "./DashboardTypes";
 import {
 	isRecentRowInflow,
 	getRecentRowIcon,
@@ -49,7 +49,7 @@ const RowMeta = ({ transaction: t }: RowMetaProps) => (
 
 type RowAmountProps = {
 	transaction: GroupedTransaction;
-	displayCurrency: Currency;
+	displayCurrency: CurrencyCode;
 	usdRate: number;
 	maskAmount: MaskAmount;
 };
@@ -83,7 +83,7 @@ type RowProps = {
 	transaction: GroupedTransaction;
 	accounts: Account[];
 	categories: Category[];
-	displayCurrency: Currency;
+	displayCurrency: CurrencyCode;
 	usdRate: number;
 	maskAmount: MaskAmount;
 	maskText: MaskText;

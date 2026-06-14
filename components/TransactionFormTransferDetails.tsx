@@ -1,7 +1,7 @@
-import { SparklesIcon } from "@heroicons/react/24/outline";
 import type { SavingPocket } from "../types";
 import { formatCalculatorAmount } from "../helpers/amount-calculator";
 import type { TransactionFormState, TransactionFormActions } from "./useTransactionFormState";
+import { TransactionFormPocketSelect } from "./TransactionFormPocketSelect";
 
 type Props = {
 	form: TransactionFormState & TransactionFormActions;
@@ -27,36 +27,21 @@ export const TransactionFormTransferDetails = ({ form, pockets }: Props) => {
 	const amountNum = parseFloat(form.amount);
 	const showFeeControls = feeAmount > 0;
 	const showFeeExplanation = feeAmount > 0 && amountNum > 0;
+	const destinationPockets = pockets.filter(
+		(p) =>
+			p.id !== form.savingPocketId &&
+			(!p.accountId || p.accountId === form.toAccountId),
+	);
 
 	return (
 		<div className="animate-fadeIn grid grid-cols-2 gap-4">
-			<div>
-				<label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-					<SparklesIcon className="w-3.5 h-3.5 text-emerald-400" />
-					<span>Destination Pocket (Optional)</span>
-				</label>
-				<div className="relative">
-					<select
-						value={form.toSavingPocketId}
-						onChange={(e) => form.setToSavingPocketId(e.target.value)}
-						className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
-					>
-						<option value="">No Pocket Selected</option>
-						{pockets
-							.filter(
-								(p) =>
-									p.id !== form.savingPocketId &&
-									(!p.accountId || p.accountId === form.toAccountId),
-							)
-							.map((p) => (
-								<option key={p.id} value={p.id}>
-									{p.icon} {p.name} ({p.currency}{" "}
-									{p.currentAmount.toLocaleString()})
-								</option>
-							))}
-					</select>
-				</div>
-			</div>
+			<TransactionFormPocketSelect
+				label="Destination Pocket (Optional)"
+				value={form.toSavingPocketId}
+				pockets={destinationPockets}
+				onChange={form.setToSavingPocketId}
+				iconClassName="text-emerald-400"
+			/>
 
 			<div>
 				<label className="block text-xs font-medium text-gray-400 mb-1">

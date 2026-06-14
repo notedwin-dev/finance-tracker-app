@@ -14,6 +14,34 @@ const baseProfile = {
   isLoggedIn: true,
 };
 
+const createSyncCallbacks = () => ({
+  updateProfile: vi.fn(),
+  loginWithGoogle: vi.fn(),
+});
+
+const runSyncDataWithBaseProfile = async () => {
+  const callbacks = createSyncCallbacks();
+  await syncData(
+    { ...baseProfile } as any,
+    callbacks.updateProfile,
+    callbacks.loginWithGoogle,
+  );
+  return { ...callbacks, state: useSyncStore.getState() };
+};
+
+const expectSyncIdle = (state: ReturnType<typeof useSyncStore.getState>) => {
+  expect(state.isSyncing).toBe(false);
+};
+
+const expectSessionExpired = (
+  state: ReturnType<typeof useSyncStore.getState>,
+  loginWithGoogle: ReturnType<typeof vi.fn>,
+) => {
+  expectSyncIdle(state);
+  expect(state.toast?.message).toBe("Session expired. Please sign in again.");
+  expect(loginWithGoogle).toHaveBeenCalledTimes(1);
+};
+
 describe("syncData error handling", () => {
 let testTime = 0;
 beforeEach(() => {
@@ -36,13 +64,8 @@ beforeEach(() => {
       new Error("network down"),
     );
 
-    const updateProfile = vi.fn();
-    const loginWithGoogle = vi.fn();
-
-    await syncData({ ...baseProfile } as any, updateProfile, loginWithGoogle);
-
-    const state = useSyncStore.getState();
-    expect(state.isSyncing).toBe(false);
+    const { state } = await runSyncDataWithBaseProfile();
+    expectSyncIdle(state);
     expect(state.toast).not.toBeNull();
     expect(state.toast?.message).not.toBe("Syncing with Google Sheets...");
     expect(state.toast?.message).toBe("Cloud sync failed. Working offline.");
@@ -52,29 +75,15 @@ beforeEach(() => {
     const err401 = Object.assign(new Error("Unauthorized"), { status: 401 });
     vi.mocked(SheetService.loadFromGoogleSheets).mockRejectedValue(err401);
 
-    const updateProfile = vi.fn();
-    const loginWithGoogle = vi.fn();
-
-    await syncData({ ...baseProfile } as any, updateProfile, loginWithGoogle);
-
-    const state = useSyncStore.getState();
-    expect(state.isSyncing).toBe(false);
-    expect(state.toast?.message).toBe(
-      "Session expired. Please sign in again.",
-    );
-    expect(loginWithGoogle).toHaveBeenCalledTimes(1);
+    const { state, loginWithGoogle } = await runSyncDataWithBaseProfile();
+    expectSessionExpired(state, loginWithGoogle);
   });
 
   it("dismisses the stuck 'Syncing' toast when loadFromGoogleSheets returns null (no spreadsheet linked)", async () => {
     vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(null as any);
 
-    const updateProfile = vi.fn();
-    const loginWithGoogle = vi.fn();
-
-    await syncData({ ...baseProfile } as any, updateProfile, loginWithGoogle);
-
-    const state = useSyncStore.getState();
-    expect(state.isSyncing).toBe(false);
+    const { state } = await runSyncDataWithBaseProfile();
+    expectSyncIdle(state);
     expect(state.toast).toBeNull();
   });
 });
@@ -111,15 +120,12 @@ describe("resetAndSync 401 handling", () => {
     localStorage.setItem("some_random_key", "should_be_cleared");
     localStorage.setItem("another_key", "also_cleared");
 
-    const updateProfile = vi.fn();
-    const loginWithGoogle = vi.fn();
+    const { updateProfile, loginWithGoogle } = createSyncCallbacks();
 
     await resetAndSync({ ...baseProfile } as any, updateProfile, loginWithGoogle);
 
     const state = useSyncStore.getState();
-    expect(state.isSyncing).toBe(false);
-    expect(state.toast?.message).toBe("Session expired. Please sign in again.");
-    expect(loginWithGoogle).toHaveBeenCalledTimes(1);
+    expectSessionExpired(state, loginWithGoogle);
 
     expect(localStorage.getItem("google_access_token")).toBe("test_token");
     expect(localStorage.getItem("google_token_expiry")).toBe("123456789");

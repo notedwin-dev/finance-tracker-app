@@ -1,5 +1,6 @@
 import { Account, Pot, SavingPocket, Subscription, Transaction } from "../../../../types";
 import { normalizeDate, parseDateSafe } from "../../../../helpers/transactions.helper";
+import { advanceDateByFrequency } from "../../domain/subscriptions";
 import * as StorageService from "../../../../services/storage.services";
 import * as SheetService from "../../../../services/sheets.services";
 import { useFinanceStore } from "../../../stores/finance.store";
@@ -10,11 +11,7 @@ export function advanceSubscriptionNextDate(
 ): string {
   let nextDateStr = normalizeDate(sub.nextPaymentDate);
   if (txDate < nextDateStr) return nextDateStr;
-  const d = parseDateSafe(txDate);
-  if (sub.frequency === "WEEKLY") d.setDate(d.getDate() + 7);
-  else if (sub.frequency === "MONTHLY") d.setMonth(d.getMonth() + 1);
-  else if (sub.frequency === "YEARLY") d.setFullYear(d.getFullYear() + 1);
-  else d.setDate(d.getDate() + 1);
+  const d = advanceDateByFrequency(parseDateSafe(txDate), sub.frequency);
   return d.toLocaleDateString("en-CA");
 }
 

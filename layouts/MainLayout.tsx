@@ -30,14 +30,16 @@ const MainLayout: React.FC = () => {
 	const maskMode = useMaskStore((s) => s.maskMode);
 	const setMaskMode = useMaskStore((s) => s.setMaskMode);
 
-	const categories = useFinanceStore((s) => s.categories);
-	const goals = useFinanceStore((s) => s.goals);
-	const subscriptions = useFinanceStore((s) => s.subscriptions);
-	const chatSessions = useFinanceStore((s) => s.chatSessions);
-	const accounts = useFinanceStore((s) => s.accounts);
-	const pots = useFinanceStore((s) => s.pots);
-	const pockets = useFinanceStore((s) => s.pockets);
-	const storeTransactions = useFinanceStore((s) => s.transactions);
+	const {
+		categories,
+		goals,
+		subscriptions,
+		chatSessions,
+		accounts,
+		pots,
+		pockets,
+		transactions: storeTransactions,
+	} = useFinanceStore();
 
 	const isOnline = useOnlineStatus();
 

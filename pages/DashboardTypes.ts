@@ -2,7 +2,7 @@ import React from "react";
 
 export type TimeFrame = "1D" | "1W" | "1M" | "YTD" | "ALL" | "CUSTOM";
 
-export type Currency = "MYR" | "USD";
+export type CurrencyCode = "MYR" | "USD";
 
 export type TrendPoints = {
 	labels: string[];

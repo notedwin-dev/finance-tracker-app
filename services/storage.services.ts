@@ -29,6 +29,29 @@ export const KEYS = {
 
 const getKey = (baseKey: string) => getBaseKey(baseKey, KEYS.PROFILE);
 
+type StoredEntity = { id?: string; [key: string]: unknown };
+
+const readStoredArray = (key: string): StoredEntity[] => {
+  const raw = localStorage.getItem(key);
+  return raw ? JSON.parse(raw) : [];
+};
+
+const mergeUserOwnedItems = <T extends StoredEntity>(
+  sourceData: T[],
+  targetData: T[],
+  userId: string,
+) => {
+  const existingIds = new Set(targetData.map((d) => d.id));
+  const items = sourceData
+    .filter((d) => !existingIds.has(d.id))
+    .map((d) => ({ ...d, userId }));
+
+  return {
+    items,
+    merged: [...targetData, ...items],
+  };
+};
+
 export const migrateLegacyData = async (userId: string): Promise<boolean> => {
   if (!userId) return false;
   let hasChanges = false;
@@ -44,18 +67,15 @@ export const migrateLegacyData = async (userId: string): Promise<boolean> => {
 
       // 2. Read Target Data (User Key)
       const targetKey = `${key}_${userId}`;
-      const targetRaw = localStorage.getItem(targetKey);
-      let targetData = targetRaw ? JSON.parse(targetRaw) : [];
-
-      // 3. Merge (Avoid Duplicates by ID)
-      const existingIds = new Set(targetData.map((d: any) => d.id));
-      const itemsToMigrate = legacyData
-        .filter((d: any) => !existingIds.has(d.id))
-        .map((d: any) => ({ ...d, userId }));
+      const targetData = readStoredArray(targetKey);
+      const { items: itemsToMigrate, merged } = mergeUserOwnedItems(
+        legacyData,
+        targetData,
+        userId,
+      );
 
       if (itemsToMigrate.length > 0) {
-        targetData = [...targetData, ...itemsToMigrate];
-        localStorage.setItem(targetKey, JSON.stringify(targetData));
+        localStorage.setItem(targetKey, JSON.stringify(merged));
         hasChanges = true;
         logger.log(
           `Migrated ${itemsToMigrate.length} items from guest into account`,
@@ -126,17 +146,15 @@ export const importFromKey = (sourceKey: string, targetBaseKey: string) => {
   if (sourceKey === targetKey) return; // Already there
 
   try {
-    const sourceData = JSON.parse(localStorage.getItem(sourceKey) || "[]");
-    const targetRaw = localStorage.getItem(targetKey);
-    let targetData = targetRaw ? JSON.parse(targetRaw) : [];
-
-    const existingIds = new Set(targetData.map((d: any) => d.id));
-    const toImport = sourceData
-      .filter((d: any) => !existingIds.has(d.id))
-      .map((d: any) => ({ ...d, userId }));
+    const sourceData = readStoredArray(sourceKey);
+    const targetData = readStoredArray(targetKey);
+    const { items: toImport, merged } = mergeUserOwnedItems(
+      sourceData,
+      targetData,
+      userId,
+    );
 
     if (toImport.length > 0) {
-      const merged = [...targetData, ...toImport];
       localStorage.setItem(targetKey, JSON.stringify(merged));
       logger.log(`Rescued ${toImport.length} items from ${sourceKey}`);
       return true;

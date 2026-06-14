@@ -1,7 +1,8 @@
-import { ExclamationTriangleIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import type { Account, Pot, SavingPocket } from "../types";
 import { TransactionType } from "../types";
 import type { TransactionFormState, TransactionFormActions } from "./useTransactionFormState";
+import { TransactionFormPocketSelect } from "./TransactionFormPocketSelect";
 
 const currencySymbol = (c: string) => (c === "MYR" ? "RM" : "$");
 
@@ -129,36 +130,28 @@ const PocketDropdown: React.FC<{
 	form: TransactionFormState & TransactionFormActions;
 	pockets: SavingPocket[];
 	hint: string | null;
-}> = ({ form, pockets, hint }) => (
-	<div className="animate-fadeIn space-y-4">
-		<div>
-			<label className="text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-				<SparklesIcon className="w-3.5 h-3.5 text-indigo-400" />
-				<span>{pocketLabel(form.type)}</span>
-			</label>
-			<div className="relative">
-				<select
-					value={form.savingPocketId}
-					onChange={(e) => form.setSavingPocketId(e.target.value)}
-					className="w-full bg-surface border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-primary appearance-none transition-colors"
-				>
-					<option value="">No Pocket Selected</option>
-					{pockets
-						.filter((p) => !p.accountId || p.accountId === form.accountId)
-						.map((p) => (
-							<option key={p.id} value={p.id}>
-								{p.icon} {p.name} ({p.currency}{" "}
-								{p.currentAmount.toLocaleString()})
-							</option>
-						))}
-				</select>
-			</div>
+}> = ({ form, pockets, hint }) => {
+	const availablePockets = pockets.filter(
+		(p) => !p.accountId || p.accountId === form.accountId,
+	);
+
+	return (
+		<div className="animate-fadeIn space-y-4">
+			<TransactionFormPocketSelect
+				label={pocketLabel(form.type)}
+				value={form.savingPocketId}
+				pockets={availablePockets}
+				onChange={form.setSavingPocketId}
+				iconClassName="text-indigo-400"
+			/>
+			{hint && (
+				<p className="mt-1 text-[9px] text-indigo-400 font-medium italic">
+					{hint}
+				</p>
+			)}
 		</div>
-		{hint && (
-			<p className="mt-1 text-[9px] text-indigo-400 font-medium italic">{hint}</p>
-		)}
-	</div>
-);
+	);
+};
 
 export const TransactionFormAccountSection = ({
 	form,

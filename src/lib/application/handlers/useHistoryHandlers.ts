@@ -14,11 +14,7 @@ export function useHistoryHandlers(): HistoryHandlers {
     setShowAddModal: (b: boolean) => void;
     setEditingTransaction: (t: Transaction | null) => void;
   }>();
-  const accounts = useFinanceStore((s) => s.accounts);
-  const pots = useFinanceStore((s) => s.pots);
-  const pockets = useFinanceStore((s) => s.pockets);
-  const usdRate = useFinanceStore((s) => s.usdRate);
-  const transactions = useFinanceStore((s) => s.transactions);
+  const { accounts, pots, pockets, usdRate, transactions } = useFinanceStore();
 
   return {
     onAddTransaction: () => setShowAddModal(true),

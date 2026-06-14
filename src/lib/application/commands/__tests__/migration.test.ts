@@ -44,6 +44,27 @@ const v1Accounts = [
   },
 ];
 
+const prepareMigration = (
+  profile: unknown = v1Profile,
+  accounts: unknown[] = v1Accounts,
+  clientReady = true,
+) => {
+  vi.mocked(StorageService.getStoredProfile).mockReturnValue(profile as any);
+  useFinanceStore.setState({ accounts: accounts as any });
+  vi.mocked(SheetService.isClientReady).mockReturnValue(clientReady);
+};
+
+const expectNoMigrationWrites = () => {
+  expect(StorageService.saveAccounts).not.toHaveBeenCalled();
+  expect(StorageService.saveProfile).not.toHaveBeenCalled();
+  expect(SheetService.syncWithGoogleSheets).not.toHaveBeenCalled();
+};
+
+const expectLocalMigrationSaved = () => {
+  expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
+  expect(StorageService.saveProfile).toHaveBeenCalledTimes(1);
+};
+
 describe("runVaultSchemaMigration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,39 +85,30 @@ describe("runVaultSchemaMigration", () => {
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).not.toHaveBeenCalled();
-    expect(StorageService.saveProfile).not.toHaveBeenCalled();
-    expect(SheetService.syncWithGoogleSheets).not.toHaveBeenCalled();
+    expectNoMigrationWrites();
   });
 
   it("returns early when migration is not needed (clean v2 profile)", async () => {
     const cleanProfile = { ...baseProfile, schemaVersion: 2 };
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(cleanProfile as any);
-    useFinanceStore.setState({ accounts: [baseAccount] });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration(cleanProfile, [baseAccount]);
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).not.toHaveBeenCalled();
-    expect(StorageService.saveProfile).not.toHaveBeenCalled();
-    expect(SheetService.syncWithGoogleSheets).not.toHaveBeenCalled();
+    expectNoMigrationWrites();
   });
 
   it("strips vault fields, saves locally, then pushes to cloud", async () => {
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration();
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
+    expectLocalMigrationSaved();
     const savedAccounts = vi.mocked(StorageService.saveAccounts).mock.calls[0][0];
     expect(savedAccounts[0]).not.toHaveProperty("details");
     expect(savedAccounts[0]).not.toHaveProperty("isEncrypted");
     expect(savedAccounts[0]).not.toHaveProperty("cardNumber");
     expect(savedAccounts[0]).not.toHaveProperty("cvv");
 
-    expect(StorageService.saveProfile).toHaveBeenCalledTimes(1);
     const savedProfile = vi.mocked(StorageService.saveProfile).mock.calls[0][0];
     expect(savedProfile.schemaVersion).toBe(2);
     expect((savedProfile as any).totpSecret).toBeUndefined();
@@ -125,9 +137,7 @@ describe("runVaultSchemaMigration", () => {
       return Promise.resolve();
     });
 
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration();
 
     await runVaultSchemaMigration();
 
@@ -139,13 +149,11 @@ describe("runVaultSchemaMigration", () => {
   });
 
   it("self-heals: cleans cloud pollution re-introduced after first run", async () => {
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration();
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
+    expectLocalMigrationSaved();
     expect(SheetService.syncWithGoogleSheets).toHaveBeenCalledTimes(1);
 
     const pollutedProfile = {
@@ -154,21 +162,16 @@ describe("runVaultSchemaMigration", () => {
       totpSecret: "NEW_TOTP",
     };
     const pollutedAccounts = [{ ...baseAccount, cardNumber: "9999" }];
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(
-      pollutedProfile as any,
-    );
-    useFinanceStore.setState({ accounts: pollutedAccounts });
+    prepareMigration(pollutedProfile, pollutedAccounts);
     vi.clearAllMocks();
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
+    expectLocalMigrationSaved();
     const savedAccounts2 = vi.mocked(StorageService.saveAccounts).mock
       .calls[0][0];
     expect(savedAccounts2[0]).not.toHaveProperty("cardNumber");
 
-    expect(StorageService.saveProfile).toHaveBeenCalledTimes(1);
     const savedProfile2 = vi.mocked(StorageService.saveProfile).mock
       .calls[0][0];
     expect((savedProfile2 as any).totpSecret).toBeUndefined();
@@ -177,28 +180,20 @@ describe("runVaultSchemaMigration", () => {
 
   it("skips cloud push when profile is offlineMode", async () => {
     const offlineProfile = { ...v1Profile, offlineMode: true };
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(
-      offlineProfile as any,
-    );
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration(offlineProfile);
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
-    expect(StorageService.saveProfile).toHaveBeenCalledTimes(1);
+    expectLocalMigrationSaved();
     expect(SheetService.syncWithGoogleSheets).not.toHaveBeenCalled();
   });
 
   it("skips cloud push when Sheets client is not ready", async () => {
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(false);
+    prepareMigration(v1Profile, v1Accounts, false);
 
     await runVaultSchemaMigration();
 
-    expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
-    expect(StorageService.saveProfile).toHaveBeenCalledTimes(1);
+    expectLocalMigrationSaved();
     expect(SheetService.syncWithGoogleSheets).not.toHaveBeenCalled();
   });
 
@@ -206,20 +201,15 @@ describe("runVaultSchemaMigration", () => {
     vi.mocked(SheetService.syncWithGoogleSheets).mockRejectedValue(
       new Error("network"),
     );
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration();
 
     await expect(runVaultSchemaMigration()).resolves.toBeUndefined();
 
-    expect(StorageService.saveAccounts).toHaveBeenCalledTimes(1);
-    expect(StorageService.saveProfile).toHaveBeenCalledTimes(1);
+    expectLocalMigrationSaved();
   });
 
   it("updates the in-memory store with cleaned accounts", async () => {
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
-    useFinanceStore.setState({ accounts: v1Accounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration();
 
     await runVaultSchemaMigration();
 
@@ -230,12 +220,10 @@ describe("runVaultSchemaMigration", () => {
   });
 
   it("reads source data from the store, not from storage (store is authoritative)", async () => {
-    vi.mocked(StorageService.getStoredProfile).mockReturnValue(v1Profile as any);
     const storeAccounts = [
       { ...baseAccount, id: "store-id", cardNumber: "7777" },
     ];
-    useFinanceStore.setState({ accounts: storeAccounts });
-    vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+    prepareMigration(v1Profile, storeAccounts);
 
     await runVaultSchemaMigration();
 

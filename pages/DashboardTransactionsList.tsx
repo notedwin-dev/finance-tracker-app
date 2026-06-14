@@ -8,7 +8,7 @@ import {
 import { CategoryPieChart } from "../components/Charts";
 import { GroupedTransaction } from "../helpers/transactions.helper";
 import { Account, Category } from "../types";
-import { Currency, MaskAmount, MaskText, PieDatum } from "./DashboardTypes";
+import { CurrencyCode, MaskAmount, MaskText, PieDatum } from "./DashboardTypes";
 import { TransactionRow } from "./DashboardTransactionRow";
 
 type Props = {
@@ -16,7 +16,7 @@ type Props = {
 	sortedRecentTransactions: GroupedTransaction[];
 	categories: Category[];
 	accounts: Account[];
-	displayCurrency: Currency;
+	displayCurrency: CurrencyCode;
 	usdRate: number;
 	pieChartData: PieDatum[];
 	maskAmount: MaskAmount;

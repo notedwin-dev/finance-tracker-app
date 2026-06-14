@@ -16,28 +16,39 @@ const tx = (overrides: Partial<Transaction> = {}): Transaction => ({
 	...overrides,
 } as Transaction);
 
+const linkedTransfer = (overrides: Partial<Transaction> = {}): Transaction =>
+	tx({
+		id: "1",
+		type: TransactionType.TRANSFER,
+		transferDirection: "OUT",
+		linkedTransactionId: "linked",
+		...overrides,
+	});
+
+const expectFilteredIds = (
+	transactions: Transaction[],
+	accountId: string,
+	expectedIds: string[],
+): Transaction[] => {
+	const result = filterTransactionsForAccount(transactions, accountId);
+	expect(result.map((t) => t.id)).toEqual(expectedIds);
+	return result;
+};
+
 describe("filterTransactionsForAccount", () => {
 	it("includes transactions where accountId matches", () => {
 		const txs = [tx({ id: "1", accountId: "a1" }), tx({ id: "2", accountId: "a2" })];
-		const result = filterTransactionsForAccount(txs, "a1");
-		expect(result).toHaveLength(1);
-		expect(result[0].id).toBe("1");
+		expectFilteredIds(txs, "a1", ["1"]);
 	});
 
 	it("includes transfers where toAccountId matches", () => {
 		const txs = [
-			tx({
-				id: "1",
+			linkedTransfer({
 				accountId: "a2",
 				toAccountId: "a1",
-				type: TransactionType.TRANSFER,
-				transferDirection: "OUT",
-				linkedTransactionId: "linked",
 			}),
 		];
-		const result = filterTransactionsForAccount(txs, "a1");
-		expect(result).toHaveLength(1);
-		expect(result[0].id).toBe("1");
+		expectFilteredIds(txs, "a1", ["1"]);
 	});
 
 	it("synthesizes IN record for legacy single-record transfer where toAccountId matches", () => {
@@ -90,18 +101,12 @@ describe("filterTransactionsForAccount", () => {
 
 	it("ignores non-legacy transfers with direction and linkedTransactionId", () => {
 		const txs = [
-			tx({
-				id: "1",
+			linkedTransfer({
 				accountId: "a1",
 				toAccountId: "a2",
-				type: TransactionType.TRANSFER,
-				transferDirection: "OUT",
-				linkedTransactionId: "linked",
 			}),
 		];
-		const result = filterTransactionsForAccount(txs, "a1");
-		expect(result).toHaveLength(1);
-		expect(result[0].id).toBe("1");
+		expectFilteredIds(txs, "a1", ["1"]);
 	});
 
 	it("excludes transactions for unrelated accounts", () => {

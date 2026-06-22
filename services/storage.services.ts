@@ -549,12 +549,12 @@ export const saveProfile = (profile: UserProfile) => {
     devices,
     privacyMode,
     ...pureProfile
-  } = profile;
+  } = profile as any;
 
   localStorage.setItem(KEYS.PROFILE, JSON.stringify(pureProfile));
 
   // Save security settings separately
-  const securitySettings: UserCloudSettings = {
+  const securitySettings = {
     isVaultEnabled,
     isVaultCreated,
     isVaultLocked,

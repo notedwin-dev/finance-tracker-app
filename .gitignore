@@ -10,3 +10,5 @@ docs/
 .codegraph/
 .hooks/
 .opencode/
+opencode-power-pack/
+agent/

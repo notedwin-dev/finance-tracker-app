@@ -23,7 +23,7 @@ const DISCOVERY_DOCS = [
 ];
 
 const getApiKey = () =>
-	import.meta.env?.VITE_GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY;
+	process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
 
 let gapiInited = false;
 let gapiInitializing = false;
@@ -270,7 +270,7 @@ const getSheetNames = async (
 	}
 };
 
-export const findUser = async (email: string) => {
+export const findUser = async (email: string): Promise<any> => {
 	if (!gapiInited || !hasAccessToken) return null;
 	try {
 		const fileId = await getSpreadsheetId();
@@ -457,7 +457,7 @@ export const createUser = async (userData: any) => {
 	}
 };
 
-export const updateUser = async (email: string, updates: any) => {
+export const updateUser = async (email: string, updates: any): Promise<boolean> => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
 		console.log("📝 updateUser called with:", { email, updates });

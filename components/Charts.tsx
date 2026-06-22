@@ -263,7 +263,7 @@ export const NetWorthChart: React.FC<Props> = ({
             size: 10,
           },
           callback: function (val: any, index: number) {
-            const labels = this.getLabelForValue(val) as string;
+            const labels = (this as any).getLabelForValue(val) as string;
             if (!labels) return "";
             const [y, m, d] = labels.split("-").map(Number);
             const dateObj = new Date(y, m - 1, d);

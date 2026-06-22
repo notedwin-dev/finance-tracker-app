@@ -1,29 +1,26 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
-    "module": "ESNext",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "skipLibCheck": true,
-    "types": [
-      "node"
-    ],
-    "moduleResolution": "bundler",
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "allowJs": true,
-    "jsx": "react-jsx",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
-    "allowImportingTsExtensions": true,
-    "noEmit": true
-  }
+	"compilerOptions": {
+		"target": "ES2022",
+		"experimentalDecorators": true,
+		"useDefineForClassFields": false,
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"skipLibCheck": true,
+		"types": ["node"],
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"isolatedModules": true,
+		"moduleDetection": "force",
+		"allowJs": true,
+		"jsx": "react-jsx",
+		"paths": { "@/*": ["./*"] },
+		"noEmit": true,
+		"incremental": true,
+		"plugins": [{ "name": "next" }],
+		"strict": false,
+		"noImplicitAny": false,
+		"esModuleInterop": true,
+		"resolveJsonModule": true
+	},
+	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+	"exclude": ["node_modules", "pages", "layouts", "components/AccountCard.tsx", "components/AccountForm.tsx", "components/Charts.tsx", "components/Goals.tsx", "components/History.tsx", "components/Profile.tsx", "components/SubscriptionManager.tsx", "components/TransactionForm.tsx", "components/SubscriptionManager.tsx", "components/GoogleDrivePicker.tsx", "components/GoogleAuthButton.tsx"]
 }

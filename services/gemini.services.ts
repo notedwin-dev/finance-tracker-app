@@ -11,7 +11,7 @@ import {
 } from "../types";
 
 const BACKEND_URL =
-	import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3001";
+	process.env.NEXT_PUBLIC_BACKEND_API_URL || "http://localhost:3001";
 
 const normalizeApiKey = (rawKey?: string): string => {
 	if (!rawKey) return "";
@@ -36,7 +36,7 @@ const resolveApiKey = (apiKey?: string): string => {
 		return userKey;
 	}
 
-	const envKey = normalizeApiKey(import.meta.env.VITE_GEMINI_API_KEY);
+	const envKey = normalizeApiKey(process.env.NEXT_PUBLIC_GEMINI_API_KEY);
 	if (envKey && !isPlaceholderApiKey(envKey)) {
 		return envKey;
 	}
@@ -368,7 +368,7 @@ export const streamFinancialAdvice = async (
 			history: contents.slice(0, -1),
 			config: {
 				systemInstruction: systemInstruction,
-				tools: [assistantTools],
+				tools: [assistantTools as any],
 			},
 		});
 
@@ -471,7 +471,7 @@ export const generateChatTitle = async (
 			contents: prompt,
 		});
 		const text = result.text;
-		return text.replace(/"/g, "").trim() || "New Chat";
+		return (text ?? "").replace(/"/g, "").trim() || "New Chat";
 	} catch (e) {
 		if (isInvalidApiKeyError(e)) {
 			try {

@@ -34,7 +34,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const BACKEND_URL =
-	import.meta.env.VITE_BACKEND_API_URL || "";
+	process.env.NEXT_PUBLIC_BACKEND_API_URL || "";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	children,
@@ -98,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		initAuth();
 	}, []);
 
-	const handleGoogleSuccess = async ({ code }) => {
+	const handleGoogleSuccess = async ({ code }: { code: string }) => {
 		setIsAuthLoading(true);
 		setAuthStatus("Exchanging code for tokens...");
 		try {

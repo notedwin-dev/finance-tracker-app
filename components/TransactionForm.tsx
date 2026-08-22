@@ -220,6 +220,13 @@ const TransactionForm: React.FC<Props> = ({
 	};
 
 	const filteredPots = pots.filter((p) => p.accountId === accountId);
+
+	const toCents = (v: any) => Math.round((parseFloat(v) || 0) * 100);
+	const breakdownCents = breakdownItems.reduce(
+		(s, i) => s + toCents(i.amount),
+		0,
+	);
+	const remainingCents = toCents(amount || "0") - breakdownCents;
 	const selectedPot = filteredPots.find((p) => p.id === potId);
 	const isPotLow =
 		selectedPot &&
@@ -278,17 +285,11 @@ const TransactionForm: React.FC<Props> = ({
 			return;
 		}
 
-		if (breakdownEnabled) {
-			const breakdownTotal = breakdownItems.reduce(
-				(sum, item) => sum + (parseFloat(item.amount) || 0),
-				0,
+		if (breakdownEnabled && remainingCents < 0) {
+			setValidationError(
+				`Breakdown total (${(breakdownCents / 100).toFixed(2)}) exceeds total amount (${(toCents(amount) / 100).toFixed(2)})`,
 			);
-			if (breakdownTotal > parseFloat(amount)) {
-				setValidationError(
-					`Breakdown total (${breakdownTotal.toFixed(2)}) exceeds total amount (${parseFloat(amount).toFixed(2)})`,
-				);
-				return;
-			}
+			return;
 		}
 
 		setIsSubmitting(true);
@@ -1040,12 +1041,11 @@ const TransactionForm: React.FC<Props> = ({
 												Allocated
 											</span>
 											<span className="text-xs font-mono font-bold text-indigo-400">
-												{currency === "MYR" ? "RM" : "$"}{" "}
-												{breakdownItems
-													.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
-													.toLocaleString(undefined, {
-														minimumFractionDigits: 2,
-													})}
+											{currency === "MYR" ? "RM" : "$"}{" "}
+											{(breakdownCents / 100).toLocaleString(undefined, {
+												minimumFractionDigits: 2,
+												maximumFractionDigits: 2,
+											})}
 											</span>
 										</div>
 
@@ -1053,29 +1053,19 @@ const TransactionForm: React.FC<Props> = ({
 											<span className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-0.5">
 												Remaining
 											</span>
-											<span
-												className={`text-xs font-mono font-bold ${
-													parseFloat(amount || "0") -
-														breakdownItems.reduce(
-															(s, i) => s + (parseFloat(i.amount) || 0),
-															0,
-														) <
-													0
-														? "text-red-500"
-														: "text-gray-400"
-												}`}
-											>
-												{currency === "MYR" ? "RM" : "$"}{" "}
-												{(
-													parseFloat(amount || "0") -
-													breakdownItems.reduce(
-														(s, i) => s + (parseFloat(i.amount) || 0),
-														0,
-													)
-												).toLocaleString(undefined, {
-													minimumFractionDigits: 2,
-												})}
-											</span>
+										<span
+											className={`text-xs font-mono font-bold ${
+												remainingCents < 0
+													? "text-red-500"
+													: "text-gray-400"
+											}`}
+										>
+											{currency === "MYR" ? "RM" : "$"}{" "}
+											{(remainingCents / 100).toLocaleString(undefined, {
+												minimumFractionDigits: 2,
+												maximumFractionDigits: 2,
+											})}
+										</span>
 										</div>
 									</div>
 								)}

@@ -22,8 +22,7 @@ const DISCOVERY_DOCS = [
 	"https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ];
 
-const getApiKey = () =>
-  import.meta.env?.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY;
+const getApiKey = () => import.meta.env.VITE_GOOGLE_API_KEY;
 
 let gapiInited = false;
 let gapiInitializing = false;

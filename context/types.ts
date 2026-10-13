@@ -91,6 +91,10 @@ export interface DataContextType {
   handleSaveChatSession: (session: ChatSession) => void;
   handleDeleteChatSession: (id: string) => void;
   handleMigrateData: () => Promise<void>;
+  handleRestoreBackup: (
+    backup: any,
+    mode?: "merge" | "replace",
+  ) => Promise<void>;
   handleResetAndSync: () => Promise<void>;
   recalculateBalances: (
     startDateArg?: string | any,

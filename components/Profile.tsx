@@ -20,6 +20,8 @@ import {
 	TagIcon,
 	CalendarDaysIcon,
 	DocumentArrowDownIcon,
+	DocumentArrowUpIcon,
+	ArrowUpTrayIcon,
 	SparklesIcon,
 	LockClosedIcon,
 	FingerPrintIcon,
@@ -44,6 +46,10 @@ interface Props {
 	onManageCategories?: () => void;
 	onManageSubscriptions?: () => void;
 	onExport?: (startDate?: string, endDate?: string) => void;
+	onImportBackup?: (
+		backup: any,
+		mode: "merge" | "replace",
+	) => Promise<void>;
 	onMigrate?: () => void;
 	onSync?: () => void;
 	onUnlinkCloud?: () => void;
@@ -60,6 +66,7 @@ const Profile: React.FC<Props> = ({
 	onManageCategories,
 	onManageSubscriptions,
 	onExport,
+	onImportBackup,
 	onMigrate,
 	onSync,
 	onUnlinkCloud,
@@ -97,6 +104,12 @@ const Profile: React.FC<Props> = ({
 	const [vaultError, setVaultError] = useState("");
 	const [isSyncingLocal, setIsSyncingLocal] = useState(false);
 	const [showExportModal, setShowExportModal] = useState(false);
+	const [showImportModal, setShowImportModal] = useState(false);
+	const [importPreview, setImportPreview] = useState<any>(null);
+	const [importFileName, setImportFileName] = useState("");
+	const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
+	const [importError, setImportError] = useState("");
+	const [isImporting, setIsImporting] = useState(false);
 	const [exportStartDate, setExportStartDate] = useState("");
 	const [exportEndDate, setExportEndDate] = useState("");
 	const [confirmationModal, setConfirmationModal] = useState<{
@@ -328,6 +341,184 @@ const Profile: React.FC<Props> = ({
 							Reset Filters
 						</button>
 					</div>
+				</div>
+			</Modal>
+
+			{/* Import Backup Modal */}
+			<Modal
+				isOpen={showImportModal}
+				onClose={() => setShowImportModal(false)}
+				title="Import Backup"
+				maxWidth="max-w-sm"
+			>
+				<div className="space-y-5">
+					{!importPreview ? (
+						<label className="border-2 border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
+							<ArrowUpTrayIcon className="w-8 h-8 text-primary" />
+							<p className="text-white font-bold text-sm">
+								Select a backup JSON file
+							</p>
+							<p className="text-gray-500 text-[11px]">
+								Created via Export Backup on any device
+							</p>
+							<input
+								type="file"
+								accept="application/json,.json"
+								className="hidden"
+								onChange={(e) => {
+									const file = e.target.files?.[0];
+									if (!file) return;
+									const reader = new FileReader();
+									reader.onload = () => {
+										try {
+											const parsed = JSON.parse(reader.result as string);
+											const count = (arr: any) =>
+												Array.isArray(arr) ? arr.length : 0;
+											const total =
+												count(parsed.accounts) +
+												count(parsed.transactions) +
+												count(parsed.categories) +
+												count(parsed.goals) +
+												count(parsed.subscriptions) +
+												count(parsed.pots) +
+												count(parsed.pockets);
+											if (total === 0) {
+												setImportError(
+													"No ZenFinance data found in this file.",
+												);
+												return;
+											}
+											setImportError("");
+											setImportPreview(parsed);
+											setImportFileName(file.name);
+										} catch (err) {
+											setImportError(
+												"Could not read file. Please select a valid ZenFinance backup JSON.",
+											);
+										}
+									};
+									reader.readAsText(file);
+									e.target.value = "";
+								}}
+							/>
+						</label>
+					) : (
+						<div className="space-y-4">
+							<div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+								<p className="text-white font-bold text-sm truncate">
+									{importFileName}
+								</p>
+								<p className="text-gray-500 text-[10px] uppercase font-black tracking-widest">
+									{importPreview.exportedAt
+										? `Exported ${new Date(importPreview.exportedAt).toLocaleString()}`
+										: "Unknown export date"}
+								</p>
+								<div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-2">
+									{[
+										["Accounts", importPreview.accounts],
+										["Transactions", importPreview.transactions],
+										["Categories", importPreview.categories],
+										["Goals", importPreview.goals],
+										["Subscriptions", importPreview.subscriptions],
+										["Pots", importPreview.pots],
+										["Pockets", importPreview.pockets],
+										["Chats", importPreview.chatSessions],
+									].map(([label, items]) => (
+										<div
+											key={label as string}
+											className="flex justify-between text-[11px] font-bold"
+										>
+											<span className="text-gray-500">{label}</span>
+											<span className="text-white">
+												{Array.isArray(items) ? items.length : 0}
+											</span>
+										</div>
+									))}
+								</div>
+							</div>
+
+							<div className="space-y-2">
+								<label className="flex items-start gap-3 p-3 bg-white/5 border border-white/10 rounded-xl cursor-pointer">
+									<input
+										type="radio"
+										checked={importMode === "merge"}
+										onChange={() => setImportMode("merge")}
+										className="mt-0.5 w-4 h-4 text-primary bg-black/40 border-white/10"
+									/>
+									<span>
+										<span className="text-sm font-bold text-white block">
+											Merge with current data
+										</span>
+										<span className="text-[11px] text-gray-500 font-medium">
+											Recommended. Adds missing items and keeps the newest
+											version of anything that exists in both.
+										</span>
+									</span>
+								</label>
+								<label className="flex items-start gap-3 p-3 bg-white/5 border border-white/10 rounded-xl cursor-pointer">
+									<input
+										type="radio"
+										checked={importMode === "replace"}
+										onChange={() => setImportMode("replace")}
+										className="mt-0.5 w-4 h-4 text-rose-500 bg-black/40 border-white/10"
+									/>
+									<span>
+										<span className="text-sm font-bold text-rose-300 block">
+											Replace all current data
+										</span>
+										<span className="text-[11px] text-gray-500 font-medium">
+											Wipes current accounts, transactions and settings,
+											then restores exactly what is in the file.
+										</span>
+									</span>
+								</label>
+							</div>
+
+							<button
+								onClick={async () => {
+									if (!onImportBackup || !importPreview) return;
+									setIsImporting(true);
+									setImportError("");
+									try {
+										await onImportBackup(importPreview, importMode);
+										setImportPreview(null);
+										setImportFileName("");
+										setShowImportModal(false);
+									} catch (err: any) {
+										setImportError(
+											err.message || "Failed to restore backup.",
+										);
+									} finally {
+										setIsImporting(false);
+									}
+								}}
+								disabled={isImporting}
+								className="w-full py-4 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+							>
+								{isImporting ? (
+									<ArrowPathIcon className="w-4 h-4 animate-spin" />
+								) : (
+									<DocumentArrowUpIcon className="w-4 h-4" />
+								)}
+								{importMode === "merge" ? "Merge Backup" : "Replace Everything"}
+							</button>
+							<button
+								onClick={() => {
+									setImportPreview(null);
+									setImportError("");
+								}}
+								className="w-full py-2 text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors"
+							>
+								Choose a different file
+							</button>
+						</div>
+					)}
+
+					{importError && (
+						<p className="text-[11px] text-rose-300 font-bold bg-rose-500/10 border border-rose-500/20 rounded-xl p-3">
+							{importError}
+						</p>
+					)}
 				</div>
 			</Modal>
 
@@ -1217,6 +1408,21 @@ const Profile: React.FC<Props> = ({
 							onClick={() => setShowExportModal(true)}
 							color="text-gray-400"
 						/>
+						{onImportBackup && (
+							<SettingItem
+								icon={DocumentArrowUpIcon}
+								label="Import Backup"
+								description="Restore data from a backup JSON"
+								onClick={() => {
+									setImportPreview(null);
+									setImportFileName("");
+									setImportError("");
+									setImportMode("merge");
+									setShowImportModal(true);
+								}}
+								color="text-indigo-400"
+							/>
+						)}
 						<SettingItem
 							icon={CalculatorIcon}
 							label="Recalculate Balances"

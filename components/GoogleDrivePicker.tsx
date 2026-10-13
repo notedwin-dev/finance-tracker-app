@@ -31,12 +31,12 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
 
   if (!clientId || !apiKey) {
     console.error(
-      "GoogleDrivePicker: Missing VITE_GOOGLE_CLIENT_ID or VITE_GOOGLE_API_KEY",
+      'GoogleDrivePicker: Missing VITE_GOOGLE_CLIENT_ID or VITE_GOOGLE_API_KEY',
     );
   }
   if (!appId) {
     console.warn(
-      "GoogleDrivePicker: Missing VITE_GOOGLE_APP_ID - this may cause integration issues",
+      'GoogleDrivePicker: Missing VITE_GOOGLE_APP_ID - this may cause integration issues',
     );
   }
 
@@ -44,20 +44,20 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
     const data = e.detail;
     if (data.docs && data.docs.length > 0) {
       const fileId = data.docs[0].id;
-      console.log("User selected spreadsheet via picker:", fileId);
+      console.log('User selected spreadsheet via picker:', fileId);
       onPicked(fileId);
     }
     setIsPickerOpen(false);
   };
 
   const handleCanceled = () => {
-    console.log("Drive picker canceled");
+    console.log('Drive picker canceled');
     onCancel?.();
     setIsPickerOpen(false);
   };
 
   const handleOauthError = (e: CustomEvent) => {
-    console.error("OAuth error in Drive Picker:", e.detail);
+    console.error('OAuth error in Drive Picker:', e.detail);
     setIsPickerOpen(false);
   };
 
@@ -65,7 +65,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
     if (!disabled && clientId && apiKey) {
       setIsPickerOpen(true);
     } else {
-      console.error("Drive Picker: Missing clientId or apiKey");
+      console.error('Drive Picker: Missing clientId or apiKey');
     }
   };
 
@@ -74,8 +74,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
       {children ? (
         <div
           onClick={openPicker}
-          style={{ cursor: disabled ? "not-allowed" : "pointer" }}
-        >
+          style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}>
           {children}
         </div>
       ) : null}
@@ -87,8 +86,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({
           developer-key={apiKey}
           onPicked={handlePicked}
           onCanceled={handleCanceled}
-          onOauthError={handleOauthError}
-        >
+          onOauthError={handleOauthError}>
           <DrivePickerDocsView
             mime-types="application/vnd.google-apps.spreadsheet"
             mode="list"
@@ -123,7 +121,7 @@ export const useGoogleDrivePicker = () => {
     const data = e.detail;
     if (data.docs && data.docs.length > 0) {
       const fileId = data.docs[0].id;
-      console.log("User selected spreadsheet via picker:", fileId);
+      console.log('User selected spreadsheet via picker:', fileId);
       pickerCallback?.(fileId);
     } else {
       pickerCallback?.(null);
@@ -133,7 +131,7 @@ export const useGoogleDrivePicker = () => {
   };
 
   const handleCanceled = () => {
-    console.log("Drive picker canceled");
+    console.log('Drive picker canceled');
     pickerCallback?.(null);
     setIsPickerOpen(false);
     setPickerCallback(null);
@@ -148,12 +146,11 @@ export const useGoogleDrivePicker = () => {
         onPicked={handlePicked}
         onCanceled={handleCanceled}
         onOauthError={(e) => {
-          console.error("OAuth error:", e.detail);
+          console.error('OAuth error:', e.detail);
           pickerCallback?.(null);
           setIsPickerOpen(false);
           setPickerCallback(null);
-        }}
-      >
+        }}>
         <DrivePickerDocsView
           mime-types="application/vnd.google-apps.spreadsheet"
           mode="list"

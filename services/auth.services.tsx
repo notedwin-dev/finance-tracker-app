@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { useGoogleLogin, googleLogout } from "@react-oauth/google";
+import { useGoogleLogin, googleLogout } from '@react-oauth/google';
 import * as SheetService from "./sheets.services";
 import * as StorageService from "./storage.services";
 import { UserProfile } from "../types";
@@ -98,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		initAuth();
 	}, []);
 
-	const handleGoogleSuccess = async ({ code }) => {
+	const handleGoogleSuccess = async ({ code }: { code: string }) => {
 		setIsAuthLoading(true);
 		setAuthStatus("Exchanging code for tokens...");
 		try {

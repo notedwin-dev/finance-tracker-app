@@ -1,6 +1,6 @@
 /**
  * CLOUDPATCH: Recalculate balances using app services.
- * Run with: VITE_GOOGLE_API_KEY=... GOOGLE_ACCESS_TOKEN=... npx tsx patch_sheets.ts
+ * Run with: GOOGLE_API_KEY=... GOOGLE_ACCESS_TOKEN=... npx tsx patch_sheets.ts
  */
 
 import * as sheetsService from "./services/sheets.services.ts";
@@ -94,8 +94,8 @@ if (!ACCESS_TOKEN) {
 async function run() {
   console.log("--- Initializing Service ---");
   // Set dummy API key to bypass check if not provided
-  if (!process.env.VITE_GOOGLE_API_KEY) {
-    process.env.VITE_GOOGLE_API_KEY = "dummy-key-for-patch";
+  if (!process.env.GOOGLE_API_KEY) {
+    process.env.GOOGLE_API_KEY = "dummy-key-for-patch";
   }
 
   await sheetsService.initGapiClient();

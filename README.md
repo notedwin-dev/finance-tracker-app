@@ -54,14 +54,14 @@ ZenFinance is built with a **Privacy-First** mindset:
    Create a `.env` file in the root directory (refer to `.env.sample`):
 
    ```env
-   VITE_GOOGLE_API_KEY=your_google_cloud_project_api_key
+   GOOGLE_API_KEY=your_google_cloud_project_api_key
    VITE_GEMINI_API_KEY=your_gemini_api_key
    VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
    VITE_BACKEND_API_URL=http://localhost:3001
    ```
 
-   - `VITE_GOOGLE_API_KEY`: Required for Google Sheets / Drive API integration.
-   - `VITE_GEMINI_API_KEY`: Use this for Gemini AI requests. You can get one for free at [https://aistudio.google.com/api-keys](https://aistudio.google.com/api-keys). If not provided, it will fallback to `VITE_GOOGLE_API_KEY` which could potentially bill you since the keys generated for `VITE_GOOGLE_API_KEY` will be linked to a billing account, turning the project linked API key into a `Tier 1` paid plan.
+   - `GOOGLE_API_KEY`: Required for Google Sheets / Drive API integration.
+   - `VITE_GEMINI_API_KEY`: Use this for Gemini AI requests. You can get one for free at [https://aistudio.google.com/api-keys](https://aistudio.google.com/api-keys). If not provided, it will fallback to `GOOGLE_API_KEY` which could potentially bill you since the keys generated for `GOOGLE_API_KEY` will be linked to a billing account, turning the project linked API key into a `Tier 1` paid plan.
    - `VITE_GOOGLE_CLIENT_ID`: You will need this for syncing your local data into cloud (Google Spreadsheets).
    - `VITE_BACKEND_API_URL`: You have to clone the [Backend repository](https://github.com/notedwin-dev/finance-tracker-app-backend) and host it with Vercel or your preferred self-hosting providers to get this Backend URL. If you're hosting it on your own local machine, the URL will be `https://localhost:3001`
 

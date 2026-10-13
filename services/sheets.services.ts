@@ -22,8 +22,7 @@ const DISCOVERY_DOCS = [
 	"https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ];
 
-const getApiKey = () =>
-  import.meta.env?.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY;
+const getApiKey = () => import.meta.env.VITE_GOOGLE_API_KEY;
 
 let gapiInited = false;
 let gapiInitializing = false;
@@ -588,11 +587,12 @@ export const updateUser = async (email: string, updates: any) => {
 };
 
 export const saveToSheet = async (sheetName: string, data: any[]) => {
-	if (!gapiInited || !hasAccessToken) return;
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
 
 	try {
 		const fileId = await getSpreadsheetId();
-		if (!fileId) return;
+		if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 		// Check if sheet exists
 		const existingSheets = await getSheetNames(fileId);
@@ -805,14 +805,16 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 			clearGapiAccessToken();
 		}
 		console.error(`Error saving ${sheetName}`, err);
+		throw err;
 	}
 };
 
 export const insertOne = async (sheetName: string, item: any) => {
-	if (!gapiInited || !hasAccessToken) return;
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
 
 	const fileId = await getSpreadsheetId();
-	if (!fileId) return;
+	if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 	// 1. Get Headers to ensure column alignment
 	let headers: string[] = [];
@@ -825,8 +827,14 @@ export const insertOne = async (sheetName: string, item: any) => {
 		if (rows && rows.length > 0) {
 			headers = rows[0];
 		}
-	} catch (e) {
-		/* ignore */
+	} catch (e: any) {
+		// A missing tab is reported as an unparseable range by the Sheets API.
+		if (
+			(e?.status ?? e?.result?.error?.code) !== 400 ||
+			!e?.result?.error?.message?.startsWith("Unable to parse range:")
+		) {
+			throw e;
+		}
 	}
 
 	// If no headers, we must initialize the sheet (fallback to saveToSheet)
@@ -855,6 +863,7 @@ export const insertOne = async (sheetName: string, item: any) => {
 		console.log(`Inserted row into ${sheetName}`);
 	} catch (e) {
 		console.error(`Error inserting into ${sheetName}`, e);
+		throw e;
 	}
 };
 

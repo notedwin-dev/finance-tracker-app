@@ -6,6 +6,7 @@ import {
   TableCellsIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
+  ExclamationTriangleIcon,
   XMarkIcon,
   ArrowPathIcon,
   SparklesIcon,
@@ -13,8 +14,13 @@ import {
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import { parseBankStatement } from "../services/gemini.services";
+import {
+  runImportMatching,
+  MatchVerdict,
+} from "../services/importMatcher.services";
 import { Transaction, TransactionType } from "../types";
 import { useAuth } from "../services/auth.services";
+import { useData } from "../context/DataContext";
 
 interface Props {
   isOpen: boolean;
@@ -33,6 +39,7 @@ const BulkImportModal: React.FC<Props> = ({
   onImport,
 }) => {
   const { profile } = useAuth();
+  const { transactions } = useData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -44,24 +51,96 @@ const BulkImportModal: React.FC<Props> = ({
   >([]);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [matchResults, setMatchResults] = useState<Map<number, MatchVerdict>>(
+    new Map(),
+  );
+  const [isMatching, setIsMatching] = useState(false);
+  const matchingRunRef = useRef(0);
+  const [includedOverride, setIncludedOverride] = useState<
+    Map<number, boolean>
+  >(new Map());
+
+  const isIncluded = (idx: number): boolean => {
+    if (includedOverride.has(idx)) return includedOverride.get(idx)!;
+    const v = matchResults.get(idx);
+    return v?.verdict !== "DUPLICATE" && v?.verdict !== "RELATED";
+  };
+
+  const includedCount = parsedTransactions.reduce(
+    (sum, _, idx) => sum + (isIncluded(idx) ? 1 : 0),
+    0,
+  );
+  const duplicateCount = parsedTransactions.length - includedCount;
+
+  const findExistingMatch = (id?: string) =>
+    id ? transactions.find((t) => t.id === id) : undefined;
 
   const reset = () => {
+    matchingRunRef.current += 1;
     setFile(null);
     setIsParsing(false);
     setError(null);
     setParsedTransactions([]);
     setIsFinalizing(false);
     setEditingIdx(null);
+    setMatchResults(new Map());
+    setIsMatching(false);
+    setIncludedOverride(new Map());
+  };
+
+  const runMatching = async (results: Partial<Transaction>[]) => {
+    const runId = ++matchingRunRef.current;
+    setIsMatching(true);
+    try {
+      const verdicts = await runImportMatching(
+        profile.geminiApiKey || "",
+        results as any,
+        transactions,
+        accountId,
+      );
+      if (runId !== matchingRunRef.current) return;
+      setMatchResults(verdicts);
+    } catch (err) {
+      if (runId !== matchingRunRef.current) return;
+      console.error("Duplicate check failed:", err);
+    } finally {
+      if (runId === matchingRunRef.current) setIsMatching(false);
+    }
   };
 
   const updateTransaction = (idx: number, updates: Partial<Transaction>) => {
+    matchingRunRef.current += 1;
+    setIsMatching(false);
     setParsedTransactions((prev) =>
       prev.map((tx, i) => (i === idx ? { ...tx, ...updates } : tx)),
     );
+    // A manual edit invalidates the AI verdict for this row
+    if (matchResults.has(idx)) {
+      const next = new Map(matchResults);
+      next.delete(idx);
+      setMatchResults(next);
+    }
+    if (includedOverride.has(idx)) {
+      const next = new Map(includedOverride);
+      next.delete(idx);
+      setIncludedOverride(next);
+    }
   };
 
   const removeTransaction = (idx: number) => {
+    matchingRunRef.current += 1;
+    setIsMatching(false);
     setParsedTransactions((prev) => prev.filter((_, i) => i !== idx));
+    const shift = (m: Map<number, any>) => {
+      const next = new Map<number, any>();
+      m.forEach((v, k) => {
+        if (k === idx) return;
+        next.set(k > idx ? k - 1 : k, v);
+      });
+      return next;
+    };
+    setMatchResults((m) => shift(m));
+    setIncludedOverride((m) => shift(m));
     if (editingIdx === idx) setEditingIdx(null);
     else if (editingIdx !== null && editingIdx > idx)
       setEditingIdx(editingIdx - 1);
@@ -90,6 +169,9 @@ const BulkImportModal: React.FC<Props> = ({
   const handleStartParsing = async () => {
     if (!file) return;
 
+    matchingRunRef.current += 1;
+    setIsMatching(false);
+    setMatchResults(new Map());
     setIsParsing(true);
     setError(null);
 
@@ -101,6 +183,9 @@ const BulkImportModal: React.FC<Props> = ({
         file.type,
       );
       setParsedTransactions(results);
+      if (results.length > 0) {
+        runMatching(results);
+      }
     } catch (err: any) {
       console.error(err);
       setError(
@@ -115,9 +200,17 @@ const BulkImportModal: React.FC<Props> = ({
   const handleConfirmImport = async () => {
     if (parsedTransactions.length === 0) return;
 
+    const toImport = parsedTransactions.filter((_, idx) => isIncluded(idx));
+    if (toImport.length === 0) {
+      setError(
+        "All parsed transactions are marked as duplicates. Use \"Import anyway\" to import them regardless.",
+      );
+      return;
+    }
+
     setIsFinalizing(true);
     try {
-      await onImport(parsedTransactions, isHistorical);
+      await onImport(toImport, isHistorical);
       reset();
       onClose();
     } catch (err: any) {
@@ -223,6 +316,31 @@ const BulkImportModal: React.FC<Props> = ({
               </button>
             </div>
 
+            {(isMatching || matchResults.size > 0) && (
+              <div
+                className={`rounded-2xl p-4 border text-[11px] font-bold leading-relaxed ${
+                  isMatching
+                    ? "bg-primary/5 border-primary/20 text-primary"
+                    : "bg-white/5 border-white/10 text-gray-400"
+                }`}
+              >
+                {isMatching ? (
+                  <span className="flex items-center gap-2">
+                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    Cross-checking against your transaction history (reference
+                    dates, keywords, amounts)...
+                  </span>
+                ) : (
+                  <span>
+                    {duplicateCount} duplicate/related will be skipped •{" "}
+                    {includedCount} will be imported. Duplicates are matched by
+                    reference-number dates, merchant keywords and amount; related
+                    matches need your confirmation.
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="max-h-75 overflow-y-auto space-y-3 pr-2 scrollbar-thin scrollbar-thumb-white/10">
               {parsedTransactions.map((tx, idx) => (
                 <div
@@ -325,6 +443,7 @@ const BulkImportModal: React.FC<Props> = ({
                       <div className="flex justify-end gap-2 pt-1 border-t border-white/10">
                         <button
                           onClick={() => removeTransaction(idx)}
+                          disabled={isMatching}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors text-[10px] font-black uppercase tracking-widest"
                         >
                           <TrashIcon className="w-3.5 h-3.5" />
@@ -332,6 +451,7 @@ const BulkImportModal: React.FC<Props> = ({
                         </button>
                         <button
                           onClick={() => setEditingIdx(null)}
+                          disabled={isMatching}
                           className="px-4 py-1.5 rounded-lg bg-primary text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
                         >
                           Save Changes
@@ -339,14 +459,89 @@ const BulkImportModal: React.FC<Props> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between gap-4">
+                    <div
+                      className={`flex items-center justify-between gap-4 transition-opacity ${
+                        !isIncluded(idx) ? "opacity-50" : ""
+                      }`}
+                    >
                       <div className="min-w-0 flex-1">
-                        <p className="text-white font-bold text-sm truncate">
-                          {tx.shopName}
-                        </p>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p className="text-white font-bold text-sm truncate">
+                            {tx.shopName}
+                          </p>
+                          {isMatching && (
+                            <span className="text-[9px] font-black uppercase tracking-widest text-primary shrink-0">
+                              checking...
+                            </span>
+                          )}
+                          {!isMatching && matchResults.has(idx) && (
+                            (() => {
+                              const v = matchResults.get(idx)!;
+                              const styles: Record<string, string> = {
+                                DUPLICATE:
+                                  "bg-rose-500/15 text-rose-300 border-rose-500/30",
+                                UNCERTAIN:
+                                  "bg-amber-500/15 text-amber-300 border-amber-500/30",
+                                RELATED:
+                                  "bg-sky-500/15 text-sky-300 border-sky-500/30",
+                                UNIQUE:
+                                  "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                              };
+                              const label: Record<string, string> = {
+                                DUPLICATE: `Duplicate · ${Math.round(v.confidence * 100)}%`,
+                                UNCERTAIN: `Maybe duplicate · ${Math.round(v.confidence * 100)}%`,
+                                RELATED: `Related found · ${Math.round(v.confidence * 100)}%`,
+                                UNIQUE: "New",
+                              };
+                              return (
+                                <span
+                                  className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border shrink-0 ${styles[v.verdict]}`}
+                                >
+                                  {label[v.verdict]}
+                                </span>
+                              );
+                            })()
+                          )}
+                        </div>
                         <p className="text-gray-500 text-[10px] uppercase font-black tracking-widest mt-0.5">
                           {tx.date}
                         </p>
+                        {!isMatching &&
+                          matchResults.has(idx) &&
+                          matchResults.get(idx)!.verdict !== "UNIQUE" && (
+                            <div className="mt-1 space-y-0.5">
+                              {(() => {
+                                const v = matchResults.get(idx)!;
+                                const matched = findExistingMatch(
+                                  v.matchedTransactionId,
+                                );
+                                const isQuestion =
+                                  v.verdict === "RELATED" ||
+                                  v.verdict === "UNCERTAIN";
+                                return (
+                                  <>
+                                    {matched && (
+                                      <p
+                                        className={`text-[10px] font-bold ${isQuestion ? "text-sky-300" : "text-gray-400"}`}
+                                      >
+                                        {isQuestion ? "Same as " : "Matches "}
+                                        {matched.shopName} on{" "}
+                                        {String(matched.date).slice(0, 10)} (
+                                        {matched.amount.toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                        })}{" "}
+                                        {matched.currency})
+                                        {isQuestion ? "?" : ""}
+                                      </p>
+                                    )}
+                                    <p className="text-[10px] text-gray-500 leading-snug">
+                                      {v.reason}
+                                    </p>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-4">
                         <div>
@@ -365,8 +560,39 @@ const BulkImportModal: React.FC<Props> = ({
                           </p>
                         </div>
                         <div className="flex items-center gap-1 border-l border-white/10 pl-3">
+                          {matchResults.has(idx) && !isMatching && (
+                            <button
+                              onClick={() =>
+                                setIncludedOverride((prev) => {
+                                  const next = new Map(prev);
+                                  next.set(idx, !isIncluded(idx));
+                                  return next;
+                                })
+                              }
+                              className={`px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-colors ${
+                                isIncluded(idx)
+                                  ? "text-gray-500 hover:text-amber-300 hover:bg-amber-500/10"
+                                  : "text-emerald-400 hover:bg-emerald-500/10"
+                              }`}
+                              title={
+                                isIncluded(idx)
+                                  ? "Skip this transaction"
+                                  : "Import as a new transaction"
+                              }
+                            >
+                              {(() => {
+                                if (isIncluded(idx)) return "Skip";
+                                const v = matchResults.get(idx);
+                                return v?.verdict === "RELATED" ||
+                                  v?.verdict === "UNCERTAIN"
+                                  ? "It's new"
+                                  : "Import anyway";
+                              })()}
+                            </button>
+                          )}
                           <button
                             onClick={() => setEditingIdx(idx)}
+                            disabled={isMatching}
                             className="p-2 text-gray-500 hover:text-primary transition-colors hover:bg-primary/10 rounded-lg group"
                             title="Edit"
                           >
@@ -374,6 +600,7 @@ const BulkImportModal: React.FC<Props> = ({
                           </button>
                           <button
                             onClick={() => removeTransaction(idx)}
+                            disabled={isMatching}
                             className="p-2 text-gray-500 hover:text-rose-500 transition-colors hover:bg-rose-500/10 rounded-lg"
                             title="Delete"
                           >
@@ -412,7 +639,7 @@ const BulkImportModal: React.FC<Props> = ({
 
             <button
               onClick={handleConfirmImport}
-              disabled={isFinalizing}
+              disabled={isFinalizing || isMatching || includedCount === 0}
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-2xl font-black flex items-center justify-center gap-3 transition-all"
             >
               {isFinalizing ? (
@@ -420,7 +647,8 @@ const BulkImportModal: React.FC<Props> = ({
               ) : (
                 <CheckCircleIcon className="w-6 h-6" />
               )}
-              Confirm Import to Account
+              Confirm Import ({includedCount} transaction
+              {includedCount === 1 ? "" : "s"})
             </button>
           </div>
         )}

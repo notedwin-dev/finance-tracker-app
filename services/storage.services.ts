@@ -287,15 +287,15 @@ export const saveTransactions = async (transactions: Transaction[]) => {
 };
 
 export const insertOneTransaction = async (transaction: Transaction) => {
+  if (isLoggedIn()) {
+    await SheetService.insertOne("Transactions", transaction);
+  }
   const transactions = getStoredTransactions();
   const newTransactions = [...transactions, transaction];
   localStorage.setItem(
     getKey(KEYS.TRANSACTIONS),
     JSON.stringify(newTransactions),
   );
-  if (isLoggedIn()) {
-    await SheetService.insertOne("Transactions", transaction);
-  }
 };
 
 export const insertManyTransactions = async (newItems: Transaction[]) => {

@@ -206,11 +206,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	};
 
+	const encryptAccountForCloud = async (acc: Account): Promise<Account> => {
+		if (!isSecurityEnabled || !acc.details) return acc;
+		if (
+			typeof acc.details === "string" &&
+			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
+		)
+			return { ...acc, isEncrypted: true };
+
+		const encrypted = await encryptAccount(acc);
+		if (
+			typeof encrypted.details !== "string" ||
+			(!encrypted.details.startsWith("ENC:") &&
+				!encrypted.details.startsWith("SEC:"))
+		) {
+			throw new Error(
+				`Refusing to sync plaintext details for account ${acc.id}. Unlock or configure encryption first.`,
+			);
+		}
+		return encrypted;
+	};
+
 	// isVaultUnlocked now defined in compatibility shims above
 
 	const normalizeAccount = (acc: any): Account => {
 		// 1. If details is an encrypted string, don't touch it
-		if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
+		if (
+			typeof acc.details === "string" &&
+			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
+		) {
 			return acc;
 		}
 
@@ -573,7 +597,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 			try {
 				const parsed = JSON.parse(decryptedStr);
-				return { ...acc, details: parsed };
+				return { ...acc, details: parsed, isEncrypted: false };
 			} catch (jsonErr) {
 				console.warn("Decrypted string is not valid JSON:", decryptedStr);
 				return acc;
@@ -1187,7 +1211,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 				// Encrypt for storage (cache to localStorage)
 				const encryptedAccounts = await Promise.all(
-					mergedAccounts.map((a) => encryptAccount(a)),
+					mergedAccounts.map((a) => encryptAccountForCloud(a)),
 				);
 				StorageService.saveAccounts(encryptedAccounts);
 
@@ -1308,7 +1332,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			!isVaultEnabled ||
 			!encryptedAccount.details ||
 			(typeof encryptedAccount.details === "string" &&
-				encryptedAccount.details.startsWith("ENC:"));
+				(encryptedAccount.details.startsWith("ENC:") ||
+					encryptedAccount.details.startsWith("SEC:")));
 
 		let updated;
 		if (isNew) {
@@ -1517,6 +1542,147 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 		showToast(
 			`Imported ${transactionsToInsert.length} transactions`,
+			"success",
+		);
+	};
+
+	const handleRestoreBackup = async (
+		backup: any,
+		mode: "merge" | "replace" = "merge",
+	) => {
+		if (!backup || typeof backup !== "object") {
+			throw new Error("Invalid backup file.");
+		}
+
+		const currentUserId = profile.id || "local";
+		const stamp = new Date().toISOString();
+		const toTs = (v: any) => (v ? new Date(v).getTime() || 0 : 0);
+
+		const sanitize = <T extends any>(items: any): T[] =>
+			(Array.isArray(items) ? items : [])
+				.filter((i: any) => i && typeof i === "object" && i.id)
+				.map((i: any) => ({
+					...i,
+					userId: currentUserId,
+					updatedAt: i.updatedAt || stamp,
+				})) as T[];
+
+		const backupAccounts = sanitize<Account>(backup.accounts);
+		const backupTransactions = sanitize<Transaction>(backup.transactions);
+		const backupCategories = sanitize<Category>(backup.categories);
+		const backupGoals = sanitize<Goal>(backup.goals);
+		const backupSubscriptions = sanitize<Subscription>(backup.subscriptions);
+		const backupPots = sanitize<Pot>(backup.pots);
+		const backupPockets = sanitize<SavingPocket>(backup.pockets);
+		const backupChats = sanitize<ChatSession>(backup.chatSessions);
+
+		const totalItems =
+			backupAccounts.length +
+			backupTransactions.length +
+			backupCategories.length +
+			backupGoals.length +
+			backupSubscriptions.length +
+			backupPots.length +
+			backupPockets.length;
+
+		if (totalItems === 0) {
+			throw new Error("Backup file contains no recognizable ZenFinance data.");
+		}
+
+		// Merge current + backup by id with Last-Write-Wins.
+		// Ties prefer current data so a stale backup never overwrites newer edits.
+		const restoreMerge = <T extends { id: string; updatedAt?: any }>(
+			current: T[],
+			incoming: T[],
+		): { result: T[]; added: T[]; updated: T[] } => {
+			const map = new Map<string, T>();
+			current.forEach((i) => map.set(String(i.id), i));
+			const added: T[] = [];
+			const updated: T[] = [];
+			incoming.forEach((i) => {
+				const id = String(i.id);
+				const existing = map.get(id);
+				if (!existing) {
+					map.set(id, i);
+					added.push(i);
+				} else if (toTs(i.updatedAt) > toTs(existing.updatedAt)) {
+					map.set(id, i);
+					updated.push(i);
+				}
+			});
+			return { result: Array.from(map.values()), added, updated };
+		};
+
+		const apply = <T extends { id: string }>(
+			current: T[],
+			incoming: T[],
+		): { result: T[]; added: T[]; updated: T[] } => {
+			if (mode === "replace") {
+				return { result: incoming, added: incoming, updated: [] };
+			}
+			return restoreMerge(current, incoming);
+		};
+
+		const acc = apply(accounts, backupAccounts);
+		const txs = apply(transactions, backupTransactions);
+		const cats = apply(categories, backupCategories);
+		const gls = apply(goals, backupGoals);
+		const subs = apply(subscriptions, backupSubscriptions);
+		const pts = apply(pots, backupPots);
+		const pks = apply(pockets, backupPockets);
+
+		// Persist locally (accounts re-encrypted like every other write path)
+		const encryptedAccounts = await Promise.all(
+			acc.result.map((a) => encryptAccount(a)),
+		);
+		setAccounts(acc.result);
+		StorageService.saveAccounts(encryptedAccounts);
+		setTransactions(txs.result);
+		StorageService.saveTransactions(txs.result);
+		setCategories(cats.result);
+		StorageService.saveCategories(cats.result);
+		setGoals(gls.result);
+		StorageService.saveGoals(gls.result);
+		setSubscriptions(subs.result);
+		StorageService.saveSubscriptions(subs.result);
+		setPots(pts.result);
+		StorageService.savePots(pts.result);
+		setPockets(pks.result);
+		StorageService.savePockets(pks.result);
+		if (backupChats.length > 0) {
+			const chats = apply(chatSessions, backupChats);
+			setChatSessions(chats.result);
+			StorageService.saveChatSessions(chats.result);
+		}
+
+		// Cloud best-effort upsert: insert new rows, update existing ones.
+		if (isCloudEnabled) {
+			try {
+				const collections: [string, { added: any[]; updated: any[] }][] = [
+					["Accounts", { added: acc.added, updated: acc.updated }],
+					["Transactions", { added: txs.added, updated: txs.updated }],
+					["Categories", { added: cats.added, updated: cats.updated }],
+					["Goals", { added: gls.added, updated: gls.updated }],
+					["Subscriptions", { added: subs.added, updated: subs.updated }],
+					["Pots", { added: pts.added, updated: pts.updated }],
+					["Pockets", { added: pks.added, updated: pks.updated }],
+				];
+				for (const [sheetName, { added, updated }] of collections) {
+					if (added.length > 0) await SheetService.insertMany(sheetName, added);
+					if (updated.length > 0)
+						await SheetService.updateMany(sheetName, updated);
+				}
+			} catch (cloudErr) {
+				console.error("Backup cloud restore error:", cloudErr);
+				showToast(
+					"Restored locally. Cloud sync will reconcile remaining changes.",
+					"info",
+				);
+			}
+		}
+
+		showToast(
+			`Backup restored (${mode}): ${acc.added.length} accounts, ${txs.added.length} transactions added`,
 			"success",
 		);
 	};
@@ -3389,6 +3555,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				handleBatchTransactionEdit,
 				handleMigrateData,
 				handleResetAndSync,
+				handleRestoreBackup,
 				getTotalValueReceived,
 				calculateGXBankInterest,
 				recalculateBalances,

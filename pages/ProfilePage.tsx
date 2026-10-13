@@ -12,6 +12,7 @@ const ProfilePage: React.FC = () => {
     handleSelectExistingSheet,
     handleResetAndSync,
     handleMigrateData,
+    handleRestoreBackup,
     accounts,
     transactions,
     categories,
@@ -83,6 +84,7 @@ const ProfilePage: React.FC = () => {
         onManageCategories={() => setShowCategoryManager(true)}
         onManageSubscriptions={() => setShowSubscriptionManager(true)}
         onExport={handleExportData}
+        onImportBackup={handleRestoreBackup}
         onMigrate={handleMigrateData}
         onSync={syncData}
         onUnlinkCloud={unlinkCloud}

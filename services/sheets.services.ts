@@ -827,8 +827,14 @@ export const insertOne = async (sheetName: string, item: any) => {
 		if (rows && rows.length > 0) {
 			headers = rows[0];
 		}
-	} catch (e) {
-		throw e;
+	} catch (e: any) {
+		// A missing tab is reported as an unparseable range by the Sheets API.
+		if (
+			(e?.status ?? e?.result?.error?.code) !== 400 ||
+			!e?.result?.error?.message?.startsWith("Unable to parse range:")
+		) {
+			throw e;
+		}
 	}
 
 	// If no headers, we must initialize the sheet (fallback to saveToSheet)

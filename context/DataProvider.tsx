@@ -597,7 +597,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 			try {
 				const parsed = JSON.parse(decryptedStr);
-				return { ...acc, details: parsed };
+				return { ...acc, details: parsed, isEncrypted: false };
 			} catch (jsonErr) {
 				console.warn("Decrypted string is not valid JSON:", decryptedStr);
 				return acc;

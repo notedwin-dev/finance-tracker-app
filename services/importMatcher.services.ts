@@ -479,9 +479,9 @@ const matchSplitGroups = (
 								const targetDay = toDayNumber(t.date);
 								const lag = Math.min(...days) - targetDay;
 								return (
-									isNaN(targetDay) ||
-									(lag >= -APP_DATE_SLACK_DAYS &&
-										lag <= POSTING_LAG_DAYS + 5)
+									!isNaN(targetDay) &&
+									lag >= -APP_DATE_SLACK_DAYS &&
+									lag <= POSTING_LAG_DAYS + 5
 								);
 							})(),
 					);

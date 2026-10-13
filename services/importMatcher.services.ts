@@ -474,13 +474,18 @@ const matchSplitGroups = (
 						(t) =>
 							!consumedExisting.has(t.id) &&
 							t.type === type &&
-							Math.abs(t.amount - sum) <= AMOUNT_TOLERANCE,
+							Math.abs(t.amount - sum) <= AMOUNT_TOLERANCE &&
+							(() => {
+								const targetDay = toDayNumber(t.date);
+								const lag = Math.min(...days) - targetDay;
+								return (
+									isNaN(targetDay) ||
+									(lag >= -APP_DATE_SLACK_DAYS &&
+										lag <= POSTING_LAG_DAYS + 5)
+								);
+							})(),
 					);
 					if (!target) continue;
-					const targetDay = toDayNumber(target.date);
-					const lag = Math.min(...days) - targetDay;
-					if (lag < -APP_DATE_SLACK_DAYS || lag > POSTING_LAG_DAYS + 5)
-						continue;
 					group.forEach((g) => {
 						verdicts.push({
 							importedIndex: g,
@@ -517,15 +522,34 @@ const matchSplitGroups = (
 		const itemDay = toDayNumber(item.date);
 		const sameSign = pool.filter(
 			(t) => !consumedExisting.has(t.id) && (item.type === "INCOME" ? t.type === "INCOME" : t.type === "EXPENSE"),
-		);
+		).filter((t) => {
+			const day = toDayNumber(t.date);
+			const lag = itemDay - day;
+			return (
+				!isNaN(day) &&
+				lag >= -APP_DATE_SLACK_DAYS &&
+				lag <= POSTING_LAG_DAYS
+			);
+		});
+		const byAmountCents = new Map<number, { tx: Transaction; index: number }[]>();
+		sameSign.forEach((tx, index) => {
+			const key = Math.round(tx.amount * 100);
+			const entries = byAmountCents.get(key) || [];
+			entries.push({ tx, index });
+			byAmountCents.set(key, entries);
+		});
 		for (let i = 0; i < sameSign.length; i++) {
-			for (let j = i + 1; j < sameSign.length; j++) {
-				const a = sameSign[i], b = sameSign[j];
-				const aDay = toDayNumber(a.date), bDay = toDayNumber(b.date);
-				if (isNaN(aDay) || isNaN(bDay) || Math.abs(aDay - bDay) > 2) continue;
+			const a = sameSign[i];
+			const aDay = toDayNumber(a.date);
+			const targetCents = Math.round((item.amount - a.amount) * 100);
+			const candidates = [-1, 0, 1].flatMap(
+				(offset) => byAmountCents.get(targetCents + offset) || [],
+			);
+			for (const { tx: b, index: j } of candidates) {
+				if (j <= i || consumedExisting.has(b.id)) continue;
+				const bDay = toDayNumber(b.date);
+				if (Math.abs(aDay - bDay) > 2) continue;
 				if (Math.abs(a.amount + b.amount - item.amount) > AMOUNT_TOLERANCE) continue;
-				const lag = itemDay - Math.min(aDay, bDay);
-				if (lag < -APP_DATE_SLACK_DAYS || lag > POSTING_LAG_DAYS) continue;
 				const kw = sharesKeyword(
 					effectiveItemText(item),
 					`${a.shopName} ${b.shopName}`,
@@ -547,6 +571,8 @@ const matchSplitGroups = (
 					)} + "${b.shopName}" ${fmtMoney(b.amount, b.currency)}. Confirm if these are the same money movement.`,
 				});
 				usedImported.add(idx);
+				consumedExisting.add(a.id);
+				consumedExisting.add(b.id);
 				return;
 			}
 		}
@@ -592,8 +618,11 @@ const callGeminiJSON = async (apiKey: string, prompt: string): Promise<any[]> =>
 const parseVerdictRows = (
 	rows: any[],
 	validIndexes: Set<number>,
+	validIdsByIndex?: Map<number, Set<string>>,
+	alreadyConsumedIds?: Set<string>,
 ): MatchVerdict[] => {
 	const verdicts: MatchVerdict[] = [];
+	const acceptedIds = new Set(alreadyConsumedIds || []);
 	rows.forEach((r) => {
 		if (typeof r?.importedIndex !== "number" || !validIndexes.has(r.importedIndex))
 			return;
@@ -605,6 +634,18 @@ const parseVerdictRows = (
 		].includes(r.verdict)
 			? r.verdict
 			: "UNCERTAIN";
+		const proposedId =
+			(r.verdict === "DUPLICATE" || r.verdict === "RELATED") &&
+			r.matchedTransactionId
+				? String(r.matchedTransactionId)
+				: undefined;
+		if (
+			proposedId &&
+			(!validIdsByIndex?.get(r.importedIndex)?.has(proposedId) ||
+				acceptedIds.has(proposedId))
+		)
+			return;
+		if (proposedId) acceptedIds.add(proposedId);
 		verdicts.push({
 			importedIndex: r.importedIndex,
 			verdict: verdictType,
@@ -612,11 +653,7 @@ const parseVerdictRows = (
 				typeof r.confidence === "number"
 					? Math.min(1, Math.max(0, r.confidence))
 					: 0.5,
-			matchedTransactionId:
-				(r.verdict === "DUPLICATE" || r.verdict === "RELATED") &&
-				r.matchedTransactionId
-					? String(r.matchedTransactionId)
-					: undefined,
+			matchedTransactionId: proposedId,
 			reason: String(r.reason || "").slice(0, 300),
 		});
 	});
@@ -705,6 +742,13 @@ ${blocks}
 			const parsed = parseVerdictRows(
 				rows,
 				new Set(batch.map((c) => c.importedIndex)),
+				new Map(
+					batch.map((c) => [
+						c.importedIndex,
+						new Set(c.existing.map((e) => e.id)),
+					]),
+				),
+				consumed,
 			);
 			parsed.forEach((v) => {
 				if (v.matchedTransactionId) consumed.add(v.matchedTransactionId);
@@ -810,6 +854,13 @@ ${blocks}
 			const parsed = parseVerdictRows(
 				rows,
 				new Set(batch.map((c) => c.importedIndex)),
+				new Map(
+					batch.map((c) => [
+						c.importedIndex,
+						new Set(c.existing.map((e) => e.id)),
+					]),
+				),
+				consumed,
 			);
 			parsed.forEach((v) => {
 				if (v.matchedTransactionId) consumed.add(v.matchedTransactionId);
@@ -1040,7 +1091,13 @@ const retrieveRelated = (
 	const importedText = effectiveItemText(item);
 
 	const scored = accountTransactions
-		.filter((t) => !excludedIds.has(t.id))
+		.filter((t) => {
+			if (excludedIds.has(t.id)) return false;
+			if (item.type === "INCOME")
+				return t.type === "INCOME" || t.type === "ACCOUNT_OPENING";
+			if (item.type === "EXPENSE") return signedDelta(t.amount, t.type, t.transferDirection) < 0;
+			return true;
+		})
 		.map((t) => {
 			let score = 0;
 

@@ -587,11 +587,12 @@ export const updateUser = async (email: string, updates: any) => {
 };
 
 export const saveToSheet = async (sheetName: string, data: any[]) => {
-	if (!gapiInited || !hasAccessToken) return;
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
 
 	try {
 		const fileId = await getSpreadsheetId();
-		if (!fileId) return;
+		if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 		// Check if sheet exists
 		const existingSheets = await getSheetNames(fileId);
@@ -804,14 +805,16 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 			clearGapiAccessToken();
 		}
 		console.error(`Error saving ${sheetName}`, err);
+		throw err;
 	}
 };
 
 export const insertOne = async (sheetName: string, item: any) => {
-	if (!gapiInited || !hasAccessToken) return;
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
 
 	const fileId = await getSpreadsheetId();
-	if (!fileId) return;
+	if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 	// 1. Get Headers to ensure column alignment
 	let headers: string[] = [];
@@ -825,7 +828,7 @@ export const insertOne = async (sheetName: string, item: any) => {
 			headers = rows[0];
 		}
 	} catch (e) {
-		/* ignore */
+		throw e;
 	}
 
 	// If no headers, we must initialize the sheet (fallback to saveToSheet)
@@ -854,6 +857,7 @@ export const insertOne = async (sheetName: string, item: any) => {
 		console.log(`Inserted row into ${sheetName}`);
 	} catch (e) {
 		console.error(`Error inserting into ${sheetName}`, e);
+		throw e;
 	}
 };
 

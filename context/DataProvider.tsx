@@ -206,11 +206,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	};
 
+	const encryptAccountForCloud = async (acc: Account): Promise<Account> => {
+		if (!isSecurityEnabled || !acc.details) return acc;
+		if (
+			typeof acc.details === "string" &&
+			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
+		)
+			return { ...acc, isEncrypted: true };
+
+		const encrypted = await encryptAccount(acc);
+		if (
+			typeof encrypted.details !== "string" ||
+			(!encrypted.details.startsWith("ENC:") &&
+				!encrypted.details.startsWith("SEC:"))
+		) {
+			throw new Error(
+				`Refusing to sync plaintext details for account ${acc.id}. Unlock or configure encryption first.`,
+			);
+		}
+		return encrypted;
+	};
+
 	// isVaultUnlocked now defined in compatibility shims above
 
 	const normalizeAccount = (acc: any): Account => {
 		// 1. If details is an encrypted string, don't touch it
-		if (typeof acc.details === "string" && acc.details.startsWith("ENC:")) {
+		if (
+			typeof acc.details === "string" &&
+			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
+		) {
 			return acc;
 		}
 
@@ -1187,7 +1211,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 				// Encrypt for storage (cache to localStorage)
 				const encryptedAccounts = await Promise.all(
-					mergedAccounts.map((a) => encryptAccount(a)),
+					mergedAccounts.map((a) => encryptAccountForCloud(a)),
 				);
 				StorageService.saveAccounts(encryptedAccounts);
 
@@ -1308,7 +1332,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			!isVaultEnabled ||
 			!encryptedAccount.details ||
 			(typeof encryptedAccount.details === "string" &&
-				encryptedAccount.details.startsWith("ENC:"));
+				(encryptedAccount.details.startsWith("ENC:") ||
+					encryptedAccount.details.startsWith("SEC:")));
 
 		let updated;
 		if (isNew) {

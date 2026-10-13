@@ -55,6 +55,7 @@ const BulkImportModal: React.FC<Props> = ({
     new Map(),
   );
   const [isMatching, setIsMatching] = useState(false);
+  const matchingRunRef = useRef(0);
   const [includedOverride, setIncludedOverride] = useState<
     Map<number, boolean>
   >(new Map());
@@ -75,6 +76,7 @@ const BulkImportModal: React.FC<Props> = ({
     id ? transactions.find((t) => t.id === id) : undefined;
 
   const reset = () => {
+    matchingRunRef.current += 1;
     setFile(null);
     setIsParsing(false);
     setError(null);
@@ -87,6 +89,7 @@ const BulkImportModal: React.FC<Props> = ({
   };
 
   const runMatching = async (results: Partial<Transaction>[]) => {
+    const runId = ++matchingRunRef.current;
     setIsMatching(true);
     try {
       const verdicts = await runImportMatching(
@@ -95,15 +98,19 @@ const BulkImportModal: React.FC<Props> = ({
         transactions,
         accountId,
       );
+      if (runId !== matchingRunRef.current) return;
       setMatchResults(verdicts);
     } catch (err) {
+      if (runId !== matchingRunRef.current) return;
       console.error("Duplicate check failed:", err);
     } finally {
-      setIsMatching(false);
+      if (runId === matchingRunRef.current) setIsMatching(false);
     }
   };
 
   const updateTransaction = (idx: number, updates: Partial<Transaction>) => {
+    matchingRunRef.current += 1;
+    setIsMatching(false);
     setParsedTransactions((prev) =>
       prev.map((tx, i) => (i === idx ? { ...tx, ...updates } : tx)),
     );
@@ -121,6 +128,8 @@ const BulkImportModal: React.FC<Props> = ({
   };
 
   const removeTransaction = (idx: number) => {
+    matchingRunRef.current += 1;
+    setIsMatching(false);
     setParsedTransactions((prev) => prev.filter((_, i) => i !== idx));
     const shift = (m: Map<number, any>) => {
       const next = new Map<number, any>();
@@ -160,6 +169,9 @@ const BulkImportModal: React.FC<Props> = ({
   const handleStartParsing = async () => {
     if (!file) return;
 
+    matchingRunRef.current += 1;
+    setIsMatching(false);
+    setMatchResults(new Map());
     setIsParsing(true);
     setError(null);
 
@@ -431,6 +443,7 @@ const BulkImportModal: React.FC<Props> = ({
                       <div className="flex justify-end gap-2 pt-1 border-t border-white/10">
                         <button
                           onClick={() => removeTransaction(idx)}
+                          disabled={isMatching}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors text-[10px] font-black uppercase tracking-widest"
                         >
                           <TrashIcon className="w-3.5 h-3.5" />
@@ -438,6 +451,7 @@ const BulkImportModal: React.FC<Props> = ({
                         </button>
                         <button
                           onClick={() => setEditingIdx(null)}
+                          disabled={isMatching}
                           className="px-4 py-1.5 rounded-lg bg-primary text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
                         >
                           Save Changes
@@ -578,6 +592,7 @@ const BulkImportModal: React.FC<Props> = ({
                           )}
                           <button
                             onClick={() => setEditingIdx(idx)}
+                            disabled={isMatching}
                             className="p-2 text-gray-500 hover:text-primary transition-colors hover:bg-primary/10 rounded-lg group"
                             title="Edit"
                           >
@@ -585,6 +600,7 @@ const BulkImportModal: React.FC<Props> = ({
                           </button>
                           <button
                             onClick={() => removeTransaction(idx)}
+                            disabled={isMatching}
                             className="p-2 text-gray-500 hover:text-rose-500 transition-colors hover:bg-rose-500/10 rounded-lg"
                             title="Delete"
                           >
@@ -623,7 +639,7 @@ const BulkImportModal: React.FC<Props> = ({
 
             <button
               onClick={handleConfirmImport}
-              disabled={isFinalizing || includedCount === 0}
+              disabled={isFinalizing || isMatching || includedCount === 0}
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-2xl font-black flex items-center justify-center gap-3 transition-all"
             >
               {isFinalizing ? (

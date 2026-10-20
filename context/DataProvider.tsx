@@ -187,12 +187,13 @@ const isCipherText = AccountCrypto.isCipherText;
 
 const cryptoOpts = (
 	totpSecret: string | undefined,
-): AccountCrypto.AccountCryptoOptions => ({
-	isVaultEnabled,
-	isSecurityEnabled,
-	totpSecret,
-	isUnlocked: () => securityUnlockedRef.current,
-});
+	effectiveSecurityEnabled: boolean = isSecurityEnabled,
+): AccountCrypto.AccountCryptoOptions =>
+	AccountCrypto.resolveSyncCryptoOptions(
+		profile,
+		{ totpSecret, isSecurityEnabled: effectiveSecurityEnabled },
+		() => securityUnlockedRef.current,
+	);
 
 const encryptAccount = (
 	acc: Account,
@@ -1054,41 +1055,39 @@ const normalizeAccount = (acc: any): Account =>
 					return Array.from(map.values());
 				};
 
-				const cloudAccounts = await Promise.all(
-					(cloudData.accounts || []).map(async (a: Account) => {
-						const decrypted = await decryptAccount(a, false, activeProfile.totpSecret);
-						return normalizeAccount(decrypted);
-					}),
+				const mergedAccountsRaw = merge(
+					StorageService.getStoredAccounts(),
+					cloudData.accounts || [],
+					useCloudAsAuthority,
 				);
-
-				const localAccountsRaw = StorageService.getStoredAccounts();
-				const localAccounts = await Promise.all(
-					localAccountsRaw.map(async (a) => {
+				const mergedAccounts = await Promise.all(
+					mergedAccountsRaw.map(async (a) => {
 						const decrypted = await decryptAccount(
 							a,
 							false,
 							activeProfile.totpSecret,
 						);
-						return normalizeAccount(decrypted);
+						return normalizeAccount({ ...decrypted });
 					}),
-				);
-
-				const mergedAccounts = merge(
-					localAccounts,
-					cloudAccounts,
-					useCloudAsAuthority,
 				);
 				setAccounts(mergedAccounts);
 
-				// Encrypt for storage (cache to localStorage).
-				// Use activeProfile.totpSecret: the merged cloud secret is not yet
-				// reflected in the `profile` closure until updateProfile() below.
+				// Use merged security settings before updateProfile refreshes the closure.
 				const encryptedAccounts =
 					await AccountCrypto.encryptAccountsForSync(
 						mergedAccounts,
-						cryptoOpts(activeProfile.totpSecret),
+						cryptoOpts(
+							activeProfile.totpSecret,
+							checkBool(activeProfile.isSecurityEnabled),
+						),
 					);
-				StorageService.saveAccounts(encryptedAccounts);
+				const encryptedById = new Map(encryptedAccounts.map((a) => [a.id, a]));
+				const accountSave = StorageService.saveAccounts(encryptedAccounts);
+				// Omitted accounts must remain available locally for a later retry.
+				StorageService.saveAccountsLocal(
+					mergedAccountsRaw.map((a) => encryptedById.get(a.id) ?? a),
+				);
+				await accountSave;
 
 				const mergedCategories = merge(
 					StorageService.getStoredCategories(),

@@ -7,6 +7,7 @@ import {
 	decryptAccount,
 	normalizeAccount,
 	AccountCryptoOptions,
+	resolveSyncCryptoOptions,
 } from "../services/account-crypto.services";
 import { Account } from "../types";
 import * as SecurityService from "../services/security.services";
@@ -98,11 +99,14 @@ describe("encryptAccountForCloud - regression", () => {
 		// Models the sync ordering bug: the merged secret lives on
 		// activeProfile, while the captured profile.totpSecret is still empty
 		// for this render. The caller must pass the merged value explicitly.
-		const staleProfileOpts = opts({ totpSecret: undefined });
-		const mergedProfileOpts = opts({ totpSecret: SECRET });
+		const mergedProfileOpts = resolveSyncCryptoOptions(
+			{ isSecurityEnabled: false, totpSecret: undefined },
+			{ isSecurityEnabled: true, totpSecret: SECRET },
+		);
 
-		expect(staleProfileOpts.totpSecret).toBeUndefined();
 		expect(mergedProfileOpts.totpSecret).toBe(SECRET);
+		expect(mergedProfileOpts.isVaultEnabled).toBe(true);
+		expect(mergedProfileOpts.isSecurityEnabled).toBe(true);
 
 		const result = await encryptAccountForCloud(acc, mergedProfileOpts);
 		expect(isCipherText(result.details)).toBe(true);
@@ -126,6 +130,25 @@ describe("encryptAccountForCloud - regression", () => {
 		await expect(
 			encryptAccountForCloud(acc, opts({ totpSecret: undefined })),
 		).rejects.toThrow(/Refusing to sync plaintext details/);
+	});
+});
+
+describe("resolveSyncCryptoOptions", () => {
+	it("uses captured settings when there are no merged updates", () => {
+		const isUnlocked = () => true;
+		expect(resolveSyncCryptoOptions(
+			{ isSecurityEnabled: true, totpSecret: SECRET }, {}, isUnlocked,
+		)).toEqual(opts({ isUnlocked }));
+	});
+
+	it("honors an explicit merged disabled flag", () => {
+		const resolved = resolveSyncCryptoOptions(
+			{ isSecurityEnabled: true, totpSecret: SECRET },
+			{ isSecurityEnabled: false },
+		);
+		expect(resolved.isSecurityEnabled).toBe(false);
+		expect(resolved.isVaultEnabled).toBe(false);
+		expect(resolved.totpSecret).toBe(SECRET);
 	});
 });
 
@@ -168,13 +191,31 @@ describe("decryptAccount", () => {
 		expect(result.isEncrypted).toBe(false);
 	});
 
-	it("clears isEncrypted for legacy ENC: payloads", async () => {
-		const acc = account({ details: "ENC:old", isEncrypted: true });
+	it.each([SECRET, undefined])("retains legacy ENC: ciphertext with secret %s", async (totpSecret) => {
+		const acc = account({ details: "ENC:old", isEncrypted: false });
+
+		const result = await decryptAccount(acc, opts({ totpSecret }), true);
+		const normalized = normalizeAccount(result);
+		const payload = await encryptAccountsForSync([normalized], opts({ totpSecret }));
+
+		expect(result.details).toBe("ENC:old");
+		expect(result.isEncrypted).toBe(true);
+		expect(payload[0].details).toBe("ENC:old");
+	});
+
+	it("logs only the account identifier when decrypted content is not JSON", async () => {
+		const invalidJson = "sensitive account details, invalid JSON";
+		const encryptedDetails = await SecurityService.encryptWithKey(
+			invalidJson,
+			await SecurityService.deriveKeyFromTOTP(SECRET),
+		);
+		const acc = account({ details: encryptedDetails, isEncrypted: true });
 
 		const result = await decryptAccount(acc, opts(), true);
 
-		expect(result.details).toEqual({});
-		expect(result.isEncrypted).toBe(false);
+		expect(result).toBe(acc);
+		expect(warn).toHaveBeenCalledWith("Decrypted string is not valid JSON for account:", acc.id);
+		expect(JSON.stringify(warn.mock.calls)).not.toContain(invalidJson);
 	});
 
 	it("returns ciphertext untouched while the vault is locked", async () => {

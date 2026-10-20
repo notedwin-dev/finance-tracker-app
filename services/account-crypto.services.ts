@@ -5,7 +5,7 @@
  * Extracted from DataProvider so it can be tested without rendering React.
  */
 
-import { Account } from "../types";
+import { Account, UserProfile } from "../types";
 import * as SecurityService from "./security.services";
 
 /**
@@ -29,6 +29,22 @@ export interface AccountCryptoOptions {
 	/** Whether the security layer is currently unlocked. */
 	isUnlocked?: () => boolean;
 }
+
+/** Resolve options from the captured profile and any updates merged during sync. */
+export const resolveSyncCryptoOptions = (
+	profile: Pick<UserProfile, "isSecurityEnabled" | "totpSecret">,
+	updates: Partial<Pick<UserProfile, "isSecurityEnabled" | "totpSecret">> = {},
+	isUnlocked?: () => boolean,
+): AccountCryptoOptions => {
+	const merged = { ...profile, ...updates };
+	const isSecurityEnabled = !!merged.isSecurityEnabled;
+	return {
+		isVaultEnabled: isSecurityEnabled,
+		isSecurityEnabled,
+		totpSecret: merged.totpSecret,
+		isUnlocked,
+	};
+};
 
 /**
  * Encrypt an account's details if the vault is enabled.
@@ -148,6 +164,15 @@ export const decryptAccount = async (
 		return acc;
 	}
 
+	// Legacy password-based ciphertext cannot be decrypted with a TOTP key.
+	// Preserve it even when no TOTP secret is available.
+	if (acc.details.startsWith("ENC:")) {
+		console.warn(
+			`Account ${acc.id} uses old password-based encryption. Cannot decrypt without original password.`,
+		);
+		return { ...acc, isEncrypted: true };
+	}
+
 	// Check if TOTP secret is available for decryption
 	if (!totpSecret) {
 		console.warn(
@@ -161,19 +186,6 @@ export const decryptAccount = async (
 	}
 
 	try {
-		// Old ENC: format is password-based and cannot be decrypted without the
-		// original password. SEC: is TOTP-based.
-		if (acc.details.startsWith("ENC:")) {
-			console.warn(
-				`Account ${acc.id} uses old password-based encryption. Cannot decrypt without original password. Resetting to empty.`,
-			);
-			return {
-				...acc,
-				details: {}, // Reset to empty - old encrypted data unrecoverable without migration password
-				isEncrypted: false,
-			};
-		}
-
 		const key = await SecurityService.deriveKeyFromTOTP(totpSecret);
 		const decryptedStr = await SecurityService.decryptWithKey(
 			acc.details,
@@ -196,7 +208,7 @@ export const decryptAccount = async (
 			const parsed = JSON.parse(decryptedStr);
 			return { ...acc, details: parsed, isEncrypted: false };
 		} catch (jsonErr) {
-			console.warn("Decrypted string is not valid JSON:", decryptedStr);
+			console.warn("Decrypted string is not valid JSON for account:", acc.id);
 			return acc;
 		}
 	} catch (e) {

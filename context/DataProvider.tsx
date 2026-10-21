@@ -20,6 +20,7 @@ import {
 } from "../types";
 import { DataContext } from "./DataContext";
 import * as SecurityService from "../services/security.services";
+import * as AccountCrypto from "../services/account-crypto.services";
 
 // Legacy vault type for backward compatibility during migration
 type LegacyVaultProfile = UserProfile & {
@@ -177,108 +178,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		updateProfile({ privacyMode: value });
 	};
 
-	const encryptAccount = async (acc: Account): Promise<Account> => {
-		if (!isVaultEnabled || !acc.details || acc.isEncrypted) return acc;
+/**
+ * Ciphertext detection. The `isEncrypted` flag is NOT trustworthy on its own:
+ * decryptAccount resets details to `{}` when the key is unavailable, which
+ * leaves accounts flagged as encrypted while holding plaintext.
+ */
+const isCipherText = AccountCrypto.isCipherText;
 
-		// If already encrypted, don't double encrypt
-		if (
-			typeof acc.details === "string" &&
-			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
-		) {
-			return { ...acc, isEncrypted: true };
-		}
+const cryptoOpts = (
+	totpSecret: string | undefined,
+	effectiveSecurityEnabled: boolean = isSecurityEnabled,
+): AccountCrypto.AccountCryptoOptions =>
+	AccountCrypto.resolveSyncCryptoOptions(
+		profile,
+		{ totpSecret, isSecurityEnabled: effectiveSecurityEnabled },
+		() => securityUnlockedRef.current,
+	);
 
-		if (!profile.totpSecret) {
-			console.warn("Vault is enabled but no TOTP secret found for encryption.");
-			return acc;
-		}
+const encryptAccount = (
+	acc: Account,
+	totpSecret: string | undefined = profile.totpSecret,
+): Promise<Account> =>
+	AccountCrypto.encryptAccount(acc, cryptoOpts(totpSecret));
 
-		try {
-			const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
-			const encryptedDetails = await SecurityService.encryptWithKey(
-				JSON.stringify(acc.details),
-				key,
-			);
-			return { ...acc, details: encryptedDetails as any, isEncrypted: true };
-		} catch (e) {
-			console.error("Encryption failed", e);
-			return acc;
-		}
-	};
+const encryptAccountForCloud = (
+	acc: Account,
+	totpSecret: string | undefined = profile.totpSecret,
+): Promise<Account> =>
+	AccountCrypto.encryptAccountForCloud(acc, cryptoOpts(totpSecret));
 
-	const encryptAccountForCloud = async (acc: Account): Promise<Account> => {
-		if (!isSecurityEnabled || !acc.details) return acc;
-		if (
-			typeof acc.details === "string" &&
-			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
-		)
-			return { ...acc, isEncrypted: true };
+// isVaultUnlocked now defined in compatibility shims above
 
-		const encrypted = await encryptAccount(acc);
-		if (
-			typeof encrypted.details !== "string" ||
-			(!encrypted.details.startsWith("ENC:") &&
-				!encrypted.details.startsWith("SEC:"))
-		) {
-			throw new Error(
-				`Refusing to sync plaintext details for account ${acc.id}. Unlock or configure encryption first.`,
-			);
-		}
-		return encrypted;
-	};
-
-	// isVaultUnlocked now defined in compatibility shims above
-
-	const normalizeAccount = (acc: any): Account => {
-		// 1. If details is an encrypted string, don't touch it
-		if (
-			typeof acc.details === "string" &&
-			(acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:"))
-		) {
-			return acc;
-		}
-
-		// 2. If details is a JSON string (unencrypted), parse it
-		if (typeof acc.details === "string" && acc.details.trim().startsWith("{")) {
-			try {
-				const parsed = JSON.parse(acc.details);
-				return normalizeAccount({ ...acc, details: parsed });
-			} catch (e) {
-				console.warn("Failed to parse raw details JSON", e);
-			}
-		}
-
-		// 3. Ensure details is an object
-		const details = (
-			typeof acc.details === "object" && acc.details !== null
-				? { ...acc.details }
-				: {}
-		) as any;
-
-		// 4. Migration: If sensitive fields are at top level, move them to details
-		const sensitiveFields = [
-			"accountNumber",
-			"cardNumber",
-			"cvv",
-			"expiry",
-			"holderName",
-			"note",
-		];
-		let hasSensitiveAtTop = false;
-
-		sensitiveFields.forEach((f) => {
-			if (acc[f]) {
-				if (!details[f]) details[f] = acc[f];
-				delete acc[f];
-				hasSensitiveAtTop = true;
-			}
-		});
-
-		if (hasSensitiveAtTop || typeof acc.details !== "object") {
-			return { ...acc, details };
-		}
-		return acc;
-	};
+const normalizeAccount = (acc: any): Account =>
+	AccountCrypto.normalizeAccount(acc);
 
 	/**
 	 * Unlock vault with biometrics
@@ -533,80 +465,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	};
 
-	const decryptAccount = async (
+	const decryptAccount = (
 		acc: Account,
 		forceUnlock: boolean = false,
-	): Promise<Account> => {
-		if (!acc.details || typeof acc.details !== "string") return acc;
-
-		// Check if this is encrypted data
-		const isEncrypted =
-			acc.details.startsWith("ENC:") || acc.details.startsWith("SEC:");
-		if (!isEncrypted) return acc;
-
-		// If vault is locked, cannot decrypt
-		// Use securityUnlockedRef (latest state) rather than profile.isVaultLocked to avoid stale state
-		if (!securityUnlockedRef.current && !forceUnlock) {
-			console.warn(
-				`Account ${acc.id} is encrypted but vault is locked (forceUnlock=${forceUnlock}, isVaultUnlocked=${securityUnlockedRef.current})`,
-			);
-			return acc;
-		}
-
-		// Check if TOTP secret is available for decryption
-		if (!profile.totpSecret) {
-			console.warn(
-				`Account ${acc.id} is encrypted but no TOTP secret found - resetting to empty`,
-			);
-			return {
-				...acc,
-				details: {}, // Reset to empty - old encrypted data unrecoverable
-			};
-		}
-
-		try {
-			// Check if this is old ENC: format (password-based) vs new SEC: format (TOTP-based)
-			if (acc.details.startsWith("ENC:")) {
-				console.warn(
-					`Account ${acc.id} uses old password-based encryption. Cannot decrypt without original password. Resetting to empty.`,
-				);
-				return {
-					...acc,
-					details: {}, // Reset to empty - old encrypted data unrecoverable without migration password
-				};
-			}
-
-			// Derive key from TOTP secret for SEC: encrypted data
-			const key = await SecurityService.deriveKeyFromTOTP(profile.totpSecret);
-			const decryptedStr = await SecurityService.decryptWithKey(
-				acc.details,
-				key,
-			);
-
-			// Check if decryption actually worked
-			if (
-				!decryptedStr ||
-				decryptedStr.startsWith("SEC:") ||
-				decryptedStr.startsWith("ENC:")
-			) {
-				console.warn(
-					`Failed to decrypt account ${acc.id}, returning encrypted`,
-				);
-				return acc;
-			}
-
-			try {
-				const parsed = JSON.parse(decryptedStr);
-				return { ...acc, details: parsed, isEncrypted: false };
-			} catch (jsonErr) {
-				console.warn("Decrypted string is not valid JSON:", decryptedStr);
-				return acc;
-			}
-		} catch (e) {
-			console.error("Decryption failed", e);
-			return acc;
-		}
-	};
+		totpSecret: string | undefined = profile.totpSecret,
+	): Promise<Account> =>
+		AccountCrypto.decryptAccount(
+			acc,
+			cryptoOpts(totpSecret),
+			forceUnlock,
+		);
 	const maskAmount = (
 		amount: number | string,
 		currency?: string,
@@ -1187,33 +1055,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					return Array.from(map.values());
 				};
 
-				const cloudAccounts = await Promise.all(
-					(cloudData.accounts || []).map(async (a: Account) => {
-						const decrypted = await decryptAccount(a);
-						return normalizeAccount(decrypted);
-					}),
-				);
-
-				const localAccountsRaw = StorageService.getStoredAccounts();
-				const localAccounts = await Promise.all(
-					localAccountsRaw.map(async (a) => {
-						const decrypted = await decryptAccount(a);
-						return normalizeAccount(decrypted);
-					}),
-				);
-
-				const mergedAccounts = merge(
-					localAccounts,
-					cloudAccounts,
+				const mergedAccountsRaw = merge(
+					StorageService.getStoredAccounts(),
+					cloudData.accounts || [],
 					useCloudAsAuthority,
+				);
+				const mergedAccounts = await Promise.all(
+					mergedAccountsRaw.map(async (a) => {
+						const decrypted = await decryptAccount(
+							a,
+							false,
+							activeProfile.totpSecret,
+						);
+						return normalizeAccount({ ...decrypted });
+					}),
 				);
 				setAccounts(mergedAccounts);
 
-				// Encrypt for storage (cache to localStorage)
-				const encryptedAccounts = await Promise.all(
-					mergedAccounts.map((a) => encryptAccountForCloud(a)),
+				// Use merged security settings before updateProfile refreshes the closure.
+				const encryptedAccounts =
+					await AccountCrypto.encryptAccountsForSync(
+						mergedAccounts,
+						cryptoOpts(
+							activeProfile.totpSecret,
+							checkBool(activeProfile.isSecurityEnabled),
+						),
+					);
+				const encryptedById = new Map(encryptedAccounts.map((a) => [a.id, a]));
+				// A partial account list would delete omitted accounts from Sheets.
+				const hasOmittedAccounts = mergedAccountsRaw.some((a) => !encryptedById.has(a.id));
+				const accountSave = hasOmittedAccounts
+					? undefined
+					: StorageService.saveAccounts(encryptedAccounts);
+				// Omitted accounts must remain available locally for a later retry.
+				StorageService.saveAccountsLocal(
+					mergedAccountsRaw.map((a) => encryptedById.get(a.id) ?? a),
 				);
-				StorageService.saveAccounts(encryptedAccounts);
+				await accountSave;
 
 				const mergedCategories = merge(
 					StorageService.getStoredCategories(),
@@ -1273,7 +1151,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 				const syncTimestamp = new Date().toISOString();
 				await SheetService.syncWithGoogleSheets(
-					encryptedAccounts,
+					hasOmittedAccounts ? undefined : encryptedAccounts,
 					mergedTransactions,
 					mergedCategories,
 					mergedGoals,

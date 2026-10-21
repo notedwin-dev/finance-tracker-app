@@ -1082,7 +1082,11 @@ const normalizeAccount = (acc: any): Account =>
 						),
 					);
 				const encryptedById = new Map(encryptedAccounts.map((a) => [a.id, a]));
-				const accountSave = StorageService.saveAccounts(encryptedAccounts);
+				// A partial account list would delete omitted accounts from Sheets.
+				const hasOmittedAccounts = mergedAccountsRaw.some((a) => !encryptedById.has(a.id));
+				const accountSave = hasOmittedAccounts
+					? undefined
+					: StorageService.saveAccounts(encryptedAccounts);
 				// Omitted accounts must remain available locally for a later retry.
 				StorageService.saveAccountsLocal(
 					mergedAccountsRaw.map((a) => encryptedById.get(a.id) ?? a),
@@ -1147,7 +1151,7 @@ const normalizeAccount = (acc: any): Account =>
 
 				const syncTimestamp = new Date().toISOString();
 				await SheetService.syncWithGoogleSheets(
-					encryptedAccounts,
+					hasOmittedAccounts ? undefined : encryptedAccounts,
 					mergedTransactions,
 					mergedCategories,
 					mergedGoals,

@@ -182,12 +182,25 @@ describe("encryptAccount", () => {
 });
 
 describe("decryptAccount", () => {
-	it("clears isEncrypted when details are unrecoverable", async () => {
-		const acc = account({ details: "SEC:ciphertext", isEncrypted: true });
+	it.each([true, false, undefined])("preserves SEC: ciphertext without a secret when isEncrypted is %s", async (isEncrypted) => {
+		const acc = account({ details: "SEC:ciphertext", isEncrypted });
 
 		const result = await decryptAccount(acc, opts({ totpSecret: undefined }), true);
+		const payload = await encryptAccountsForSync([normalizeAccount(result)], opts({ totpSecret: undefined }));
 
-		expect(result.details).toEqual({});
+		expect(result.details).toBe(acc.details);
+		expect(result.isEncrypted).toBe(true);
+		expect(payload).toEqual([result]);
+		expect(acc.isEncrypted).toBe(isEncrypted);
+	});
+
+	it("can decrypt preserved SEC: ciphertext once the secret is available", async () => {
+		const encrypted = await encryptAccount(account({ details: { ...plaintext } }), opts());
+
+		const preserved = await decryptAccount(encrypted, opts({ totpSecret: undefined }), true);
+		const result = await decryptAccount(preserved, opts(), true);
+
+		expect(result.details).toEqual(plaintext);
 		expect(result.isEncrypted).toBe(false);
 	});
 

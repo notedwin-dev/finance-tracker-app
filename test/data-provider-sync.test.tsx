@@ -74,9 +74,7 @@ const sync = async (accounts: Account[], profile: Record<string, unknown>) => {
 		await data.syncData();
 	});
 	expect(SheetService.syncWithGoogleSheets).toHaveBeenCalledOnce();
-	const payload = vi.mocked(SheetService.syncWithGoogleSheets).mock.calls[0][0]!;
-	expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", payload);
-	return payload;
+	return vi.mocked(SheetService.syncWithGoogleSheets).mock.calls[0][0];
 };
 
 beforeEach(() => {
@@ -85,6 +83,8 @@ beforeEach(() => {
 	vi.spyOn(console, "log").mockImplementation(() => {});
 	vi.spyOn(console, "warn").mockImplementation(() => {});
 	vi.spyOn(console, "error").mockImplementation(() => {});
+	vi.spyOn(StorageService, "saveAccounts");
+	vi.spyOn(StorageService, "saveAccountsLocal");
 	localStorage.clear();
 	auth.profile = {
 		id: "test-user",
@@ -116,6 +116,8 @@ describe("DataProvider account sync", () => {
 			isSecurityEnabled: enabled, totpSecret: SECRET,
 		});
 
+		expect(StorageService.saveAccounts).toHaveBeenCalledWith(payload);
+		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", payload);
 		expect(payload).toHaveLength(1);
 		expect(isCipherText(payload[0].details)).toBe(shouldEncrypt);
 		if (shouldEncrypt) {
@@ -128,7 +130,7 @@ describe("DataProvider account sync", () => {
 		}
 	});
 
-	it("keeps omitted accounts locally while sending only encrypted accounts", async () => {
+	it("skips both cloud account writes and keeps the complete local retry list when any account is omitted", async () => {
 		const omitted = account("omitted", { details: { accountNumber: "9999" } });
 		localStorage.setItem(`${StorageService.KEYS.ACCOUNTS}_test-user`, JSON.stringify([omitted]));
 		const encryptWithKey = SecurityService.encryptWithKey;
@@ -139,12 +141,14 @@ describe("DataProvider account sync", () => {
 
 		const payload = await sync([account("ok"), omitted], {});
 
-		expect(payload.map((acc) => acc.id)).toEqual(["ok"]);
-		expect(payload.every((acc) => isCipherText(acc.details))).toBe(true);
+		expect(payload).toBeUndefined();
+		expect(StorageService.saveAccounts).not.toHaveBeenCalled();
+		expect(vi.mocked(SheetService.saveToSheet).mock.calls.some(([sheet]) => sheet === "Accounts")).toBe(false);
 		const cached = StorageService.getStoredAccounts();
 		expect(cached.map((acc) => acc.id)).toEqual(["ok", "omitted"]);
-		expect(cached[0]).toEqual(payload[0]);
+		expect(isCipherText(cached[0].details)).toBe(true);
 		expect(cached[1]).toEqual(omitted);
+		expect(StorageService.saveAccountsLocal).toHaveBeenCalledWith(cached);
 		expect(data.accounts.map((acc) => acc.id)).toEqual(["ok", "omitted"]);
 	});
 
@@ -156,7 +160,19 @@ describe("DataProvider account sync", () => {
 
 		const payload = await sync(accounts, {});
 
-		expect(payload).toEqual([]);
+		expect(payload).toBeUndefined();
+		expect(StorageService.saveAccounts).not.toHaveBeenCalled();
+		expect(vi.mocked(SheetService.saveToSheet).mock.calls.some(([sheet]) => sheet === "Accounts")).toBe(false);
+		expect(StorageService.saveAccountsLocal).toHaveBeenCalledWith(accounts);
 		expect(StorageService.getStoredAccounts()).toEqual(accounts);
+	});
+
+	it("writes an empty account list when no accounts were omitted", async () => {
+		const payload = await sync([], {});
+
+		expect(payload).toEqual([]);
+		expect(StorageService.saveAccounts).toHaveBeenCalledWith([]);
+		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", []);
+		expect(StorageService.getStoredAccounts()).toEqual([]);
 	});
 });

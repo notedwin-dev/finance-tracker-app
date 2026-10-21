@@ -12,7 +12,7 @@ import * as SecurityService from "./security.services";
  * Ciphertext detection.
  *
  * The `isEncrypted` flag on an Account is NOT trustworthy on its own:
- * `decryptAccount` resets `details` to `{}` when the key is unavailable,
+ * Earlier `decryptAccount` behavior reset `details` to `{}` without the key,
  * which historically left accounts flagged as encrypted while actually
  * holding plaintext. Details must always be inspected directly.
  */
@@ -136,10 +136,8 @@ export const encryptAccountsForSync = async (
 /**
  * Decrypt an account's details.
  *
- * When the vault is locked the ciphertext is returned untouched. When no TOTP
- * secret is available the details are unrecoverable, so they are reset to `{}`
- * and `isEncrypted` is cleared - otherwise the account would appear encrypted
- * while holding an empty plaintext object.
+ * When the vault is locked or no TOTP secret is available, preserve the
+ * ciphertext so it can be decrypted when the key becomes available.
  */
 export const decryptAccount = async (
 	acc: Account,
@@ -176,13 +174,9 @@ export const decryptAccount = async (
 	// Check if TOTP secret is available for decryption
 	if (!totpSecret) {
 		console.warn(
-			`Account ${acc.id} is encrypted but no TOTP secret found - resetting to empty`,
+			`Account ${acc.id} is encrypted but no TOTP secret found - preserving ciphertext`,
 		);
-		return {
-			...acc,
-			details: {}, // Reset to empty - old encrypted data unrecoverable
-			isEncrypted: false,
-		};
+		return { ...acc, isEncrypted: true };
 	}
 
 	try {

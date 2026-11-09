@@ -393,25 +393,33 @@ out center ${safeLimit * 3};`;
 	const handleToolAction = async (msgIndex: number, approved: boolean) => {
 		if (!activeSession) return;
 
-		const messages = [...activeSession.messages];
-		const msg = messages[msgIndex];
-		if (!msg.functionCall) return;
+		const originalMessage = activeSession.messages[msgIndex];
+		if (!originalMessage?.functionCall) return;
+		const nextStatus: ChatMessage["status"] = approved ? "approved" : "rejected";
+		const messagesWithStatus = activeSession.messages.map((message, index) =>
+			index === msgIndex
+				? {
+						...message,
+						status: nextStatus,
+					}
+				: message,
+		);
+		const toolName = originalMessage.functionCall.name;
 
 		if (!approved) {
-			msg.status = "rejected";
 			const systemResponse: ChatMessage = {
 				role: "system",
 				content: "",
 				timestamp: new Date().toISOString(),
 				functionResponse: {
-					name: msg.functionCall.name,
+					name: toolName,
 					response: { error: "User rejected the request" },
 				},
 			};
 
 			const updatedSession = {
 				...activeSession,
-				messages: [...messages, systemResponse],
+				messages: [...messagesWithStatus, systemResponse],
 				updatedAt: new Date().toISOString(),
 			};
 			onSaveSession(updatedSession);
@@ -424,11 +432,10 @@ out center ${safeLimit * 3};`;
 		}
 
 		// Process tool
-		msg.status = "approved";
 		let responsePayload: any = null;
-		const functionArgs = msg.functionCall.args || {};
+		const functionArgs = originalMessage.functionCall.args || {};
 
-		if (msg.functionCall.name === "get_historical_transactions") {
+		if (toolName === "get_historical_transactions") {
 			const { searchKeyword, startDate, endDate, categoryName } = functionArgs;
 
 			const toolResult = transactions
@@ -453,7 +460,7 @@ out center ${safeLimit * 3};`;
 				appliedFilters: functionArgs,
 				transactions: toolResult || [],
 			};
-		} else if (msg.functionCall.name === "get_current_location") {
+		} else if (toolName === "get_current_location") {
 			try {
 				const location = await getCurrentLocation();
 				responsePayload = {
@@ -465,7 +472,7 @@ out center ${safeLimit * 3};`;
 					error: err?.message || "Unable to retrieve current location.",
 				};
 			}
-		} else if (msg.functionCall.name === "get_nearby_food") {
+		} else if (toolName === "get_nearby_food") {
 			try {
 				let latitude = Number(functionArgs.latitude);
 				let longitude = Number(functionArgs.longitude);
@@ -490,7 +497,7 @@ out center ${safeLimit * 3};`;
 			}
 		} else {
 			responsePayload = {
-				error: `Unsupported tool: ${msg.functionCall.name}`,
+				error: `Unsupported tool: ${toolName}`,
 			};
 		}
 
@@ -499,14 +506,14 @@ out center ${safeLimit * 3};`;
 			content: "",
 			timestamp: new Date().toISOString(),
 			functionResponse: {
-				name: msg.functionCall.name,
+				name: toolName,
 				response: responsePayload,
 			},
 		};
 
 		const nextSession = {
 			...activeSession,
-			messages: [...messages, functionResponseMessage],
+			messages: [...messagesWithStatus, functionResponseMessage],
 			updatedAt: new Date().toISOString(),
 		};
 		onSaveSession(nextSession);

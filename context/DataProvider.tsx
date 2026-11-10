@@ -1190,6 +1190,13 @@ const normalizeAccount = (acc: any): Account =>
 				setHasSynced(true);
 
 				showToast("Cloud sync complete", "success");
+			} else {
+				// Load refused (e.g. dead session, unreachable Sheets). Do NOT
+				// treat the cloud as authoritative-empty: keep local data and
+				// continue offline until the next successful sync.
+				console.warn("Cloud load failed; continuing on local data");
+				showToast("Cloud sync failed. Working offline.", "info");
+				setHasSynced(true);
 			}
 		} catch (e) {
 			console.error("Sync failed", e);

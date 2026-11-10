@@ -1206,37 +1206,62 @@ export const loadFromGoogleSheets = async (
 		return null;
 	}
 
-	const fileId = await getSpreadsheetId();
-	if (!fileId) {
-		console.warn("Could not retrieve spreadsheet ID");
-		return null;
-	}
+	const runLoad = async (): Promise<{
+		accounts: Account[];
+		transactions: Transaction[];
+		categories: Category[];
+		goals: Goal[];
+		subscriptions: Subscription[];
+		pots: Pot[];
+		pockets: SavingPocket[];
+		chatSessions: ChatSession[];
+		profile?: any;
+	}> => {
+		const fileId = await getSpreadsheetId();
+		if (!fileId) {
+			// getSpreadsheetId already cleared the token if it 401'd; nothing
+			// readable — refusing the load keeps local data untouched.
+			console.warn("Could not retrieve spreadsheet ID");
+			throw new Error("No spreadsheet ID");
+		}
 
-	const result: any = {};
+		const result: any = {};
 
-	// Support both "Profile" (new) and "Users" (legacy) sheet names
-	const sheetName = await getProfileSheetName(fileId);
-	const sheetNamesToLoad = [
-		"Accounts",
-		"Transactions",
-		"Categories",
-		"Goals",
-		"Subscriptions",
-		"Pots",
-		"Pockets",
-		"ChatSessions",
-		sheetName, // Use detected sheet name (Profile or Users)
-	];
+		// Support both "Profile" (new) and "Users" (legacy) sheet names
+		const sheetName = await getProfileSheetName(fileId);
+		const sheetNamesToLoad = [
+			"Accounts",
+			"Transactions",
+			"Categories",
+			"Goals",
+			"Subscriptions",
+			"Pots",
+			"Pockets",
+			"ChatSessions",
+			sheetName, // Use detected sheet name (Profile or Users)
+		];
 
-	const names = await getSheetNames(fileId);
-	const existingSheets = names || [];
+		// null metadata read means the read failed (e.g. transient 401) —
+		// distinct from a genuinely empty spreadsheet (no matching tabs).
+		const names = await getSheetNames(fileId);
+		if (names === null) throw new Error("No sheet metadata");
 
-	const validSheets = sheetNamesToLoad.filter((s) =>
-		existingSheets.includes(s),
-	);
-	if (validSheets.length === 0) return result;
+		const validSheets = sheetNamesToLoad.filter((s) =>
+			names.includes(s),
+		);
+		if (validSheets.length === 0) {
+			return {
+				accounts: [],
+				transactions: [],
+				categories: [],
+				goals: [],
+				subscriptions: [],
+				pots: [],
+				pockets: [],
+				chatSessions: [],
+			};
+		}
 
-	const runBatchLoad = async (): Promise<void> => {
 		const response =
 			await window.gapi.client.sheets.spreadsheets.values.batchGet({
 				spreadsheetId: fileId,
@@ -1277,61 +1302,64 @@ export const loadFromGoogleSheets = async (
 					(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
 				);
 		});
+
+		// Perform migration for Pots if needed
+		const pots = (result.pots || []).map((p: any) => {
+			// Migration from old naming: targetAmount -> limitAmount, currentAmount -> amountLeft
+			const migratedPot = { ...p };
+			if (
+				migratedPot.limitAmount === undefined &&
+				migratedPot.targetAmount !== undefined
+			) {
+				migratedPot.limitAmount = Number(migratedPot.targetAmount);
+			}
+			if (
+				migratedPot.amountLeft === undefined &&
+				migratedPot.currentAmount !== undefined
+			) {
+				migratedPot.amountLeft = Number(migratedPot.currentAmount);
+			}
+			// Ensure usedAmount is calculated if missing
+			if (migratedPot.usedAmount === undefined) {
+				if (
+					migratedPot.limitAmount !== undefined &&
+					migratedPot.amountLeft !== undefined
+				) {
+					migratedPot.usedAmount =
+						migratedPot.limitAmount - migratedPot.amountLeft;
+				} else {
+					migratedPot.usedAmount = 0;
+				}
+			}
+			return migratedPot;
+		});
+
+		return {
+			accounts: result.accounts || [],
+			transactions: result.transactions || [],
+			categories: result.categories || [],
+			goals: result.goals || [],
+			subscriptions: result.subscriptions || [],
+			pots,
+			pockets: result.pockets || [],
+			chatSessions: result.chatsessions || [],
+			profile: result.profile,
+		};
 	};
 
 	try {
 		// A dead access token recovers through the silent refresh handler
 		// instead of stranding the app offline until a manual sign-in.
-		await attemptWithSessionRefresh(runBatchLoad, {
+		// Any failure (after the retry) must surface as a refused load —
+		// never as an "empty cloud", which would overwrite local data.
+		return await attemptWithSessionRefresh(runLoad, {
 			tryRefresh: trySilentRefresh,
 			clearToken: clearGapiAccessToken,
 		});
 	} catch (err: any) {
 		console.warn("Batch load failed", err);
+		return null;
 	}
-
-	// Perform migration for Pots if needed
-	const pots = (result.pots || []).map((p: any) => {
-		// Migration from old naming: targetAmount -> limitAmount, currentAmount -> amountLeft
-		const migratedPot = { ...p };
-		if (
-			migratedPot.limitAmount === undefined &&
-			migratedPot.targetAmount !== undefined
-		) {
-			migratedPot.limitAmount = Number(migratedPot.targetAmount);
-		}
-		if (
-			migratedPot.amountLeft === undefined &&
-			migratedPot.currentAmount !== undefined
-		) {
-			migratedPot.amountLeft = Number(migratedPot.currentAmount);
-		}
-		// Ensure usedAmount is calculated if missing
-		if (migratedPot.usedAmount === undefined) {
-			if (
-				migratedPot.limitAmount !== undefined &&
-				migratedPot.amountLeft !== undefined
-			) {
-				migratedPot.usedAmount =
-					migratedPot.limitAmount - migratedPot.amountLeft;
-			} else {
-				migratedPot.usedAmount = 0;
-			}
-		}
-		return migratedPot;
-	});
-
-	return {
-		accounts: result.accounts || [],
-		transactions: result.transactions || [],
-		categories: result.categories || [],
-		goals: result.goals || [],
-		subscriptions: result.subscriptions || [],
-		pots,
-		pockets: result.pockets || [],
-		chatSessions: result.chatsessions || [],
-		profile: result.profile,
-	};
 };
 /**
  * Opens a Google Picker to let the user select a specific spreadsheet.

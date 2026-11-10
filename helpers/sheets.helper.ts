@@ -111,13 +111,12 @@ const recoveryErrStatus = (err: any): number | undefined =>
  * so one stale hour never forces a manual reconnect. Any other error is
  * rethrown untouched for the caller's usual handling.
  */
-export const attemptWithSessionRefresh = async (
-  performLoad: () => Promise<void>,
+export const attemptWithSessionRefresh = async <T>(
+  performLoad: () => Promise<T>,
   deps: { tryRefresh: () => Promise<boolean>; clearToken: () => void },
-): Promise<void> => {
+): Promise<T> => {
   try {
-    await performLoad();
-    return;
+    return await performLoad();
   } catch (err) {
     if (recoveryErrStatus(err) !== 401) throw err;
     if (!(await deps.tryRefresh())) {
@@ -125,7 +124,7 @@ export const attemptWithSessionRefresh = async (
       throw err;
     }
     try {
-      await performLoad();
+      return await performLoad();
     } catch (retryErr) {
       if (recoveryErrStatus(retryErr) === 401) deps.clearToken();
       throw retryErr;

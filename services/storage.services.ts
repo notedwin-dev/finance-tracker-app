@@ -177,6 +177,7 @@ export const saveLocalData = (data: {
   goals?: Goal[];
   subscriptions?: Subscription[];
   pots?: Pot[];
+  pockets?: SavingPocket[];
 }) => {
   if (data.accounts)
     localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(data.accounts));
@@ -199,6 +200,8 @@ export const saveLocalData = (data: {
     );
   if (data.pots)
     localStorage.setItem(getKey(KEYS.POTS), JSON.stringify(data.pots));
+  if (data.pockets)
+    localStorage.setItem(getKey(KEYS.POCKETS), JSON.stringify(data.pockets));
 };
 
 // Initial Data Seeding

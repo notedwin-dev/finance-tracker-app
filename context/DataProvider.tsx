@@ -5,6 +5,7 @@ import { useAuth } from "../services/auth.services";
 import { getUSDToMYRRate } from "../services/exchange.services";
 import { getCryptoPrices, CryptoPrices } from "../services/coin.services";
 import { normalizeDate, parseDateSafe } from "../helpers/transactions.helper";
+import { parseStoredExpiry } from "../helpers/sheets.helper";
 import {
 	Account,
 	Category,
@@ -39,7 +40,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
 	const {
 		profile: rawProfile,
-		loginWithGoogle,
+		refreshTokenSilently,
 		isInitialized,
 		updateProfile,
 	} = useAuth();
@@ -749,27 +750,49 @@ const normalizeAccount = (acc: any): Account =>
 					return;
 				}
 				const savedToken = localStorage.getItem("google_access_token");
-				const savedExpiry = localStorage.getItem("google_token_expiry");
 				if (savedToken) {
-					const expiresIn = savedExpiry
-						? (parseInt(savedExpiry) - Date.now()) / 1000
-						: undefined;
+					// "NaN"/garbage expiry parses as 0 = unknown instead of NaN
+					// (which made the token look fresh forever).
+					const expiresIn =
+						(parseStoredExpiry(localStorage.getItem("google_token_expiry")) -
+							Date.now()) /
+						1000;
 					SheetService.setGapiAccessToken(savedToken, expiresIn);
 				}
 			}
 
 			if (!SheetService.isClientReady()) {
-				// If they had a token but still not ready, don't force login if they could be offline
-				if (!navigator.onLine) {
+				// gapi itself never initialized (blocked script / slow network):
+				// refreshing the session token cannot help and the message
+				// must not tell the user their session expired.
+				if (!SheetService.isGapiInited()) {
+					console.warn("GAPI not initialized; continuing offline.");
+					showToast("Google services unavailable. Working offline.", "alert");
 					syncInProgress.current = false;
 					setIsSyncing(false);
 					return;
 				}
-				showToast("Session expired. Please sign in again.", "info");
-				loginWithGoogle();
-				syncInProgress.current = false;
-				setIsSyncing(false);
-				return;
+
+				// Recover the session quietly first. A login popup here would
+				// fire without a user gesture and get blocked mid-boot.
+				if (navigator.onLine) await refreshTokenSilently();
+
+				if (!SheetService.isClientReady()) {
+					// Couldn't recover (offline, or session dead). Stay usable on
+					// local data instead of wedging the boot on a dead session.
+					if (!navigator.onLine) {
+						syncInProgress.current = false;
+						setIsSyncing(false);
+						return;
+					}
+					showToast(
+						"Cloud session expired. Reconnect Google from Profile → Cloud Sync.",
+						"alert",
+					);
+					syncInProgress.current = false;
+					setIsSyncing(false);
+					return;
+				}
 			}
 
 			showToast("Syncing with Google Sheets...", "info");
@@ -1181,6 +1204,13 @@ const normalizeAccount = (acc: any): Account =>
 				setHasSynced(true);
 
 				showToast("Cloud sync complete", "success");
+			} else {
+				// Load refused (e.g. dead session, unreachable Sheets). Do NOT
+				// treat the cloud as authoritative-empty: keep local data and
+				// continue offline until the next successful sync.
+				console.warn("Cloud load failed; continuing on local data");
+				showToast("Cloud sync failed. Working offline.", "info");
+				setHasSynced(true);
 			}
 		} catch (e) {
 			console.error("Sync failed", e);
@@ -3313,30 +3343,56 @@ const normalizeAccount = (acc: any): Account =>
 			"google_refresh_token",
 			"encrypted_vault_key",
 			"device_id",
+			// Post-reset edits and syncs must keep targeting the picked
+			// spreadsheet; without it getSpreadsheetId falls back to a name
+			// search that misses picker-selected files and creates a new one.
+			"zenfinance_selected_sheet_id",
 			StorageService.KEYS.PROFILE,
 		];
-		const saved: any = {};
-		keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-		localStorage.clear();
-		keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
+		// Load from the cloud BEFORE wiping local storage: a failed load must
+		// never leave the user with neither the cache nor the cloud copy.
+		// Bonus: the selected-sheet id survives the load (it used to be wiped
+		// by localStorage.clear() before the Drive lookup could use it).
 		const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
 		if (cloudData) {
+			// The picker can change the selection while the load is in flight.
+			// Restoring this snapshot under a different spreadsheet's id would
+			// mix one file's data into another on the next sync.
+			const selectedId = localStorage.getItem("zenfinance_selected_sheet_id");
+			if (selectedId && selectedId !== cloudData.spreadsheetId) {
+				showToast("Spreadsheet selection changed. Reset cancelled, local data kept.", "alert");
+				setIsSyncing(false);
+				return;
+			}
+			// Snapshot AFTER the load: a 401 during it silently refreshes the
+			// token in localStorage, and an earlier snapshot would restore the
+			// stale token over the fresh one.
+			const saved: any = {};
+			keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
+			localStorage.clear();
+			keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 			if (cloudData.profile) {
 				const mergedProfile = { ...profile, ...cloudData.profile };
 				StorageService.saveProfile(mergedProfile);
 				updateProfile(cloudData.profile);
 			}
-			// Note: we don't encrypt here because they are already encrypted in Sheets
-			StorageService.saveAccounts(cloudData.accounts);
-			StorageService.saveTransactions(cloudData.transactions);
-			StorageService.saveCategories(cloudData.categories);
-			StorageService.saveGoals(cloudData.goals);
-			StorageService.saveSubscriptions(cloudData.subscriptions || []);
-			StorageService.savePots(cloudData.pots || []);
-			StorageService.savePockets(cloudData.pockets || []);
+			// Local-only restore: this data just came from the spreadsheet, so
+			// writing it back would be redundant and could race a sheet switch.
+			// Accounts are already encrypted in Sheets; no re-encryption needed.
+			StorageService.saveLocalData({
+				accounts: cloudData.accounts,
+				transactions: cloudData.transactions,
+				categories: cloudData.categories,
+				goals: cloudData.goals,
+				subscriptions: cloudData.subscriptions || [],
+				pots: cloudData.pots || [],
+				pockets: cloudData.pockets || [],
+			});
 			StorageService.saveChatSessions(cloudData.chatSessions || []);
 			loadData();
 			showToast("Sync reset complete", "success");
+		} else {
+			showToast("Cloud load failed. Local data kept.", "alert");
 		}
 		setIsSyncing(false);
 	};

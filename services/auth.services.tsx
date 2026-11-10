@@ -4,6 +4,7 @@ import * as SheetService from "./sheets.services";
 import * as StorageService from "./storage.services";
 import { UserProfile } from "../types";
 import { hashPassword, verifyPassword } from "./crypto.services";
+import { parseStoredExpiry } from "../helpers/sheets.helper";
 
 // Legacy vault profile type for backward compatibility
 type LegacyVaultProfile = UserProfile & {
@@ -20,6 +21,7 @@ type LegacyVaultProfile = UserProfile & {
 interface AuthContextType {
 	profile: UserProfile;
 	loginWithGoogle: () => void;
+	refreshTokenSilently: () => Promise<string | null>;
 	emailLogin: (email: string, pass: string) => Promise<void>;
 	emailSignup: (email: string, pass: string, name: string) => Promise<void>;
 	logout: () => void;
@@ -76,6 +78,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			SheetService.setSheetUser(profile.id);
 		}
 
+		// The Sheets layer can recover an expired session without a re-auth
+		// dance; registered here because silent refresh needs the backend URL.
+		SheetService.setAuthRefreshHandler(refreshAccessToken);
+
 		const initAuth = async () => {
 			await SheetService.initGapiClient();
 
@@ -84,7 +90,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			const refreshToken = localStorage.getItem("google_refresh_token");
 
 			let token = savedToken;
-			let expiry = savedExpiry ? parseInt(savedExpiry) : 0;
+			// "NaN"/garbage stored expiry (historical bug) parses as 0 = unknown,
+			// so the refresh condition below now actually fires and heals boot.
+			let expiry = parseStoredExpiry(savedExpiry);
 
 			if (refreshToken && (!token || Date.now() > expiry - 300000)) {
 				token = await refreshAccessToken();
@@ -96,6 +104,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		};
 
 		initAuth();
+
+		return () => {
+			SheetService.setAuthRefreshHandler(null);
+		};
 	}, []);
 
 	const handleGoogleSuccess = async ({ code }: { code: string }) => {
@@ -112,8 +124,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			if (!tokens.access_token) throw new Error("No access token returned");
 
 			setAuthStatus("Connecting to Google Services...");
-			const expiresAt = Date.now() + tokens.expires_in * 1000;
-			SheetService.setGapiAccessToken(tokens.access_token, tokens.expires_in);
+			// Guard the expiry write: a missing/garbage expires_in used to
+			// persist "NaN" here, which permanently masked every future
+			// token expiry and broke boot refresh.
+			const expiresIn =
+				typeof tokens.expires_in === "number" &&
+				isFinite(tokens.expires_in) &&
+				tokens.expires_in > 0
+					? tokens.expires_in
+					: 3600; // Google access tokens live ~1 hour
+			const expiresAt = Date.now() + expiresIn * 1000;
+			SheetService.setGapiAccessToken(tokens.access_token, expiresIn);
 
 			localStorage.setItem("google_access_token", tokens.access_token);
 			localStorage.setItem("google_token_expiry", expiresAt.toString());
@@ -310,6 +331,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			value={{
 				profile,
 				loginWithGoogle,
+				refreshTokenSilently: refreshAccessToken,
 				emailLogin,
 				emailSignup,
 				logout,

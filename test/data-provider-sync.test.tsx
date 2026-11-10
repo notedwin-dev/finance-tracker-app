@@ -66,6 +66,7 @@ const sync = async (accounts: Account[], profile: Record<string, unknown>) => {
 		pots: [],
 		pockets: [],
 		chatSessions: [],
+		spreadsheetId: "sheet-id",
 	});
 	await act(async () => {
 		root.render(<DataProvider><Capture /></DataProvider>);
@@ -174,5 +175,130 @@ describe("DataProvider account sync", () => {
 		expect(StorageService.saveAccounts).toHaveBeenCalledWith([]);
 		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", []);
 		expect(StorageService.getStoredAccounts()).toEqual([]);
+	});
+});
+
+const cloudData = (overrides: Record<string, unknown> = {}) => ({
+	accounts: [],
+	transactions: [],
+	categories: [],
+	goals: [],
+	subscriptions: [],
+	pots: [],
+	pockets: [],
+	chatSessions: [],
+	spreadsheetId: "sheet-id",
+	...overrides,
+});
+
+describe("DataProvider reset and sync", () => {
+	beforeEach(() => {
+		vi.spyOn(window, "confirm").mockReturnValue(true);
+	});
+
+	const renderProvider = async () => {
+		await act(async () => {
+			root.render(<DataProvider><Capture /></DataProvider>);
+		});
+	};
+
+	it("keeps the token refreshed during the cloud load instead of restoring the stale one", async () => {
+		localStorage.setItem("google_access_token", "old-token");
+		localStorage.setItem("google_token_expiry", "1");
+		localStorage.setItem("device_id", "device-1");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockImplementation(async () => {
+			// Simulates the silent 401 -> refresh retry inside the real load.
+			localStorage.setItem("google_access_token", "new-token");
+			localStorage.setItem("google_token_expiry", "9999999999999");
+			return cloudData();
+		});
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(localStorage.getItem("google_access_token")).toBe("new-token");
+		expect(localStorage.getItem("google_token_expiry")).toBe("9999999999999");
+		expect(localStorage.getItem("device_id")).toBe("device-1");
+		expect(localStorage.getItem(StorageService.KEYS.PROFILE)).not.toBeNull();
+	});
+
+	it("keeps the selected sheet id across the reset so later writes target the chosen spreadsheet", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "picked-file-id");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ spreadsheetId: "picked-file-id" }),
+		);
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(localStorage.getItem("zenfinance_selected_sheet_id")).toBe("picked-file-id");
+	});
+
+	it("restores the cloud snapshot locally without writing it back to the spreadsheet", async () => {
+		const accounts = [account("cloud")];
+		const pockets = [{
+			id: "p1", userId: "test-user", name: "Pocket",
+			currentAmount: 5, currency: "MYR" as const, color: "#fff", icon: "P",
+		}];
+		const chatSessions = [{
+			id: "chat1", userId: "test-user", title: "Chat",
+			messages: [], updatedAt: "2026-01-01T00:00:00.000Z",
+		}];
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ accounts, pockets, chatSessions }),
+		);
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(SheetService.saveToSheet).not.toHaveBeenCalled();
+		expect(StorageService.getStoredAccounts()).toEqual(accounts);
+		expect(StorageService.getStoredPockets()).toEqual(pockets);
+		expect(StorageService.getStoredChatSessions()).toEqual(chatSessions);
+	});
+
+	it("aborts the reset when the spreadsheet selection changed during the load", async () => {
+		const localAccounts = [account("local")];
+		localStorage.setItem(`${StorageService.KEYS.ACCOUNTS}_test-user`, JSON.stringify(localAccounts));
+		localStorage.setItem("zenfinance_selected_sheet_id", "old-file");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockImplementation(async () => {
+			// The picker can change the selection while the reset load is in flight.
+			localStorage.setItem("zenfinance_selected_sheet_id", "new-file");
+			return cloudData({
+				accounts: [account("old-file-data")],
+				spreadsheetId: "old-file",
+			});
+		});
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(StorageService.getStoredAccounts()).toEqual(localAccounts);
+		expect(localStorage.getItem("zenfinance_selected_sheet_id")).toBe("new-file");
+		expect(SheetService.saveToSheet).not.toHaveBeenCalled();
+	});
+
+	it("keeps local data and session when the cloud load is refused", async () => {
+		const accounts = [account("local")];
+		localStorage.setItem(`${StorageService.KEYS.ACCOUNTS}_test-user`, JSON.stringify(accounts));
+		localStorage.setItem("google_access_token", "old-token");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(null);
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(StorageService.getStoredAccounts()).toEqual(accounts);
+		expect(localStorage.getItem("google_access_token")).toBe("old-token");
+		expect(localStorage.getItem(StorageService.KEYS.PROFILE)).not.toBeNull();
 	});
 });

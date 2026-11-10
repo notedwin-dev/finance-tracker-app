@@ -384,14 +384,18 @@ export const streamFinancialAdvice = async (
     const messagePart = lastTurn?.parts?.find(
       (part: any) => typeof part?.text === 'string',
     );
-    const hasFunctionResponse = Boolean(
-      lastTurn?.parts?.some((part: any) => Boolean(part?.functionResponse)),
+    const functionResponseParts = (lastTurn?.parts ?? []).filter(
+      (part: any) => Boolean(part?.functionResponse),
     );
+    // A model turn that contains a functionCall must be answered by a user
+    // turn containing the matching functionResponse. Sending the tool payload
+    // itself keeps the call and its answer paired; a placeholder string
+    // leaves the call unanswered, which the API rejects.
     const message =
-      typeof messagePart?.text === 'string'
-        ? messagePart.text
-        : hasFunctionResponse
-          ? 'Continue based on the approved tool result and answer the user directly.'
+      functionResponseParts.length > 0
+        ? functionResponseParts
+        : typeof messagePart?.text === 'string'
+          ? messagePart.text
           : '';
     const response = await chat.sendMessageStream({ message });
 

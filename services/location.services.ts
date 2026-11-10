@@ -36,10 +36,10 @@ export interface NearbyFoodResult {
 
 const MIN_RADIUS_METERS = 100;
 const MAX_RADIUS_METERS = 5000;
-const DEFAULT_RADIUS_METERS = 1200;
+export const DEFAULT_RADIUS_METERS = 1200;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 20;
-const DEFAULT_LIMIT = 10;
+export const DEFAULT_LIMIT = 10;
 /**
  * Raw sample to request when a cuisine keyword is present. Overpass does not
  * sort by distance, so the client picks the nearest matches from whatever the
@@ -164,6 +164,9 @@ export const mapOverpassToPlaces = (
 		.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters) as NearbyPlace[];
 };
 
+/** Client-side abort limit; the query already sets [timeout:25] server-side. */
+const OVERPASS_TIMEOUT_MS = 30000;
+
 /** Build the Overpass QL for a nearby-food search around a coordinate. */
 export const buildOverpassQuery = (
 	latitude: number,
@@ -206,6 +209,7 @@ export const fetchNearbyFood = async (
 		headers: {
 			Accept: "application/json",
 		},
+		signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
 	});
 
 	if (!response.ok) {

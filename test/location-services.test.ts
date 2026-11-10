@@ -281,6 +281,19 @@ describe("fetchNearbyFood", () => {
 		);
 	});
 
+	it("aborts the request if the data source stalls", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ elements: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchNearbyFood(3.1, 101.7, 800, 5);
+
+		const init = fetchMock.mock.calls[0][1] as RequestInit;
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+	});
+
 	it("keeps the 3x raw sample when no cuisine keyword is given", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok: true,

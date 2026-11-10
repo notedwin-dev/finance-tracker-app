@@ -295,10 +295,11 @@ const AIInsights: React.FC<Props> = ({
 			);
 			if (!result) return;
 
-			// The chat input stays enabled while the tool runs, so the session
-			// may have grown; apply the decision to the latest list, not to
-			// the snapshot taken at click time.
-			const current = latestSession.current ?? session;
+			// The user may have switched or deleted the chat while the tool
+			// ran; do not apply the decision to some other session, and do
+			// not resurrect a deleted one.
+			const current = latestSession.current;
+			if (!current || current.id !== session.id) return;
 			const updatedSession = {
 				...current,
 				messages: [

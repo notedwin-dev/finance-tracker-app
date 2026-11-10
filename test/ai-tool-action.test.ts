@@ -545,5 +545,41 @@ describe("resolveToolAction", () => {
 
 			expect(result).toBeNull();
 		});
+
+		it("returns null for an already-approved request", async () => {
+			const ctx = context();
+			const decided: ChatMessage = {
+				...pendingRequest("get_current_location"),
+				status: "approved",
+			};
+
+			const result = await resolveToolAction(
+				[decided],
+				0,
+				"rejected",
+				ctx,
+			);
+
+			expect(result).toBeNull();
+			expect(ctx.getCurrentLocation).not.toHaveBeenCalled();
+		});
+
+		it("returns null for an already-rejected request", async () => {
+			const ctx = context();
+			const decided: ChatMessage = {
+				...pendingRequest("get_current_location"),
+				status: "rejected",
+			};
+
+			const result = await resolveToolAction(
+				[decided],
+				0,
+				"approved",
+				ctx,
+			);
+
+			expect(result).toBeNull();
+			expect(ctx.getCurrentLocation).not.toHaveBeenCalled();
+		});
 	});
 });

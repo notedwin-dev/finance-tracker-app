@@ -207,7 +207,8 @@ export const resolveToolAction = async (
 	ctx: ToolActionContext,
 ): Promise<ToolActionResult | null> => {
 	const request = findToolRequest(messages, msgIndex);
-	if (!request) return null;
+	if (!request || (request.status && request.status !== "pending"))
+		return null;
 
 	const toolName = request.functionCall!.name;
 	const args = request.functionCall!.args || {};

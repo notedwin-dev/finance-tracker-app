@@ -51,7 +51,10 @@ const locationMock = vi.hoisted(() => ({
 	fetchNearbyFood: vi.fn(),
 }));
 
-vi.mock("../services/location.services", () => locationMock);
+vi.mock("../services/location.services", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../services/location.services")>()),
+	...locationMock,
+}));
 
 const FIXED_NOW = "2026-01-01T00:00:00.000Z";
 
@@ -124,6 +127,14 @@ describe("AIInsights data access request decisions", () => {
 		session: ChatSession,
 		transactions: Transaction[] = [],
 	) => {
+		await renderSessions([session], session.id, transactions);
+	};
+
+	const renderSessions = async (
+		sessions: ChatSession[],
+		activeSessionId: string,
+		transactions: Transaction[] = [],
+	) => {
 		await act(async () => {
 			root.render(
 				<AIInsights
@@ -134,8 +145,8 @@ describe("AIInsights data access request decisions", () => {
 					pots={[]}
 					goals={[]}
 					subscriptions={[]}
-					sessions={[session]}
-					activeSessionId={session.id}
+					sessions={sessions}
+					activeSessionId={activeSessionId}
 					onClose={() => {}}
 					onSaveSession={onSaveSession}
 					onDeleteSession={() => {}}
@@ -355,6 +366,65 @@ describe("AIInsights data access request decisions", () => {
 		).toBe(true);
 		const last = decisionSave.messages[decisionSave.messages.length - 1];
 		expect(last.functionResponse).toBeTruthy();
+	});
+
+	it("R3: does not apply a decision after the user switches chats", async () => {
+		const pendingLookups: Array<(value: any) => void> = [];
+		locationMock.getCurrentLocation.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					pendingLookups.push(resolve);
+				}),
+		);
+
+		const session = buildSession("get_current_location");
+		const other: ChatSession = {
+			id: "chat-2",
+			userId: "test-user",
+			title: "Other Chat",
+			messages: [],
+			updatedAt: FIXED_NOW,
+		};
+		await render(session);
+
+		await clickButton("Approve");
+
+		// The sidebar stays live while the tool runs; the user switches to
+		// another chat. The tool result must not land in that chat.
+		await renderSessions([session, other], "chat-2");
+
+		pendingLookups.forEach((resolve) =>
+			resolve({ latitude: 3, longitude: 4, accuracyMeters: 5 }),
+		);
+		await flushMicrotasks();
+
+		expect(onSaveSession).not.toHaveBeenCalled();
+	});
+
+	it("R3: does not re-save a session that was deleted during the decision", async () => {
+		const pendingLookups: Array<(value: any) => void> = [];
+		locationMock.getCurrentLocation.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					pendingLookups.push(resolve);
+				}),
+		);
+
+		const session = buildSession("get_current_location");
+		await render(session);
+
+		await clickButton("Approve");
+
+		// The user deletes the chat while the tool runs; the decision must
+		// not resurrect it.
+		await renderSessions([], "chat-1");
+
+		pendingLookups.forEach((resolve) =>
+			resolve({ latitude: 3, longitude: 4, accuracyMeters: 5 }),
+		);
+		await flushMicrotasks();
+
+		expect(onSaveSession).not.toHaveBeenCalled();
 	});
 
 	it("R3: allows a further decision once the previous one has completed", async () => {

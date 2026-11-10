@@ -46,6 +46,14 @@ describe("clampLimit", () => {
 		expect(clampLimit(0)).toBe(10);
 		expect(clampLimit(999)).toBe(20);
 	});
+
+	it("floors fractional limits so the query holds an integer", () => {
+		// The limit reaches `out center ${limit * 3}`; a fractional value
+		// such as 4.5 would emit `out center 13.5`, which Overpass QL
+		// rejects as malformed.
+		expect(clampLimit(4.5)).toBe(4);
+		expect(clampLimit(3.999)).toBe(3);
+	});
 });
 
 describe("distanceInMeters", () => {

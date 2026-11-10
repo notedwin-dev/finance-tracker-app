@@ -78,7 +78,10 @@ export const clampRadius = (radiusMeters: number): number =>
 
 /** Clamp the requested number of places into a sane range. */
 export const clampLimit = (limit: number): number =>
-	Math.min(Math.max(limit || DEFAULT_LIMIT, MIN_LIMIT), MAX_LIMIT);
+	Math.min(
+		Math.max(Math.floor(limit || DEFAULT_LIMIT), MIN_LIMIT),
+		MAX_LIMIT,
+	);
 
 /** Resolve the device's current position. */
 export const getCurrentLocation = (): Promise<ToolLocation> => {

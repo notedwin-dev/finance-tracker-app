@@ -5,6 +5,7 @@ import { useAuth } from "../services/auth.services";
 import { getUSDToMYRRate } from "../services/exchange.services";
 import { getCryptoPrices, CryptoPrices } from "../services/coin.services";
 import { normalizeDate, parseDateSafe } from "../helpers/transactions.helper";
+import { parseStoredExpiry } from "../helpers/sheets.helper";
 import {
 	Account,
 	Category,
@@ -39,7 +40,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
 	const {
 		profile: rawProfile,
-		loginWithGoogle,
+		refreshTokenSilently,
 		isInitialized,
 		updateProfile,
 	} = useAuth();
@@ -748,27 +749,38 @@ const normalizeAccount = (acc: any): Account =>
 					return;
 				}
 				const savedToken = localStorage.getItem("google_access_token");
-				const savedExpiry = localStorage.getItem("google_token_expiry");
 				if (savedToken) {
-					const expiresIn = savedExpiry
-						? (parseInt(savedExpiry) - Date.now()) / 1000
-						: undefined;
+					// "NaN"/garbage expiry parses as 0 = unknown instead of NaN
+					// (which made the token look fresh forever).
+					const expiresIn =
+						(parseStoredExpiry(localStorage.getItem("google_token_expiry")) -
+							Date.now()) /
+						1000;
 					SheetService.setGapiAccessToken(savedToken, expiresIn);
 				}
 			}
 
 			if (!SheetService.isClientReady()) {
-				// If they had a token but still not ready, don't force login if they could be offline
-				if (!navigator.onLine) {
+				// Recover the session quietly first. A login popup here would
+				// fire without a user gesture and get blocked mid-boot.
+				if (navigator.onLine) await refreshTokenSilently();
+
+				if (!SheetService.isClientReady()) {
+					// Couldn't recover (offline, or session dead). Stay usable on
+					// local data instead of wedging the boot on a dead session.
+					if (!navigator.onLine) {
+						syncInProgress.current = false;
+						setIsSyncing(false);
+						return;
+					}
+					showToast(
+						"Cloud session expired. Reconnect Google from Profile → Cloud Sync.",
+						"alert",
+					);
 					syncInProgress.current = false;
 					setIsSyncing(false);
 					return;
 				}
-				showToast("Session expired. Please sign in again.", "info");
-				loginWithGoogle();
-				syncInProgress.current = false;
-				setIsSyncing(false);
-				return;
 			}
 
 			showToast("Syncing with Google Sheets...", "info");

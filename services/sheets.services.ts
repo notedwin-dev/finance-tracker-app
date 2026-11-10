@@ -8,7 +8,12 @@ import {
 	SavingPocket,
 	ChatSession,
 } from "../types";
-import { parseSheetRow } from "../helpers/sheets.helper";
+import {
+  parseStoredExpiry,
+  parseSheetRow,
+  waitForCondition,
+  attemptWithSessionRefresh,
+} from "../helpers/sheets.helper";
 
 declare global {
 	interface Window {
@@ -67,100 +72,120 @@ export const clearSheetNameCache = () => {
 	cachedSheetName = null;
 };
 
+// Silent-refresh hook: auth context registers its token refresher here so the
+// sheets layer can recover a dead session (401) without a full re-auth.
+let authRefreshHandler: (() => Promise<string | null>) | null = null;
+export const setAuthRefreshHandler = (
+	handler: (() => Promise<string | null>) | null,
+) => {
+	authRefreshHandler = handler;
+};
+
+const trySilentRefresh = async (): Promise<boolean> => {
+	if (!authRefreshHandler) return false;
+	const token = await authRefreshHandler();
+	return !!token;
+};
+
+const GAPI_SCRIPT_TIMEOUT_MS = 10000; // script load window
+const GAPI_INIT_TIMEOUT_MS = 20000; // discovery docs + client init window
+
 export const initGapiClient = async (): Promise<void> => {
 	if (gapiInited) return;
 	if (gapiInitializing) {
-		// Wait for the already running initialization
-		return new Promise((resolve) => {
-			const interval = setInterval(() => {
-				if (gapiInited) {
-					clearInterval(interval);
-					resolve();
-				}
-			}, 100);
+		// Wait for the already running initialization, bounded so a hung first
+		// init can never wedge the app on the boot fence.
+		await waitForCondition(() => gapiInited, {
+			timeoutMs: GAPI_INIT_TIMEOUT_MS,
 		});
+		return;
 	}
 
 	gapiInitializing = true;
-	const apiKey = getApiKey();
-	if (!apiKey) {
-		console.warn("Google API Key not found.");
-		return;
-	}
-
-	// Ensure window.gapi is available
-	const waitForGapi = (): Promise<void> => {
-		return new Promise((resolve) => {
-			if (window.gapi) {
-				resolve();
-			} else {
-				const interval = setInterval(() => {
-					if (window.gapi) {
-						clearInterval(interval);
-						resolve();
-					}
-				}, 100);
-				setTimeout(() => {
-					clearInterval(interval);
-					resolve();
-				}, 10000); // 10s timeout
-			}
-		});
-	};
-
-	await waitForGapi();
-
-	if (!window.gapi) {
-		console.error("Google API script (gapi) failed to load.");
-		return;
-	}
-
-	// Attempt to restore token from localStorage for auto-sync
-	const savedToken = localStorage.getItem("google_access_token");
-	const savedExpiry = localStorage.getItem("google_token_expiry");
-	if (savedToken) {
-		hasAccessToken = true;
-		if (savedExpiry) {
-			tokenExpiryTime = parseInt(savedExpiry);
+	try {
+		const apiKey = getApiKey();
+		if (!apiKey) {
+			console.warn("Google API Key not found.");
+			return;
 		}
-	}
 
-	return new Promise<void>((resolve) => {
-		window.gapi.load("client:picker", async () => {
-			try {
-				await window.gapi.client.init({
-					apiKey,
-					discoveryDocs: DISCOVERY_DOCS,
-				});
-
-				// Final verification that we have the expected services
-				if (window.gapi.client.sheets && window.gapi.client.drive) {
-					gapiInited = true;
-					console.log(
-						"GAPI Client successfully initialized with Sheets, Drive and Picker",
-					);
-				} else {
-					console.error("GAPI Client init finished but services missing", {
-						sheets: !!window.gapi.client.sheets,
-						drive: !!window.gapi.client.drive,
-					});
-				}
-			} catch (err) {
-				console.error("GAPI Client init error", err);
-			}
-			resolve();
+		// Ensure window.gapi is available
+		await waitForCondition(() => !!window.gapi, {
+			timeoutMs: GAPI_SCRIPT_TIMEOUT_MS,
 		});
-	});
+
+		if (!window.gapi) {
+			console.error("Google API script (gapi) failed to load.");
+			return;
+		}
+
+		// Attempt to restore token from localStorage for auto-sync
+		const savedToken = localStorage.getItem("google_access_token");
+		const savedExpiry = localStorage.getItem("google_token_expiry");
+		if (savedToken) {
+			hasAccessToken = true;
+			const parsedExpiry = parseStoredExpiry(savedExpiry);
+			if (parsedExpiry > 0) {
+				tokenExpiryTime = parsedExpiry;
+			} else {
+				// Purge corrupted values (e.g. "NaN") so unknown expiry is an
+				// empty state instead of surviving as a permanent false fresh.
+				localStorage.removeItem("google_token_expiry");
+			}
+		}
+
+		// gapi.load + client init can stall on slow networks. Cap the whole
+		// window: on timeout we resolve and the app continues offline.
+		await Promise.race([
+			new Promise<void>((resolve) => {
+				window.gapi.load("client:picker", async () => {
+					try {
+						await window.gapi.client.init({
+							apiKey,
+							discoveryDocs: DISCOVERY_DOCS,
+						});
+
+						// Final verification that we have the expected services
+						if (window.gapi.client.sheets && window.gapi.client.drive) {
+							gapiInited = true;
+							console.log(
+								"GAPI Client successfully initialized with Sheets, Drive and Picker",
+							);
+						} else {
+							console.error("GAPI Client init finished but services missing", {
+								sheets: !!window.gapi.client.sheets,
+								drive: !!window.gapi.client.drive,
+							});
+						}
+					} catch (err) {
+						console.error("GAPI Client init error", err);
+					}
+					resolve();
+				});
+			}),
+			new Promise<void>((resolve) =>
+				setTimeout(resolve, GAPI_INIT_TIMEOUT_MS),
+			),
+		]);
+	} finally {
+		gapiInitializing = false;
+	}
 };
 
 export const setGapiAccessToken = (accessToken: string, expiresIn?: number) => {
 	if (window.gapi && window.gapi.client) {
 		window.gapi.client.setToken({ access_token: accessToken });
-		hasAccessToken = true;
-		if (expiresIn) {
+		hasAccessToken = !!accessToken;
+		if (
+			typeof expiresIn === "number" &&
+			isFinite(expiresIn) &&
+			expiresIn > 0
+		) {
 			tokenExpiryTime = Date.now() + expiresIn * 1000;
 			localStorage.setItem("google_token_expiry", tokenExpiryTime.toString());
 		}
+		// Non-finite expiresIn is ignored: persisting "NaN" poisons every
+		// future boot (the token then always looks fresh and is never renewed).
 	}
 };
 
@@ -1211,7 +1236,7 @@ export const loadFromGoogleSheets = async (
 	);
 	if (validSheets.length === 0) return result;
 
-	try {
+	const runBatchLoad = async (): Promise<void> => {
 		const response =
 			await window.gapi.client.sheets.spreadsheets.values.batchGet({
 				spreadsheetId: fileId,
@@ -1252,8 +1277,16 @@ export const loadFromGoogleSheets = async (
 					(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
 				);
 		});
+	};
+
+	try {
+		// A dead access token recovers through the silent refresh handler
+		// instead of stranding the app offline until a manual sign-in.
+		await attemptWithSessionRefresh(runBatchLoad, {
+			tryRefresh: trySilentRefresh,
+			clearToken: clearGapiAccessToken,
+		});
 	} catch (err: any) {
-		if (err?.status === 401) clearGapiAccessToken();
 		console.warn("Batch load failed", err);
 	}
 

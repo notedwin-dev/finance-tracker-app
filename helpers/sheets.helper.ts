@@ -73,6 +73,67 @@ export const fromSerialTime = (serial: number | any): string => {
 const SHEET_JSON_PREFIX_RE = /^[ \t]*(\{|\[)/;
 
 /**
+ * Stored token expiry survives only as a finite ms timestamp. Anything else
+ * ("NaN", empty, garbage) means unknown, so callers fall back to
+ * refresh-first / trust-until-401 instead of treating a dead token as fresh.
+ */
+export const parseStoredExpiry = (stored: string | null | undefined): number => {
+  if (!stored) return 0;
+  const n = parseInt(stored, 10);
+  return isFinite(n) ? n : 0;
+};
+
+/**
+ * Poll until `check` returns true, bounded by `timeoutMs`. Returns false at
+ * the deadline instead of waiting forever (gapi load / init can stall on
+ * blocked networks — the app must stay usable meanwhile).
+ */
+export const waitForCondition = async (
+  check: () => boolean,
+  opts: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<boolean> => {
+  const intervalMs = opts.intervalMs ?? 100;
+  const deadline = Date.now() + (opts.timeoutMs ?? 10000);
+  while (!check()) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return true;
+};
+
+const recoveryErrStatus = (err: any): number | undefined =>
+  err?.status ?? err?.result?.error?.code;
+
+/**
+ * Retry `performLoad` once through a silent token refresh when it fails
+ * with 401 (dead access token). The token is cleared only when the session
+ * is unrecoverable — refresh failed or the refreshed retry 401'd again —
+ * so one stale hour never forces a manual reconnect. Any other error is
+ * rethrown untouched for the caller's usual handling.
+ */
+export const attemptWithSessionRefresh = async (
+  performLoad: () => Promise<void>,
+  deps: { tryRefresh: () => Promise<boolean>; clearToken: () => void },
+): Promise<void> => {
+  try {
+    await performLoad();
+    return;
+  } catch (err) {
+    if (recoveryErrStatus(err) !== 401) throw err;
+    if (!(await deps.tryRefresh())) {
+      deps.clearToken();
+      throw err;
+    }
+    try {
+      await performLoad();
+    } catch (retryErr) {
+      if (recoveryErrStatus(retryErr) === 401) deps.clearToken();
+      throw retryErr;
+    }
+  }
+};
+
+/**
  * Parse one Google Sheets row (UNFORMATTED_VALUE render) into a typed object.
  *
  * Sheet cells lose their column type: a date typed into any column comes back

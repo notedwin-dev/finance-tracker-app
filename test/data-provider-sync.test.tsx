@@ -222,6 +222,18 @@ describe("DataProvider reset and sync", () => {
 		expect(localStorage.getItem(StorageService.KEYS.PROFILE)).not.toBeNull();
 	});
 
+	it("keeps the selected sheet id across the reset so later writes target the chosen spreadsheet", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "picked-file-id");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(cloudData());
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(localStorage.getItem("zenfinance_selected_sheet_id")).toBe("picked-file-id");
+	});
+
 	it("keeps local data and session when the cloud load is refused", async () => {
 		const accounts = [account("local")];
 		localStorage.setItem(`${StorageService.KEYS.ACCOUNTS}_test-user`, JSON.stringify(accounts));

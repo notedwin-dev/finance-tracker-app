@@ -3343,6 +3343,10 @@ const normalizeAccount = (acc: any): Account =>
 			"google_refresh_token",
 			"encrypted_vault_key",
 			"device_id",
+			// Post-reset saveAccounts/saveToSheet calls must keep targeting the
+			// picked spreadsheet; without it getSpreadsheetId falls back to a
+			// name search that misses picker-selected files and creates a new one.
+			"zenfinance_selected_sheet_id",
 			StorageService.KEYS.PROFILE,
 		];
 		// Load from the cloud BEFORE wiping local storage: a failed load must

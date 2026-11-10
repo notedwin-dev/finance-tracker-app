@@ -397,6 +397,52 @@ describe("resolveToolAction", () => {
 				undefined,
 			);
 		});
+
+		it("falls back to the current location when the model sends null coordinates", async () => {
+			// Number(null) and Number("") are 0, which is finite: without a
+			// guard the search silently runs at (0, 0) and reports an empty
+			// result instead of using the device's position.
+			const ctx = context();
+
+			await resolveToolAction(
+				[pendingRequest("get_nearby_food", { latitude: null, longitude: null })],
+				0,
+				"approved",
+				ctx,
+			);
+
+			expect(ctx.getCurrentLocation).toHaveBeenCalled();
+			expect(ctx.fetchNearbyFood).toHaveBeenCalledWith(
+				3.1,
+				101.7,
+				1200,
+				10,
+				undefined,
+			);
+		});
+
+		it("falls back to the current location when coordinates are out of range", async () => {
+			const ctx = context();
+
+			await resolveToolAction(
+				[
+					pendingRequest("get_nearby_food", {
+						latitude: 500,
+						longitude: 999,
+					}),
+				],
+				0,
+				"approved",
+				ctx,
+			);
+
+			expect(ctx.getCurrentLocation).toHaveBeenCalled();
+			const call = (
+				ctx.fetchNearbyFood as ReturnType<typeof vi.fn>
+			).mock.calls[0];
+			expect(call[0]).toBe(3.1);
+			expect(call[1]).toBe(101.7);
+		});
 	});
 
 	describe("R8: failure handling", () => {

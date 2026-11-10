@@ -13,14 +13,13 @@
  */
 
 import { Category, ChatMessage, Transaction } from "../types";
+import {
+	DEFAULT_LIMIT,
+	DEFAULT_RADIUS_METERS,
+	type ToolLocation,
+} from "./location.services";
 
 export type ToolDecision = "approved" | "rejected";
-
-export interface ToolLocation {
-	latitude: number;
-	longitude: number;
-	accuracyMeters: number;
-}
 
 export interface ToolActionContext {
 	/** Transactions the `get_historical_transactions` tool may query. */
@@ -56,9 +55,6 @@ export const TOOL_NEARBY_FOOD = "get_nearby_food";
 
 /** Upper bound on the transactions handed back to the model in one response. */
 export const MAX_HISTORICAL_TRANSACTIONS = 50;
-
-const DEFAULT_RADIUS_METERS = 1200;
-const DEFAULT_NEARBY_LIMIT = 10;
 
 /**
  * Apply a decision to the request at `msgIndex`.
@@ -121,6 +117,19 @@ export const queryHistoricalTransactions = (
 	};
 };
 
+/** Missing or malformed coordinates become NaN, which triggers the fallback. */
+const toCoordinate = (value: unknown): number =>
+	value === null || value === undefined || value === ""
+		? Number.NaN
+		: Number(value);
+
+/** Rejects empty coordinates and values outside the latitude/longitude ranges. */
+const isUsableCoordinate = (latitude: number, longitude: number): boolean =>
+	Number.isFinite(latitude) &&
+	Number.isFinite(longitude) &&
+	Math.abs(latitude) <= 90 &&
+	Math.abs(longitude) <= 180;
+
 /**
  * Execute an approved tool and return the payload for the model.
  *
@@ -158,10 +167,10 @@ export const runTool = async (
 
 		case TOOL_NEARBY_FOOD:
 			try {
-				let latitude = Number(args?.latitude);
-				let longitude = Number(args?.longitude);
+				let latitude = toCoordinate(args?.latitude);
+				let longitude = toCoordinate(args?.longitude);
 
-				if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+				if (!isUsableCoordinate(latitude, longitude)) {
 					const location = await ctx.getCurrentLocation();
 					latitude = location.latitude;
 					longitude = location.longitude;
@@ -171,7 +180,7 @@ export const runTool = async (
 					latitude,
 					longitude,
 					Number(args?.radiusMeters) || DEFAULT_RADIUS_METERS,
-					Number(args?.limit) || DEFAULT_NEARBY_LIMIT,
+					Number(args?.limit) || DEFAULT_LIMIT,
 					args?.cuisineKeyword,
 				);
 			} catch (err: any) {

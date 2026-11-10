@@ -37,6 +37,8 @@ export const SHEET_NUMERIC_FIELDS = [
   "usedAmount",
   "limitAmount",
   "amountLeft",
+  "budgetLimit",
+  "tenureMonths",
   "fee",
   "marketValue",
   "updatedAt",
@@ -157,12 +159,23 @@ export const parseSheetRow = (
     // Only known numeric columns may hold numbers or booleans. Every other
     // column (text, JSON blob, or unknown) must be a string, whatever the
     // sheet stored: dates typed into text columns arrive as Excel serials.
-    if (typeof val !== "string" && !SHEET_NUMERIC_FIELDS.includes(header)) {
+    // Missing trailing cells (undefined/null) stay absent — never "undefined".
+    if (
+      val !== undefined &&
+      val !== null &&
+      typeof val !== "string" &&
+      !SHEET_NUMERIC_FIELDS.includes(header)
+    ) {
       val = String(val);
     }
 
-    // Objects/arrays are stored in cells as JSON strings
-    if (typeof val === "string" && SHEET_JSON_PREFIX_RE.test(val)) {
+    // Objects/arrays are stored in cells as JSON strings. Text columns stay
+    // literal text (a shop named "[2024]" must not become an array).
+    if (
+      typeof val === "string" &&
+      !stringFields.includes(header) &&
+      SHEET_JSON_PREFIX_RE.test(val)
+    ) {
       try {
         val = JSON.parse(val);
       } catch {

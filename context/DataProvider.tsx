@@ -761,6 +761,17 @@ const normalizeAccount = (acc: any): Account =>
 			}
 
 			if (!SheetService.isClientReady()) {
+				// gapi itself never initialized (blocked script / slow network):
+				// refreshing the session token cannot help and the message
+				// must not tell the user their session expired.
+				if (!SheetService.isGapiInited()) {
+					console.warn("GAPI not initialized; continuing offline.");
+					showToast("Google services unavailable. Working offline.", "alert");
+					syncInProgress.current = false;
+					setIsSyncing(false);
+					return;
+				}
+
 				// Recover the session quietly first. A login popup here would
 				// fire without a user gesture and get blocked mid-boot.
 				if (navigator.onLine) await refreshTokenSilently();
@@ -3333,10 +3344,15 @@ const normalizeAccount = (acc: any): Account =>
 		];
 		const saved: any = {};
 		keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-		localStorage.clear();
-		keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
+
+		// Load from the cloud BEFORE wiping local storage: a failed load must
+		// never leave the user with neither the cache nor the cloud copy.
+		// Bonus: the selected-sheet id survives the load (it used to be wiped
+		// by localStorage.clear() before the Drive lookup could use it).
 		const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
 		if (cloudData) {
+			localStorage.clear();
+			keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 			if (cloudData.profile) {
 				const mergedProfile = { ...profile, ...cloudData.profile };
 				StorageService.saveProfile(mergedProfile);
@@ -3353,6 +3369,8 @@ const normalizeAccount = (acc: any): Account =>
 			StorageService.saveChatSessions(cloudData.chatSessions || []);
 			loadData();
 			showToast("Sync reset complete", "success");
+		} else {
+			showToast("Cloud load failed. Local data kept.", "alert");
 		}
 		setIsSyncing(false);
 	};

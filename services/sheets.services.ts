@@ -209,6 +209,11 @@ export const isClientReady = () => {
 	return true;
 };
 
+// Did the gapi library initialize at all? Distinguishes "Google's client
+// library is unavailable" from "the OAuth session expired" — only the second
+// can be healed by a token refresh.
+export const isGapiInited = () => gapiInited;
+
 let currentSheetTitle = "ZenFinance Data";
 let currentUserId: string | null = null;
 
@@ -239,6 +244,10 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 			});
 			return savedId;
 		} catch (e) {
+			// A 401 here means the session died mid-request: rethrow so the
+			// load retry can refresh and try again (clearing the token here
+			// would disable the retry's next attempt).
+			if ((e as any)?.status === 401) throw e;
 			console.warn("Saved spreadsheet ID is no longer accessible", e);
 			localStorage.removeItem("zenfinance_selected_sheet_id");
 		}
@@ -255,10 +264,9 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 			return files[0].id;
 		}
 	} catch (err: any) {
-		if (err?.status === 401) {
-			console.warn("Unauthorized in getSpreadsheetId, clearing token");
-			clearGapiAccessToken();
-		}
+		// Propagate 401s: attemptWithSessionRefresh retries after a silent
+		// refresh and manages token clearing itself.
+		if (err?.status === 401) throw err;
 		console.error("Error finding sheet", err);
 		return null;
 	}
@@ -270,10 +278,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		});
 		return createResponse.result.spreadsheetId;
 	} catch (err: any) {
-		if (err?.status === 401) {
-			console.warn("Unauthorized in creating sheet, clearing token");
-			clearGapiAccessToken();
-		}
+		if (err?.status === 401) throw err;
 		console.error("Error creating sheet", err);
 		return null;
 	}
@@ -289,6 +294,9 @@ const getSheetNames = async (
 		});
 		return response.result.sheets.map((s: any) => s.properties.title);
 	} catch (e) {
+		// Propagate 401s so the load retry can refresh the session; other
+		// failures stay a null (treated as "metadata unreadable").
+		if ((e as any)?.status === 401) throw e;
 		console.warn("Failed to fetch sheet metadata", e);
 		return null;
 	}

@@ -119,6 +119,74 @@ describe("parseSheetRow", () => {
     expect(parsed.currentAmount).toBe(300); // numeric column keeps the number
   });
 
+  it("omits keys for missing trailing cells instead of writing \"undefined\"", () => {
+    // Sheets omits trailing empty cells; toAccountId/subscriptionId etc.
+    // must stay absent, not the truthy string "undefined" (broken linking).
+    const parsed = parseSheetRow(
+      ["id", "shopName", "potId", "toAccountId", "subscriptionId"],
+      ["tx1", "Coffee", "pot1"],
+      "Transactions",
+    );
+    expect(parsed.id).toBe("tx1");
+    expect(parsed.shopName).toBe("Coffee");
+    expect(parsed.potId).toBe("pot1");
+    expect("toAccountId" in parsed).toBe(false);
+    expect("subscriptionId" in parsed).toBe(false);
+  });
+
+  it("keeps JSON-looking values as strings in text columns", () => {
+    // A shop literally named "[2024]" must stay text: JSON.parse would make
+    // it an array and break search/AI string handling.
+    const parsed = parseSheetRow(
+      ["id", "shopName", "note"],
+      ["tx1", "[2024]", "{nested:}"],
+      "Transactions",
+    );
+    expect(parsed.shopName).toBe("[2024]");
+    expect(parsed.note).toBe("{nested:}");
+  });
+
+  it("keeps JSON parsing for object columns (not in the text-field list)", () => {
+    const parsed = parseSheetRow(
+      ["id", "amountBreakdown"],
+      ["tx1", "{\"x\":1}"],
+      "Transactions",
+    );
+    expect(parsed.amountBreakdown).toEqual({ x: 1 });
+  });
+
+  it("parses budgetLimit (Categories) numerically", () => {
+    const numeric = parseSheetRow(
+      ["id", "budgetLimit"],
+      ["cat1", 500],
+      "Categories",
+    );
+    const legacyString = parseSheetRow(
+      ["id", "budgetLimit"],
+      ["cat1", "500"],
+      "Categories",
+    );
+    expect(numeric.budgetLimit).toBe(500);
+    expect(typeof legacyString.budgetLimit).toBe("number");
+    expect(legacyString.budgetLimit).toBe(500);
+  });
+
+  it("parses tenureMonths (Pockets) numerically so 2 === 2", () => {
+    const numeric = parseSheetRow(
+      ["id", "tenureMonths"],
+      ["pot1", 2],
+      "Pockets",
+    );
+    const legacyString = parseSheetRow(
+      ["id", "tenureMonths"],
+      ["pot1", "2"],
+      "Pockets",
+    );
+    expect(numeric.tenureMonths).toBe(2);
+    expect(legacyString.tenureMonths).toBe(2); // strict === in bonus-rate calc
+  });
+
+
   it("does not fail search over cloud data shaped like the user's sheet", () => {
     const tx: any = parseSheetRow(
       ["id", "userId", "accountId", "amount", "currency", "type", "shopName", "note", "date", "categoryId"],

@@ -1,3 +1,49 @@
+export const SHEET_STRING_FIELDS = {
+  Transactions: [
+    "id",
+    "userId",
+    "accountId",
+    "toAccountId",
+    "categoryId",
+    "shopName",
+    "currency",
+    "type",
+    "date",
+    "time",
+    "note",
+    "feeType",
+    "linkedTransactionId",
+    "transferDirection",
+    "potId",
+    "savingPocketId",
+    "toSavingPocketId",
+    "subscriptionId",
+  ],
+  Accounts: ["id", "userId", "name", "type", "color", "iconType", "iconValue", "currency", "providerId"],
+  Categories: ["id", "userId", "name", "icon", "color", "budgetPeriod"],
+  Goals: ["id", "userId", "name", "type", "currency", "deadline", "linkedAccountId", "color", "icon"],
+  Subscriptions: ["id", "userId", "name", "currency", "accountId", "categoryId", "nextPaymentDate", "frequency"],
+  Pots: ["id", "userId", "accountId", "name", "currency", "color", "icon", "resetDate"],
+  Pockets: ["id", "userId", "accountId", "name", "currency", "pocketType", "color", "icon", "resetDate"],
+  ChatSessions: ["id", "userId", "title", "updatedAt"],
+};
+
+export const SHEET_NUMERIC_FIELDS = [
+  "amount",
+  "balance",
+  "limit",
+  "targetAmount",
+  "currentAmount",
+  "usedAmount",
+  "limitAmount",
+  "amountLeft",
+  "fee",
+  "marketValue",
+  "updatedAt",
+  "createdAt",
+  "lastSyncAt",
+];
+
 // Helper to convert Google Sheets serial date number to YYYY-MM-DD string
 export const fromSerialDate = (serial: number | any): string => {
   if (typeof serial !== "number") return String(serial || "");
@@ -22,4 +68,68 @@ export const fromSerialTime = (serial: number | any): string => {
   const h = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
   const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
   return `${h}:${m}`;
+};
+
+const SHEET_JSON_PREFIX_RE = /^[ \t]*(\{|\[)/;
+
+/**
+ * Parse one Google Sheets row (UNFORMATTED_VALUE render) into a typed object.
+ *
+ * Sheet cells lose their column type: a date typed into any column comes back
+ * as an Excel serial number, booleans come back as booleans, and text stays
+ * text. Callers pass the sheet name so text columns get coerced back to
+ * strings, keeping the object shapes the app's types promise.
+ */
+export const parseSheetRow = (
+  headers: string[],
+  row: any[],
+  sheetName?: string,
+): Record<string, any> => {
+  const obj: Record<string, any> = {};
+  const stringFields = SHEET_STRING_FIELDS[sheetName || ""] || [];
+
+  headers.forEach((header, index) => {
+    let val = row[index];
+
+    if (header === "date" && typeof val === "number") val = fromSerialDate(val);
+    if (header === "time" && typeof val === "number") val = fromSerialTime(val);
+
+    // Only known numeric columns may hold numbers or booleans. Every other
+    // column (text, JSON blob, or unknown) must be a string, whatever the
+    // sheet stored: dates typed into text columns arrive as Excel serials.
+    if (typeof val !== "string" && !SHEET_NUMERIC_FIELDS.includes(header)) {
+      val = String(val);
+    }
+
+    // Objects/arrays are stored in cells as JSON strings
+    if (typeof val === "string" && SHEET_JSON_PREFIX_RE.test(val)) {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Convert booleans (text columns keep the word as text)
+    if (typeof val === "string" && !stringFields.includes(header)) {
+      const lower = val.toLowerCase();
+      if (lower === "true") val = true;
+      else if (lower === "false") val = false;
+    }
+
+    // Convert numeric columns stored as strings
+    if (
+      typeof val === "string" &&
+      val.trim() !== "" &&
+      SHEET_NUMERIC_FIELDS.includes(header)
+    ) {
+      const num = Number(val);
+      if (!isNaN(num)) val = num;
+    }
+
+    if (header === "id" && val !== undefined) val = String(val);
+    if (val !== undefined) obj[header] = val;
+  });
+
+  return obj;
 };

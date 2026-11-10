@@ -8,7 +8,7 @@ import {
 	SavingPocket,
 	ChatSession,
 } from "../types";
-import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
+import { parseSheetRow } from "../helpers/sheets.helper";
 
 declare global {
 	interface Window {
@@ -632,52 +632,9 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		if (totalExistingRows > 1) {
 			const headers = rows[0] as string[];
 			const dataRows = rows.slice(1);
-			existingData = dataRows.map((row: any[]) => {
-				const obj: any = {};
-				headers.forEach((header, index) => {
-					let val = row[index];
-					if (
-						typeof val === "string" &&
-						(val.trim().startsWith("{") || val.trim().startsWith("["))
-					) {
-						try {
-							val = JSON.parse(val);
-						} catch {
-							/* ignore */
-						}
-					}
-
-					// Convert booleans
-					if (typeof val === "string") {
-						const lower = val.toLowerCase();
-						if (lower === "true") val = true;
-						else if (lower === "false") val = false;
-					}
-
-					// Convert numeric fields (exclude date fields - they use ISO strings)
-					const numericFields = [
-						"amount",
-						"balance",
-						"limit",
-						"targetAmount",
-						"currentAmount",
-						"usedAmount",
-						"limitAmount",
-						"amountLeft",
-					];
-					if (
-						typeof val === "string" &&
-						val.trim() !== "" &&
-						numericFields.includes(header)
-					) {
-						const num = Number(val);
-						if (!isNaN(num)) val = num;
-					}
-
-					if (val !== undefined) obj[header] = val;
-				});
-				return obj;
-			});
+			existingData = dataRows.map((row: any[]) =>
+				parseSheetRow(headers, row, sheetName),
+			);
 		}
 
 		// 2. Filter out CURRENT user's data (keeping other users')
@@ -1288,61 +1245,9 @@ export const loadFromGoogleSheets = async (
 			}
 
 			result[sheetName.toLowerCase()] = dataRows
-				.map((row: any[]) => {
-					const obj: any = {};
-					headers.forEach((header, index) => {
-						let val = row[index];
-						if (header === "date" && typeof val === "number")
-							val = fromSerialDate(val);
-						if (header === "time" && typeof val === "number")
-							val = fromSerialTime(val);
-
-						if (
-							typeof val === "string" &&
-							(val.trim().startsWith("{") || val.trim().startsWith("["))
-						) {
-							try {
-								val = JSON.parse(val);
-							} catch {
-								/* ignore */
-							}
-						}
-
-						// Convert booleans
-						if (typeof val === "string") {
-							const lower = val.toLowerCase();
-							if (lower === "true") val = true;
-							else if (lower === "false") val = false;
-						}
-
-						// Convert numeric fields
-						const numericFields = [
-							"amount",
-							"balance",
-							"updatedAt",
-							"createdAt",
-							"limit",
-							"targetAmount",
-							"currentAmount",
-							"lastSyncAt",
-							"usedAmount",
-							"limitAmount",
-							"amountLeft",
-						];
-						if (
-							typeof val === "string" &&
-							val.trim() !== "" &&
-							numericFields.includes(header)
-						) {
-							const num = Number(val);
-							if (!isNaN(num)) val = num;
-						}
-
-						if (header === "id" && val !== undefined) val = String(val);
-						if (val !== undefined) obj[header] = val;
-					});
-					return obj;
-				})
+				.map((row: any[]) =>
+					parseSheetRow(headers as string[], row, sheetName),
+				)
 				.filter(
 					(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
 				);

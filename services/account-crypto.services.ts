@@ -5,14 +5,14 @@
  * Extracted from DataProvider so it can be tested without rendering React.
  */
 
-import { Account } from "../types";
+import { Account, UserProfile } from "../types";
 import * as SecurityService from "./security.services";
 
 /**
  * Ciphertext detection.
  *
  * The `isEncrypted` flag on an Account is NOT trustworthy on its own:
- * `decryptAccount` resets `details` to `{}` when the key is unavailable,
+ * Earlier `decryptAccount` behavior reset `details` to `{}` without the key,
  * which historically left accounts flagged as encrypted while actually
  * holding plaintext. Details must always be inspected directly.
  */
@@ -29,6 +29,22 @@ export interface AccountCryptoOptions {
 	/** Whether the security layer is currently unlocked. */
 	isUnlocked?: () => boolean;
 }
+
+/** Resolve options from the captured profile and any updates merged during sync. */
+export const resolveSyncCryptoOptions = (
+	profile: Pick<UserProfile, "isSecurityEnabled" | "totpSecret">,
+	updates: Partial<Pick<UserProfile, "isSecurityEnabled" | "totpSecret">> = {},
+	isUnlocked?: () => boolean,
+): AccountCryptoOptions => {
+	const merged = { ...profile, ...updates };
+	const isSecurityEnabled = !!merged.isSecurityEnabled;
+	return {
+		isVaultEnabled: isSecurityEnabled,
+		isSecurityEnabled,
+		totpSecret: merged.totpSecret,
+		isUnlocked,
+	};
+};
 
 /**
  * Encrypt an account's details if the vault is enabled.
@@ -120,10 +136,8 @@ export const encryptAccountsForSync = async (
 /**
  * Decrypt an account's details.
  *
- * When the vault is locked the ciphertext is returned untouched. When no TOTP
- * secret is available the details are unrecoverable, so they are reset to `{}`
- * and `isEncrypted` is cleared - otherwise the account would appear encrypted
- * while holding an empty plaintext object.
+ * When the vault is locked or no TOTP secret is available, preserve the
+ * ciphertext so it can be decrypted when the key becomes available.
  */
 export const decryptAccount = async (
 	acc: Account,
@@ -148,32 +162,24 @@ export const decryptAccount = async (
 		return acc;
 	}
 
+	// Legacy password-based ciphertext cannot be decrypted with a TOTP key.
+	// Preserve it even when no TOTP secret is available.
+	if (acc.details.startsWith("ENC:")) {
+		console.warn(
+			`Account ${acc.id} uses old password-based encryption. Cannot decrypt without original password.`,
+		);
+		return { ...acc, isEncrypted: true };
+	}
+
 	// Check if TOTP secret is available for decryption
 	if (!totpSecret) {
 		console.warn(
-			`Account ${acc.id} is encrypted but no TOTP secret found - resetting to empty`,
+			`Account ${acc.id} is encrypted but no TOTP secret found - preserving ciphertext`,
 		);
-		return {
-			...acc,
-			details: {}, // Reset to empty - old encrypted data unrecoverable
-			isEncrypted: false,
-		};
+		return { ...acc, isEncrypted: true };
 	}
 
 	try {
-		// Old ENC: format is password-based and cannot be decrypted without the
-		// original password. SEC: is TOTP-based.
-		if (acc.details.startsWith("ENC:")) {
-			console.warn(
-				`Account ${acc.id} uses old password-based encryption. Cannot decrypt without original password. Resetting to empty.`,
-			);
-			return {
-				...acc,
-				details: {}, // Reset to empty - old encrypted data unrecoverable without migration password
-				isEncrypted: false,
-			};
-		}
-
 		const key = await SecurityService.deriveKeyFromTOTP(totpSecret);
 		const decryptedStr = await SecurityService.decryptWithKey(
 			acc.details,
@@ -196,7 +202,7 @@ export const decryptAccount = async (
 			const parsed = JSON.parse(decryptedStr);
 			return { ...acc, details: parsed, isEncrypted: false };
 		} catch (jsonErr) {
-			console.warn("Decrypted string is not valid JSON:", decryptedStr);
+			console.warn("Decrypted string is not valid JSON for account:", acc.id);
 			return acc;
 		}
 	} catch (e) {

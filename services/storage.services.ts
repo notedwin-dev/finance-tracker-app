@@ -328,8 +328,12 @@ export const getDeviceId = (): string => {
   return id;
 };
 
-export const saveAccounts = async (accounts: Account[]) => {
+export const saveAccountsLocal = (accounts: Account[]) => {
   localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(accounts));
+};
+
+export const saveAccounts = async (accounts: Account[]) => {
+  saveAccountsLocal(accounts);
   if (isLoggedIn()) {
     await SheetService.saveToSheet("Accounts", accounts);
   }

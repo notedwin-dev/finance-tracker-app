@@ -3343,9 +3343,9 @@ const normalizeAccount = (acc: any): Account =>
 			"google_refresh_token",
 			"encrypted_vault_key",
 			"device_id",
-			// Post-reset saveAccounts/saveToSheet calls must keep targeting the
-			// picked spreadsheet; without it getSpreadsheetId falls back to a
-			// name search that misses picker-selected files and creates a new one.
+			// Post-reset edits and syncs must keep targeting the picked
+			// spreadsheet; without it getSpreadsheetId falls back to a name
+			// search that misses picker-selected files and creates a new one.
 			"zenfinance_selected_sheet_id",
 			StorageService.KEYS.PROFILE,
 		];
@@ -3355,6 +3355,15 @@ const normalizeAccount = (acc: any): Account =>
 		// by localStorage.clear() before the Drive lookup could use it).
 		const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
 		if (cloudData) {
+			// The picker can change the selection while the load is in flight.
+			// Restoring this snapshot under a different spreadsheet's id would
+			// mix one file's data into another on the next sync.
+			const selectedId = localStorage.getItem("zenfinance_selected_sheet_id");
+			if (selectedId && selectedId !== cloudData.spreadsheetId) {
+				showToast("Spreadsheet selection changed. Reset cancelled, local data kept.", "alert");
+				setIsSyncing(false);
+				return;
+			}
 			// Snapshot AFTER the load: a 401 during it silently refreshes the
 			// token in localStorage, and an earlier snapshot would restore the
 			// stale token over the fresh one.
@@ -3367,14 +3376,18 @@ const normalizeAccount = (acc: any): Account =>
 				StorageService.saveProfile(mergedProfile);
 				updateProfile(cloudData.profile);
 			}
-			// Note: we don't encrypt here because they are already encrypted in Sheets
-			StorageService.saveAccounts(cloudData.accounts);
-			StorageService.saveTransactions(cloudData.transactions);
-			StorageService.saveCategories(cloudData.categories);
-			StorageService.saveGoals(cloudData.goals);
-			StorageService.saveSubscriptions(cloudData.subscriptions || []);
-			StorageService.savePots(cloudData.pots || []);
-			StorageService.savePockets(cloudData.pockets || []);
+			// Local-only restore: this data just came from the spreadsheet, so
+			// writing it back would be redundant and could race a sheet switch.
+			// Accounts are already encrypted in Sheets; no re-encryption needed.
+			StorageService.saveLocalData({
+				accounts: cloudData.accounts,
+				transactions: cloudData.transactions,
+				categories: cloudData.categories,
+				goals: cloudData.goals,
+				subscriptions: cloudData.subscriptions || [],
+				pots: cloudData.pots || [],
+				pockets: cloudData.pockets || [],
+			});
 			StorageService.saveChatSessions(cloudData.chatSessions || []);
 			loadData();
 			showToast("Sync reset complete", "success");

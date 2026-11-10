@@ -1204,6 +1204,7 @@ export const loadFromGoogleSheets = async (
 	pockets: SavingPocket[];
 	chatSessions: ChatSession[];
 	profile?: any;
+	spreadsheetId: string;
 } | null> => {
 	if (!gapiInited) {
 		console.error("GAPI not initialized");
@@ -1224,6 +1225,7 @@ export const loadFromGoogleSheets = async (
 		pockets: SavingPocket[];
 		chatSessions: ChatSession[];
 		profile?: any;
+		spreadsheetId: string;
 	}> => {
 		const fileId = await getSpreadsheetId();
 		if (!fileId) {
@@ -1267,6 +1269,7 @@ export const loadFromGoogleSheets = async (
 				pots: [],
 				pockets: [],
 				chatSessions: [],
+				spreadsheetId: fileId,
 			};
 		}
 
@@ -1352,6 +1355,7 @@ export const loadFromGoogleSheets = async (
 			pockets: result.pockets || [],
 			chatSessions: result.chatsessions || [],
 			profile: result.profile,
+			spreadsheetId: fileId,
 		};
 	};
 

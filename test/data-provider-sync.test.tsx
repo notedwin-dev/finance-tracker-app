@@ -66,6 +66,7 @@ const sync = async (accounts: Account[], profile: Record<string, unknown>) => {
 		pots: [],
 		pockets: [],
 		chatSessions: [],
+		spreadsheetId: "sheet-id",
 	});
 	await act(async () => {
 		root.render(<DataProvider><Capture /></DataProvider>);
@@ -186,6 +187,7 @@ const cloudData = (overrides: Record<string, unknown> = {}) => ({
 	pots: [],
 	pockets: [],
 	chatSessions: [],
+	spreadsheetId: "sheet-id",
 	...overrides,
 });
 
@@ -224,7 +226,9 @@ describe("DataProvider reset and sync", () => {
 
 	it("keeps the selected sheet id across the reset so later writes target the chosen spreadsheet", async () => {
 		localStorage.setItem("zenfinance_selected_sheet_id", "picked-file-id");
-		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(cloudData());
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ spreadsheetId: "picked-file-id" }),
+		);
 
 		await renderProvider();
 		await act(async () => {
@@ -232,6 +236,54 @@ describe("DataProvider reset and sync", () => {
 		});
 
 		expect(localStorage.getItem("zenfinance_selected_sheet_id")).toBe("picked-file-id");
+	});
+
+	it("restores the cloud snapshot locally without writing it back to the spreadsheet", async () => {
+		const accounts = [account("cloud")];
+		const pockets = [{
+			id: "p1", userId: "test-user", name: "Pocket",
+			currentAmount: 5, currency: "MYR" as const, color: "#fff", icon: "P",
+		}];
+		const chatSessions = [{
+			id: "chat1", userId: "test-user", title: "Chat",
+			messages: [], updatedAt: "2026-01-01T00:00:00.000Z",
+		}];
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ accounts, pockets, chatSessions }),
+		);
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(SheetService.saveToSheet).not.toHaveBeenCalled();
+		expect(StorageService.getStoredAccounts()).toEqual(accounts);
+		expect(StorageService.getStoredPockets()).toEqual(pockets);
+		expect(StorageService.getStoredChatSessions()).toEqual(chatSessions);
+	});
+
+	it("aborts the reset when the spreadsheet selection changed during the load", async () => {
+		const localAccounts = [account("local")];
+		localStorage.setItem(`${StorageService.KEYS.ACCOUNTS}_test-user`, JSON.stringify(localAccounts));
+		localStorage.setItem("zenfinance_selected_sheet_id", "old-file");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockImplementation(async () => {
+			// The picker can change the selection while the reset load is in flight.
+			localStorage.setItem("zenfinance_selected_sheet_id", "new-file");
+			return cloudData({
+				accounts: [account("old-file-data")],
+				spreadsheetId: "old-file",
+			});
+		});
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(StorageService.getStoredAccounts()).toEqual(localAccounts);
+		expect(localStorage.getItem("zenfinance_selected_sheet_id")).toBe("new-file");
+		expect(SheetService.saveToSheet).not.toHaveBeenCalled();
 	});
 
 	it("keeps local data and session when the cloud load is refused", async () => {

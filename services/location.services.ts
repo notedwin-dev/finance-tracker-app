@@ -111,13 +111,13 @@ export const getCurrentLocation = (): Promise<ToolLocation> => {
  * Map an Overpass response into the places the model sees, nearest first.
  *
  * Elements without usable coordinates are dropped, and the cuisine keyword
- * filters on name, cuisine and amenity.
+ * filters on name, cuisine and amenity. Returns every match; the caller
+ * applies any limit so it can also report the untruncated count.
  */
 export const mapOverpassToPlaces = (
 	elements: any[],
 	latitude: number,
 	longitude: number,
-	limit: number,
 	cuisineKeyword?: string,
 ): NearbyPlace[] => {
 	const keyword = cuisineKeyword?.trim().toLowerCase();
@@ -154,8 +154,7 @@ export const mapOverpassToPlaces = (
 			const haystack = `${p.name} ${p.cuisine} ${p.amenity}`.toLowerCase();
 			return haystack.includes(keyword);
 		})
-		.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters)
-		.slice(0, limit) as NearbyPlace[];
+		.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters) as NearbyPlace[];
 };
 
 /** Find nearby food places around a coordinate using OpenStreetMap. */
@@ -189,11 +188,10 @@ out center ${safeLimit * 3};`;
 
 	const data = await response.json();
 
-	const places = mapOverpassToPlaces(
+	const matches = mapOverpassToPlaces(
 		data?.elements || [],
 		latitude,
 		longitude,
-		safeLimit,
 		cuisineKeyword,
 	);
 
@@ -201,7 +199,7 @@ out center ${safeLimit * 3};`;
 		locationUsed: { latitude, longitude },
 		radiusMeters: safeRadius,
 		cuisineKeyword: cuisineKeyword || null,
-		totalFound: places.length,
-		places,
+		totalFound: matches.length,
+		places: matches.slice(0, safeLimit),
 	};
 };

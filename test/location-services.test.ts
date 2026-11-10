@@ -91,20 +91,20 @@ describe("mapOverpassToPlaces", () => {
 	];
 
 	it("R11: drops places without usable coordinates", () => {
-		const places = mapOverpassToPlaces(elements, 3.1, 101.7, 10);
+		const places = mapOverpassToPlaces(elements, 3.1, 101.7);
 
 		expect(places.map((p) => p.osmId)).not.toContain(4);
 		expect(places).toHaveLength(3);
 	});
 
 	it("R11: orders places nearest first", () => {
-		const places = mapOverpassToPlaces(elements, 3.1, 101.7, 10);
+		const places = mapOverpassToPlaces(elements, 3.1, 101.7);
 
 		expect(places.map((p) => p.osmId)).toEqual([2, 3, 1]);
 	});
 
 	it("R11: reads coordinates from a node's centre", () => {
-		const places = mapOverpassToPlaces(elements, 3.1, 101.7, 10);
+		const places = mapOverpassToPlaces(elements, 3.1, 101.7);
 		const waypoint = places.find((p) => p.osmId === 3)!;
 
 		expect(waypoint.latitude).toBe(3.12);
@@ -116,7 +116,6 @@ describe("mapOverpassToPlaces", () => {
 			elements,
 			3.1,
 			101.7,
-			10,
 			"ramen",
 		);
 
@@ -128,7 +127,6 @@ describe("mapOverpassToPlaces", () => {
 			elements,
 			3.1,
 			101.7,
-			10,
 			"cafe",
 		);
 
@@ -140,7 +138,6 @@ describe("mapOverpassToPlaces", () => {
 			elements,
 			3.1,
 			101.7,
-			10,
 			"  RAMEN ",
 		);
 
@@ -152,15 +149,30 @@ describe("mapOverpassToPlaces", () => {
 			[{ id: 9, lat: 3.1, lon: 101.7, tags: { amenity: "cafe" } }],
 			3.1,
 			101.7,
-			10,
 		);
 
 		expect(places[0].name).toBe("Unnamed place");
 	});
 
-	it("R10: honours the limit", () => {
-		const places = mapOverpassToPlaces(elements, 3.1, 101.7, 1);
-		expect(places).toHaveLength(1);
+	it("R10: honours the limit while totalFound reports all matches", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					elements: [
+						{ id: 1, lat: 3.101, lon: 101.7, tags: { name: "Place A" } },
+						{ id: 2, lat: 3.102, lon: 101.7, tags: { name: "Place B" } },
+						{ id: 3, lat: 3.103, lon: 101.7, tags: { name: "Place C" } },
+					],
+				}),
+			}),
+		);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 2);
+
+		expect(result.places).toHaveLength(2);
+		expect(result.totalFound).toBe(3);
 	});
 });
 

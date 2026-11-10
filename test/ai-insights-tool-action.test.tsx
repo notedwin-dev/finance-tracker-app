@@ -315,6 +315,48 @@ describe("AIInsights data access request decisions", () => {
 		).toHaveLength(1);
 	});
 
+	it("R3: keeps messages sent during the decision in the saved session", async () => {
+		const pendingLookups: Array<(value: any) => void> = [];
+		locationMock.getCurrentLocation.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					pendingLookups.push(resolve);
+				}),
+		);
+
+		const session = buildSession("get_current_location");
+		await render(session);
+
+		await clickButton("Approve");
+
+		// The chat input stays enabled while the tool runs, so the user can
+		// send a message mid-decision. The decision save must not drop it.
+		const userMessage: ChatMessage = {
+			role: "user",
+			content: "and somewhere to eat?",
+			timestamp: FIXED_NOW,
+		};
+		await render({
+			...session,
+			messages: [...session.messages, userMessage],
+		});
+
+		pendingLookups.forEach((resolve) =>
+			resolve({ latitude: 3, longitude: 4, accuracyMeters: 5 }),
+		);
+		await flushMicrotasks();
+
+		const decisionSave = onSaveSession.mock.calls[0][0];
+		expect(decisionSave.messages[0].status).toBe("approved");
+		expect(
+			decisionSave.messages.some(
+				(m: ChatMessage) => m.content === "and somewhere to eat?",
+			),
+		).toBe(true);
+		const last = decisionSave.messages[decisionSave.messages.length - 1];
+		expect(last.functionResponse).toBeTruthy();
+	});
+
 	it("R3: allows a further decision once the previous one has completed", async () => {
 		const pendingLookups: Array<(value: any) => void> = [];
 		locationMock.getCurrentLocation

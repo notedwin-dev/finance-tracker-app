@@ -15,7 +15,10 @@ import {
 	streamFinancialAdvice,
 	generateChatTitle,
 } from "../services/gemini.services";
-import { resolveToolAction } from "../services/ai-tool-action.services";
+import {
+	resolveToolAction,
+	applyToolDecision,
+} from "../services/ai-tool-action.services";
 import {
 	fetchNearbyFood,
 	getCurrentLocation,
@@ -76,6 +79,12 @@ const AIInsights: React.FC<Props> = ({
 	const decisionInFlight = useRef(false);
 
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
+	/**
+	 * Latest session, so a decision never saves over messages that were
+	 * added while its tool was running.
+	 */
+	const latestSession = useRef(activeSession);
+	latestSession.current = activeSession;
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -264,14 +273,18 @@ const AIInsights: React.FC<Props> = ({
 	};
 
 	const handleToolAction = async (msgIndex: number, approved: boolean) => {
-		if (!activeSession || decisionInFlight.current) return;
+		const session = latestSession.current;
+		if (!session || decisionInFlight.current) return;
 
 		decisionInFlight.current = true;
 		try {
+			const decision: ChatMessage["status"] = approved
+				? "approved"
+				: "rejected";
 			const result = await resolveToolAction(
-				activeSession.messages,
+				session.messages,
 				msgIndex,
-				approved ? "approved" : "rejected",
+				decision,
 				{
 					transactions,
 					categories,
@@ -282,9 +295,16 @@ const AIInsights: React.FC<Props> = ({
 			);
 			if (!result) return;
 
+			// The chat input stays enabled while the tool runs, so the session
+			// may have grown; apply the decision to the latest list, not to
+			// the snapshot taken at click time.
+			const current = latestSession.current ?? session;
 			const updatedSession = {
-				...activeSession,
-				messages: result.messages,
+				...current,
+				messages: [
+					...applyToolDecision(current.messages, msgIndex, decision),
+					result.response,
+				],
 				updatedAt: new Date().toISOString(),
 			};
 			onSaveSession(updatedSession);

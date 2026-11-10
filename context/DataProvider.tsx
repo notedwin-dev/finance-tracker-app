@@ -3345,15 +3345,17 @@ const normalizeAccount = (acc: any): Account =>
 			"device_id",
 			StorageService.KEYS.PROFILE,
 		];
-		const saved: any = {};
-		keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
-
 		// Load from the cloud BEFORE wiping local storage: a failed load must
 		// never leave the user with neither the cache nor the cloud copy.
 		// Bonus: the selected-sheet id survives the load (it used to be wiped
 		// by localStorage.clear() before the Drive lookup could use it).
 		const cloudData = await SheetService.loadFromGoogleSheets(profile.email);
 		if (cloudData) {
+			// Snapshot AFTER the load: a 401 during it silently refreshes the
+			// token in localStorage, and an earlier snapshot would restore the
+			// stale token over the fresh one.
+			const saved: any = {};
+			keysToKeep.forEach((k) => (saved[k] = localStorage.getItem(k)));
 			localStorage.clear();
 			keysToKeep.forEach((k) => saved[k] && localStorage.setItem(k, saved[k]));
 			if (cloudData.profile) {

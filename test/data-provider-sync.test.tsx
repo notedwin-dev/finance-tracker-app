@@ -176,3 +176,65 @@ describe("DataProvider account sync", () => {
 		expect(StorageService.getStoredAccounts()).toEqual([]);
 	});
 });
+
+const cloudData = (overrides: Record<string, unknown> = {}) => ({
+	accounts: [],
+	transactions: [],
+	categories: [],
+	goals: [],
+	subscriptions: [],
+	pots: [],
+	pockets: [],
+	chatSessions: [],
+	...overrides,
+});
+
+describe("DataProvider reset and sync", () => {
+	beforeEach(() => {
+		vi.spyOn(window, "confirm").mockReturnValue(true);
+	});
+
+	const renderProvider = async () => {
+		await act(async () => {
+			root.render(<DataProvider><Capture /></DataProvider>);
+		});
+	};
+
+	it("keeps the token refreshed during the cloud load instead of restoring the stale one", async () => {
+		localStorage.setItem("google_access_token", "old-token");
+		localStorage.setItem("google_token_expiry", "1");
+		localStorage.setItem("device_id", "device-1");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockImplementation(async () => {
+			// Simulates the silent 401 -> refresh retry inside the real load.
+			localStorage.setItem("google_access_token", "new-token");
+			localStorage.setItem("google_token_expiry", "9999999999999");
+			return cloudData();
+		});
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(localStorage.getItem("google_access_token")).toBe("new-token");
+		expect(localStorage.getItem("google_token_expiry")).toBe("9999999999999");
+		expect(localStorage.getItem("device_id")).toBe("device-1");
+		expect(localStorage.getItem(StorageService.KEYS.PROFILE)).not.toBeNull();
+	});
+
+	it("keeps local data and session when the cloud load is refused", async () => {
+		const accounts = [account("local")];
+		localStorage.setItem(`${StorageService.KEYS.ACCOUNTS}_test-user`, JSON.stringify(accounts));
+		localStorage.setItem("google_access_token", "old-token");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(null);
+
+		await renderProvider();
+		await act(async () => {
+			await data.handleResetAndSync();
+		});
+
+		expect(StorageService.getStoredAccounts()).toEqual(accounts);
+		expect(localStorage.getItem("google_access_token")).toBe("old-token");
+		expect(localStorage.getItem(StorageService.KEYS.PROFILE)).not.toBeNull();
+	});
+});

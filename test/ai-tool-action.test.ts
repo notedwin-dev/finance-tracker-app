@@ -250,6 +250,62 @@ describe("resolveToolAction", () => {
 			]);
 		});
 
+		it("keeps timestamped transactions that fall on the boundary dates", async () => {
+			const ctx = context({
+				transactions: [
+					transaction("early", { date: "2025-12-31" }),
+					transaction("start-boundary", { date: "2026-01-01T08:15:00" }),
+					transaction("inside", { date: "2026-01-20" }),
+					transaction("end-boundary", { date: "2026-02-01T23:59:59" }),
+					transaction("late", { date: "2026-02-02" }),
+				],
+			});
+
+			const result = await resolveToolAction(
+				[
+					pendingRequest("get_historical_transactions", {
+						startDate: "2026-01-01",
+						endDate: "2026-02-01",
+					}),
+				],
+				0,
+				"approved",
+				ctx,
+			);
+
+			const response = result!.response.functionResponse!.response;
+			expect(response.transactions.map((t: Transaction) => t.id)).toEqual([
+				"start-boundary",
+				"inside",
+				"end-boundary",
+			]);
+		});
+
+		it("returns no matches when the category name is unknown", async () => {
+			const ctx = context({
+				categories: [category("c-food", "Food")],
+				transactions: [
+					transaction("food", { categoryId: "c-food" }),
+					transaction("fuel", { categoryId: "c-fuel" }),
+				],
+			});
+
+			const result = await resolveToolAction(
+				[
+					pendingRequest("get_historical_transactions", {
+						categoryName: "Dining Out",
+					}),
+				],
+				0,
+				"approved",
+				ctx,
+			);
+
+			const response = result!.response.functionResponse!.response;
+			expect(response.transactions).toEqual([]);
+			expect(response.totalMatches).toBe(0);
+		});
+
 		it("caps the returned transactions at 50 but still reports the true total", async () => {
 			const ctx = context({
 				transactions: Array.from({ length: 60 }, (_, i) =>
@@ -355,6 +411,26 @@ describe("resolveToolAction", () => {
 			expect(result!.response.functionResponse!.response).toEqual({
 				error: "Unsupported tool: make_coffee",
 			});
+		});
+
+		it("reports a historical-query failure instead of throwing", async () => {
+			const ctx = context({
+				transactions: [transaction("bad", { shopName: null as any })],
+			});
+
+			const result = await resolveToolAction(
+				[
+					pendingRequest("get_historical_transactions", {
+						searchKeyword: "coffee",
+					}),
+				],
+				0,
+				"approved",
+				ctx,
+			);
+
+			expect(result!.response.functionResponse!.response.error).toBeTruthy();
+			expect(result!.messages[0].status).toBe("approved");
 		});
 
 		it("reports a geolocation failure instead of throwing", async () => {

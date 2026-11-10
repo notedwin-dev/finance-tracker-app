@@ -92,6 +92,9 @@ export const queryHistoricalTransactions = (
 ) => {
 	const { searchKeyword, startDate, endDate, categoryName } = args ?? {};
 
+	/** `date` may be a plain day or a full ISO timestamp; compare days only. */
+	const dayOf = (value: unknown) => String(value).slice(0, 10);
+
 	const matches = transactions.filter((t) => {
 		if (
 			searchKeyword &&
@@ -100,11 +103,13 @@ export const queryHistoricalTransactions = (
 				.includes(String(searchKeyword).toLowerCase())
 		)
 			return false;
-		if (startDate && t.date < startDate) return false;
-		if (endDate && t.date > endDate) return false;
+		if (startDate && dayOf(t.date) < dayOf(startDate)) return false;
+		if (endDate && dayOf(t.date) > dayOf(endDate)) return false;
 		if (categoryName) {
 			const cat = categories.find((c) => c.name === categoryName);
-			if (cat && t.categoryId !== cat.id) return false;
+			// A category the user does not have yields no matches; silently
+			// skipping the filter would hand the model everything.
+			if (!cat || t.categoryId !== cat.id) return false;
 		}
 		return true;
 	});
@@ -129,11 +134,17 @@ export const runTool = async (
 ): Promise<any> => {
 	switch (toolName) {
 		case TOOL_HISTORICAL_TRANSACTIONS:
-			return queryHistoricalTransactions(
-				ctx.transactions,
-				ctx.categories,
-				args,
-			);
+			try {
+				return queryHistoricalTransactions(
+					ctx.transactions,
+					ctx.categories,
+					args,
+				);
+			} catch (err: any) {
+				return {
+					error: err?.message || "Unable to search transaction history.",
+				};
+			}
 
 		case TOOL_CURRENT_LOCATION:
 			try {

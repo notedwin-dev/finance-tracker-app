@@ -40,6 +40,13 @@ const DEFAULT_RADIUS_METERS = 1200;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 20;
 const DEFAULT_LIMIT = 10;
+/**
+ * Raw sample to request when a cuisine keyword is present. Overpass does not
+ * sort by distance, so the client picks the nearest matches from whatever the
+ * cap returns; a cap near the limit can hold no keyword match at all and the
+ * search returns empty despite matches inside the radius.
+ */
+const KEYWORD_SAMPLE_SIZE = 200;
 
 /** Great-circle distance between two coordinates, in metres. */
 export const distanceInMeters = (
@@ -157,6 +164,22 @@ export const mapOverpassToPlaces = (
 		.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters) as NearbyPlace[];
 };
 
+/** Build the Overpass QL for a nearby-food search around a coordinate. */
+export const buildOverpassQuery = (
+	latitude: number,
+	longitude: number,
+	radiusMeters: number,
+	limit: number,
+	cuisineKeyword?: string,
+): string => {
+	const sample = cuisineKeyword?.trim() ? KEYWORD_SAMPLE_SIZE : limit * 3;
+
+	return `
+[out:json][timeout:25];
+nwr(around:${radiusMeters},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"];
+out center ${sample};`;
+};
+
 /** Find nearby food places around a coordinate using OpenStreetMap. */
 export const fetchNearbyFood = async (
 	latitude: number,
@@ -168,10 +191,13 @@ export const fetchNearbyFood = async (
 	const safeRadius = clampRadius(radiusMeters);
 	const safeLimit = clampLimit(limit);
 
-	const overpassQuery = `
-[out:json][timeout:25];
-nwr(around:${safeRadius},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"];
-out center ${safeLimit * 3};`;
+	const overpassQuery = buildOverpassQuery(
+		latitude,
+		longitude,
+		safeRadius,
+		safeLimit,
+		cuisineKeyword,
+	);
 
 	const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(
 		overpassQuery,

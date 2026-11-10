@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+	buildOverpassQuery,
 	clampLimit,
 	clampRadius,
 	distanceInMeters,
@@ -216,6 +217,32 @@ describe("getCurrentLocation", () => {
 	});
 });
 
+describe("buildOverpassQuery", () => {
+	it("searches the given radius around the given coordinates", () => {
+		const query = buildOverpassQuery(3.1, 101.7, 800, 10);
+
+		expect(query).toContain("nwr(around:800,3.1,101.7)");
+	});
+
+	it("requests a 3x raw sample when no keyword narrows it", () => {
+		expect(buildOverpassQuery(3.1, 101.7, 800, 10)).toContain(
+			"out center 30",
+		);
+	});
+
+	it("widens the raw sample when a keyword is present", () => {
+		expect(buildOverpassQuery(3.1, 101.7, 800, 10, "ramen")).toContain(
+			"out center 200",
+		);
+	});
+
+	it("treats a whitespace-only keyword like no keyword", () => {
+		expect(buildOverpassQuery(3.1, 101.7, 800, 10, "   ")).toContain(
+			"out center 30",
+		);
+	});
+});
+
 describe("fetchNearbyFood", () => {
 	it("returns the mapped places and the location used", async () => {
 		vi.stubGlobal(
@@ -252,5 +279,56 @@ describe("fetchNearbyFood", () => {
 		await expect(fetchNearbyFood(3.1, 101.7, 800, 5)).rejects.toThrow(
 			"Failed to query nearby places from OpenStreetMap.",
 		);
+	});
+
+	it("keeps the 3x raw sample when no cuisine keyword is given", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ elements: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchNearbyFood(3.1, 101.7, 800, 5);
+
+		const url = fetchMock.mock.calls[0][0] as string;
+		const query = decodeURIComponent(
+			url.slice(url.indexOf("data=") + "data=".length),
+		);
+		expect(query).toContain("out center 15");
+	});
+
+	it("widens the raw sample when a cuisine keyword is present", async () => {
+		// The cap runs before the keyword filter and Overpass does not sort
+		// by distance, so a small raw sample can hold no match at all and
+		// the search returns empty despite matches inside the radius.
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ elements: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchNearbyFood(3.1, 101.7, 800, 5, "ramen");
+
+		const url = fetchMock.mock.calls[0][0] as string;
+		const query = decodeURIComponent(
+			url.slice(url.indexOf("data=") + "data=".length),
+		);
+		expect(query).toContain("out center 200");
+	});
+
+	it("searches inside the requested radius with the given coordinates", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ elements: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchNearbyFood(3.1, 101.7, 800, 5, "ramen");
+
+		const url = fetchMock.mock.calls[0][0] as string;
+		const query = decodeURIComponent(
+			url.slice(url.indexOf("data=") + "data=".length),
+		);
+		expect(query).toContain("nwr(around:800,3.1,101.7)");
 	});
 });

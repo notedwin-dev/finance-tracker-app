@@ -72,6 +72,8 @@ const AIInsights: React.FC<Props> = ({
 	const [streamingText, setStreamingText] = useState("");
 	const [showSidebar, setShowSidebar] = useState(false);
 	const chatEndRef = useRef<HTMLDivElement>(null);
+	/** Set synchronously on click so a second decision cannot start mid-await. */
+	const decisionInFlight = useRef(false);
 
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
 
@@ -262,33 +264,38 @@ const AIInsights: React.FC<Props> = ({
 	};
 
 	const handleToolAction = async (msgIndex: number, approved: boolean) => {
-		if (!activeSession) return;
+		if (!activeSession || decisionInFlight.current) return;
 
-		const result = await resolveToolAction(
-			activeSession.messages,
-			msgIndex,
-			approved ? "approved" : "rejected",
-			{
-				transactions,
-				categories,
-				getCurrentLocation,
-				fetchNearbyFood,
-				now: () => new Date().toISOString(),
-			},
-		);
-		if (!result) return;
+		decisionInFlight.current = true;
+		try {
+			const result = await resolveToolAction(
+				activeSession.messages,
+				msgIndex,
+				approved ? "approved" : "rejected",
+				{
+					transactions,
+					categories,
+					getCurrentLocation,
+					fetchNearbyFood,
+					now: () => new Date().toISOString(),
+				},
+			);
+			if (!result) return;
 
-		const updatedSession = {
-			...activeSession,
-			messages: result.messages,
-			updatedAt: new Date().toISOString(),
-		};
-		onSaveSession(updatedSession);
+			const updatedSession = {
+				...activeSession,
+				messages: result.messages,
+				updatedAt: new Date().toISOString(),
+			};
+			onSaveSession(updatedSession);
 
-		// Trigger the next AI turn with the tool result.
-		setTimeout(() => {
-			handleAsk(undefined, "", updatedSession, false);
-		}, 100);
+			// Trigger the next AI turn with the tool result.
+			setTimeout(() => {
+				handleAsk(undefined, "", updatedSession, false);
+			}, 100);
+		} finally {
+			decisionInFlight.current = false;
+		}
 	};
 
 	const suggestions = [

@@ -45,6 +45,14 @@ vi.mock("@google/genai", () => ({
 	Tool: {},
 }));
 
+/** Controllable stand-ins for the browser-bound location tools. */
+const locationMock = vi.hoisted(() => ({
+	getCurrentLocation: vi.fn(),
+	fetchNearbyFood: vi.fn(),
+}));
+
+vi.mock("../services/location.services", () => locationMock);
+
 const FIXED_NOW = "2026-01-01T00:00:00.000Z";
 
 const transaction = (id: string, shopName: string): Transaction => ({
@@ -59,14 +67,17 @@ const transaction = (id: string, shopName: string): Transaction => ({
 	createdAt: FIXED_NOW,
 });
 
-const buildSession = (): ChatSession => {
+const buildSession = (
+	toolName = "get_historical_transactions",
+	args: Record<string, unknown> = { searchKeyword: "coffee" },
+): ChatSession => {
 	const pending: ChatMessage = {
 		role: "model",
-		content: "I need to access your transaction history.",
+		content: "I need to access your data.",
 		timestamp: FIXED_NOW,
 		functionCall: {
-			name: "get_historical_transactions",
-			args: { searchKeyword: "coffee" },
+			name: toolName,
+			args,
 		},
 		status: "pending",
 	};
@@ -153,10 +164,33 @@ describe("AIInsights data access request decisions", () => {
 		});
 	};
 
+	/** Flush pending microtasks without firing timers. */
+	const flushMicrotasks = async () => {
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+	};
+
+	/**
+	 * onSaveSession fires for every stage of a turn (decision, follow-up
+	 * request, AI reply). Only the decision save ends with a functionResponse
+	 * message, so that is what a decision is counted by.
+	 */
+	const decisionSaveCount = () =>
+		onSaveSession.mock.calls.filter(([saved]: any[]) => {
+			const last = saved.messages[saved.messages.length - 1];
+			return Boolean(last?.functionResponse);
+		}).length;
+
 	beforeEach(() => {
 		capture.chatsCreateArgs = [];
 		capture.sendMessageArgs = [];
 		onSaveSession = vi.fn();
+		locationMock.getCurrentLocation.mockReset();
+		locationMock.fetchNearbyFood.mockReset();
+		locationMock.fetchNearbyFood.mockResolvedValue({ places: [] });
 		vi.useFakeTimers();
 		vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 		Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
@@ -248,5 +282,68 @@ describe("AIInsights data access request decisions", () => {
 
 		expect(session.messages).toEqual(snapshot);
 		expect(session.messages[0].status).toBe("pending");
+	});
+
+	it("R3: blocks a second decision while the first is still in flight", async () => {
+		const pendingLookups: Array<(value: any) => void> = [];
+		locationMock.getCurrentLocation.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					pendingLookups.push(resolve);
+				}),
+		);
+
+		await render(buildSession("get_current_location"));
+
+		// A slow location lookup leaves the request's status pending in the
+		// rendered session, so the buttons stay clickable. A second click
+		// must not start a second decision.
+		await clickButton("Approve");
+		await clickButton("Approve");
+
+		pendingLookups.forEach((resolve) =>
+			resolve({ latitude: 3, longitude: 4, accuracyMeters: 5 }),
+		);
+		await flushMicrotasks();
+
+		expect(locationMock.getCurrentLocation).toHaveBeenCalledTimes(1);
+		expect(decisionSaveCount()).toBe(1);
+		const saved = onSaveSession.mock.calls[0][0];
+		expect(saved.messages[0].status).toBe("approved");
+		expect(
+			saved.messages.filter((m: ChatMessage) => m.functionResponse),
+		).toHaveLength(1);
+	});
+
+	it("R3: allows a further decision once the previous one has completed", async () => {
+		const pendingLookups: Array<(value: any) => void> = [];
+		locationMock.getCurrentLocation
+			.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						pendingLookups.push(resolve);
+					}),
+			)
+			.mockResolvedValue({ latitude: 1, longitude: 2, accuracyMeters: 3 });
+
+		await render(buildSession("get_current_location"));
+
+		await clickButton("Approve"); // hangs on the location lookup
+		await clickButton("Approve"); // blocked by the in-flight guard
+
+		pendingLookups.forEach((resolve) =>
+			resolve({ latitude: 3, longitude: 4, accuracyMeters: 5 }),
+		);
+		await flushMicrotasks();
+		expect(locationMock.getCurrentLocation).toHaveBeenCalledTimes(1);
+		expect(decisionSaveCount()).toBe(1);
+
+		// The parent still renders the pending request, so the buttons are
+		// clickable again; the guard must have been cleared.
+		await clickButton("Approve");
+		await flushMicrotasks();
+
+		expect(locationMock.getCurrentLocation).toHaveBeenCalledTimes(2);
+		expect(decisionSaveCount()).toBe(2);
 	});
 });

@@ -8,7 +8,12 @@ import {
 	SavingPocket,
 	ChatSession,
 } from "../types";
-import { fromSerialDate, fromSerialTime } from "../helpers/sheets.helper";
+import {
+  parseStoredExpiry,
+  parseSheetRow,
+  waitForCondition,
+  attemptWithSessionRefresh,
+} from "../helpers/sheets.helper";
 
 declare global {
 	interface Window {
@@ -67,100 +72,120 @@ export const clearSheetNameCache = () => {
 	cachedSheetName = null;
 };
 
+// Silent-refresh hook: auth context registers its token refresher here so the
+// sheets layer can recover a dead session (401) without a full re-auth.
+let authRefreshHandler: (() => Promise<string | null>) | null = null;
+export const setAuthRefreshHandler = (
+	handler: (() => Promise<string | null>) | null,
+) => {
+	authRefreshHandler = handler;
+};
+
+const trySilentRefresh = async (): Promise<boolean> => {
+	if (!authRefreshHandler) return false;
+	const token = await authRefreshHandler();
+	return !!token;
+};
+
+const GAPI_SCRIPT_TIMEOUT_MS = 10000; // script load window
+const GAPI_INIT_TIMEOUT_MS = 20000; // discovery docs + client init window
+
 export const initGapiClient = async (): Promise<void> => {
 	if (gapiInited) return;
 	if (gapiInitializing) {
-		// Wait for the already running initialization
-		return new Promise((resolve) => {
-			const interval = setInterval(() => {
-				if (gapiInited) {
-					clearInterval(interval);
-					resolve();
-				}
-			}, 100);
+		// Wait for the already running initialization, bounded so a hung first
+		// init can never wedge the app on the boot fence.
+		await waitForCondition(() => gapiInited, {
+			timeoutMs: GAPI_INIT_TIMEOUT_MS,
 		});
+		return;
 	}
 
 	gapiInitializing = true;
-	const apiKey = getApiKey();
-	if (!apiKey) {
-		console.warn("Google API Key not found.");
-		return;
-	}
-
-	// Ensure window.gapi is available
-	const waitForGapi = (): Promise<void> => {
-		return new Promise((resolve) => {
-			if (window.gapi) {
-				resolve();
-			} else {
-				const interval = setInterval(() => {
-					if (window.gapi) {
-						clearInterval(interval);
-						resolve();
-					}
-				}, 100);
-				setTimeout(() => {
-					clearInterval(interval);
-					resolve();
-				}, 10000); // 10s timeout
-			}
-		});
-	};
-
-	await waitForGapi();
-
-	if (!window.gapi) {
-		console.error("Google API script (gapi) failed to load.");
-		return;
-	}
-
-	// Attempt to restore token from localStorage for auto-sync
-	const savedToken = localStorage.getItem("google_access_token");
-	const savedExpiry = localStorage.getItem("google_token_expiry");
-	if (savedToken) {
-		hasAccessToken = true;
-		if (savedExpiry) {
-			tokenExpiryTime = parseInt(savedExpiry);
+	try {
+		const apiKey = getApiKey();
+		if (!apiKey) {
+			console.warn("Google API Key not found.");
+			return;
 		}
-	}
 
-	return new Promise<void>((resolve) => {
-		window.gapi.load("client:picker", async () => {
-			try {
-				await window.gapi.client.init({
-					apiKey,
-					discoveryDocs: DISCOVERY_DOCS,
-				});
-
-				// Final verification that we have the expected services
-				if (window.gapi.client.sheets && window.gapi.client.drive) {
-					gapiInited = true;
-					console.log(
-						"GAPI Client successfully initialized with Sheets, Drive and Picker",
-					);
-				} else {
-					console.error("GAPI Client init finished but services missing", {
-						sheets: !!window.gapi.client.sheets,
-						drive: !!window.gapi.client.drive,
-					});
-				}
-			} catch (err) {
-				console.error("GAPI Client init error", err);
-			}
-			resolve();
+		// Ensure window.gapi is available
+		await waitForCondition(() => !!window.gapi, {
+			timeoutMs: GAPI_SCRIPT_TIMEOUT_MS,
 		});
-	});
+
+		if (!window.gapi) {
+			console.error("Google API script (gapi) failed to load.");
+			return;
+		}
+
+		// Attempt to restore token from localStorage for auto-sync
+		const savedToken = localStorage.getItem("google_access_token");
+		const savedExpiry = localStorage.getItem("google_token_expiry");
+		if (savedToken) {
+			hasAccessToken = true;
+			const parsedExpiry = parseStoredExpiry(savedExpiry);
+			if (parsedExpiry > 0) {
+				tokenExpiryTime = parsedExpiry;
+			} else {
+				// Purge corrupted values (e.g. "NaN") so unknown expiry is an
+				// empty state instead of surviving as a permanent false fresh.
+				localStorage.removeItem("google_token_expiry");
+			}
+		}
+
+		// gapi.load + client init can stall on slow networks. Cap the whole
+		// window: on timeout we resolve and the app continues offline.
+		await Promise.race([
+			new Promise<void>((resolve) => {
+				window.gapi.load("client:picker", async () => {
+					try {
+						await window.gapi.client.init({
+							apiKey,
+							discoveryDocs: DISCOVERY_DOCS,
+						});
+
+						// Final verification that we have the expected services
+						if (window.gapi.client.sheets && window.gapi.client.drive) {
+							gapiInited = true;
+							console.log(
+								"GAPI Client successfully initialized with Sheets, Drive and Picker",
+							);
+						} else {
+							console.error("GAPI Client init finished but services missing", {
+								sheets: !!window.gapi.client.sheets,
+								drive: !!window.gapi.client.drive,
+							});
+						}
+					} catch (err) {
+						console.error("GAPI Client init error", err);
+					}
+					resolve();
+				});
+			}),
+			new Promise<void>((resolve) =>
+				setTimeout(resolve, GAPI_INIT_TIMEOUT_MS),
+			),
+		]);
+	} finally {
+		gapiInitializing = false;
+	}
 };
 
 export const setGapiAccessToken = (accessToken: string, expiresIn?: number) => {
 	if (window.gapi && window.gapi.client) {
 		window.gapi.client.setToken({ access_token: accessToken });
-		hasAccessToken = true;
-		if (expiresIn) {
+		hasAccessToken = !!accessToken;
+		if (
+			typeof expiresIn === "number" &&
+			isFinite(expiresIn) &&
+			expiresIn > 0
+		) {
 			tokenExpiryTime = Date.now() + expiresIn * 1000;
 			localStorage.setItem("google_token_expiry", tokenExpiryTime.toString());
 		}
+		// Non-finite expiresIn is ignored: persisting "NaN" poisons every
+		// future boot (the token then always looks fresh and is never renewed).
 	}
 };
 
@@ -183,6 +208,11 @@ export const isClientReady = () => {
 	}
 	return true;
 };
+
+// Did the gapi library initialize at all? Distinguishes "Google's client
+// library is unavailable" from "the OAuth session expired" — only the second
+// can be healed by a token refresh.
+export const isGapiInited = () => gapiInited;
 
 let currentSheetTitle = "ZenFinance Data";
 let currentUserId: string | null = null;
@@ -214,6 +244,10 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 			});
 			return savedId;
 		} catch (e) {
+			// A 401 here means the session died mid-request: rethrow so the
+			// load retry can refresh and try again (clearing the token here
+			// would disable the retry's next attempt).
+			if ((e as any)?.status === 401) throw e;
 			console.warn("Saved spreadsheet ID is no longer accessible", e);
 			localStorage.removeItem("zenfinance_selected_sheet_id");
 		}
@@ -230,10 +264,9 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 			return files[0].id;
 		}
 	} catch (err: any) {
-		if (err?.status === 401) {
-			console.warn("Unauthorized in getSpreadsheetId, clearing token");
-			clearGapiAccessToken();
-		}
+		// Propagate 401s: attemptWithSessionRefresh retries after a silent
+		// refresh and manages token clearing itself.
+		if (err?.status === 401) throw err;
 		console.error("Error finding sheet", err);
 		return null;
 	}
@@ -245,10 +278,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		});
 		return createResponse.result.spreadsheetId;
 	} catch (err: any) {
-		if (err?.status === 401) {
-			console.warn("Unauthorized in creating sheet, clearing token");
-			clearGapiAccessToken();
-		}
+		if (err?.status === 401) throw err;
 		console.error("Error creating sheet", err);
 		return null;
 	}
@@ -264,6 +294,9 @@ const getSheetNames = async (
 		});
 		return response.result.sheets.map((s: any) => s.properties.title);
 	} catch (e) {
+		// Propagate 401s so the load retry can refresh the session; other
+		// failures stay a null (treated as "metadata unreadable").
+		if ((e as any)?.status === 401) throw e;
 		console.warn("Failed to fetch sheet metadata", e);
 		return null;
 	}
@@ -632,52 +665,9 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		if (totalExistingRows > 1) {
 			const headers = rows[0] as string[];
 			const dataRows = rows.slice(1);
-			existingData = dataRows.map((row: any[]) => {
-				const obj: any = {};
-				headers.forEach((header, index) => {
-					let val = row[index];
-					if (
-						typeof val === "string" &&
-						(val.trim().startsWith("{") || val.trim().startsWith("["))
-					) {
-						try {
-							val = JSON.parse(val);
-						} catch {
-							/* ignore */
-						}
-					}
-
-					// Convert booleans
-					if (typeof val === "string") {
-						const lower = val.toLowerCase();
-						if (lower === "true") val = true;
-						else if (lower === "false") val = false;
-					}
-
-					// Convert numeric fields (exclude date fields - they use ISO strings)
-					const numericFields = [
-						"amount",
-						"balance",
-						"limit",
-						"targetAmount",
-						"currentAmount",
-						"usedAmount",
-						"limitAmount",
-						"amountLeft",
-					];
-					if (
-						typeof val === "string" &&
-						val.trim() !== "" &&
-						numericFields.includes(header)
-					) {
-						const num = Number(val);
-						if (!isNaN(num)) val = num;
-					}
-
-					if (val !== undefined) obj[header] = val;
-				});
-				return obj;
-			});
+			existingData = dataRows.map((row: any[]) =>
+				parseSheetRow(headers, row, sheetName),
+			);
 		}
 
 		// 2. Filter out CURRENT user's data (keeping other users')
@@ -1214,6 +1204,7 @@ export const loadFromGoogleSheets = async (
 	pockets: SavingPocket[];
 	chatSessions: ChatSession[];
 	profile?: any;
+	spreadsheetId: string;
 } | null> => {
 	if (!gapiInited) {
 		console.error("GAPI not initialized");
@@ -1224,37 +1215,64 @@ export const loadFromGoogleSheets = async (
 		return null;
 	}
 
-	const fileId = await getSpreadsheetId();
-	if (!fileId) {
-		console.warn("Could not retrieve spreadsheet ID");
-		return null;
-	}
+	const runLoad = async (): Promise<{
+		accounts: Account[];
+		transactions: Transaction[];
+		categories: Category[];
+		goals: Goal[];
+		subscriptions: Subscription[];
+		pots: Pot[];
+		pockets: SavingPocket[];
+		chatSessions: ChatSession[];
+		profile?: any;
+		spreadsheetId: string;
+	}> => {
+		const fileId = await getSpreadsheetId();
+		if (!fileId) {
+			// getSpreadsheetId already cleared the token if it 401'd; nothing
+			// readable — refusing the load keeps local data untouched.
+			console.warn("Could not retrieve spreadsheet ID");
+			throw new Error("No spreadsheet ID");
+		}
 
-	const result: any = {};
+		const result: any = {};
 
-	// Support both "Profile" (new) and "Users" (legacy) sheet names
-	const sheetName = await getProfileSheetName(fileId);
-	const sheetNamesToLoad = [
-		"Accounts",
-		"Transactions",
-		"Categories",
-		"Goals",
-		"Subscriptions",
-		"Pots",
-		"Pockets",
-		"ChatSessions",
-		sheetName, // Use detected sheet name (Profile or Users)
-	];
+		// Support both "Profile" (new) and "Users" (legacy) sheet names
+		const sheetName = await getProfileSheetName(fileId);
+		const sheetNamesToLoad = [
+			"Accounts",
+			"Transactions",
+			"Categories",
+			"Goals",
+			"Subscriptions",
+			"Pots",
+			"Pockets",
+			"ChatSessions",
+			sheetName, // Use detected sheet name (Profile or Users)
+		];
 
-	const names = await getSheetNames(fileId);
-	const existingSheets = names || [];
+		// null metadata read means the read failed (e.g. transient 401) —
+		// distinct from a genuinely empty spreadsheet (no matching tabs).
+		const names = await getSheetNames(fileId);
+		if (names === null) throw new Error("No sheet metadata");
 
-	const validSheets = sheetNamesToLoad.filter((s) =>
-		existingSheets.includes(s),
-	);
-	if (validSheets.length === 0) return result;
+		const validSheets = sheetNamesToLoad.filter((s) =>
+			names.includes(s),
+		);
+		if (validSheets.length === 0) {
+			return {
+				accounts: [],
+				transactions: [],
+				categories: [],
+				goals: [],
+				subscriptions: [],
+				pots: [],
+				pockets: [],
+				chatSessions: [],
+				spreadsheetId: fileId,
+			};
+		}
 
-	try {
 		const response =
 			await window.gapi.client.sheets.spreadsheets.values.batchGet({
 				spreadsheetId: fileId,
@@ -1288,112 +1306,72 @@ export const loadFromGoogleSheets = async (
 			}
 
 			result[sheetName.toLowerCase()] = dataRows
-				.map((row: any[]) => {
-					const obj: any = {};
-					headers.forEach((header, index) => {
-						let val = row[index];
-						if (header === "date" && typeof val === "number")
-							val = fromSerialDate(val);
-						if (header === "time" && typeof val === "number")
-							val = fromSerialTime(val);
-
-						if (
-							typeof val === "string" &&
-							(val.trim().startsWith("{") || val.trim().startsWith("["))
-						) {
-							try {
-								val = JSON.parse(val);
-							} catch {
-								/* ignore */
-							}
-						}
-
-						// Convert booleans
-						if (typeof val === "string") {
-							const lower = val.toLowerCase();
-							if (lower === "true") val = true;
-							else if (lower === "false") val = false;
-						}
-
-						// Convert numeric fields
-						const numericFields = [
-							"amount",
-							"balance",
-							"updatedAt",
-							"createdAt",
-							"limit",
-							"targetAmount",
-							"currentAmount",
-							"lastSyncAt",
-							"usedAmount",
-							"limitAmount",
-							"amountLeft",
-						];
-						if (
-							typeof val === "string" &&
-							val.trim() !== "" &&
-							numericFields.includes(header)
-						) {
-							const num = Number(val);
-							if (!isNaN(num)) val = num;
-						}
-
-						if (header === "id" && val !== undefined) val = String(val);
-						if (val !== undefined) obj[header] = val;
-					});
-					return obj;
-				})
+				.map((row: any[]) =>
+					parseSheetRow(headers as string[], row, sheetName),
+				)
 				.filter(
 					(d: any) => !currentUserId || d.userId === currentUserId || !d.userId,
 				);
 		});
-	} catch (err: any) {
-		if (err?.status === 401) clearGapiAccessToken();
-		console.warn("Batch load failed", err);
-	}
 
-	// Perform migration for Pots if needed
-	const pots = (result.pots || []).map((p: any) => {
-		// Migration from old naming: targetAmount -> limitAmount, currentAmount -> amountLeft
-		const migratedPot = { ...p };
-		if (
-			migratedPot.limitAmount === undefined &&
-			migratedPot.targetAmount !== undefined
-		) {
-			migratedPot.limitAmount = Number(migratedPot.targetAmount);
-		}
-		if (
-			migratedPot.amountLeft === undefined &&
-			migratedPot.currentAmount !== undefined
-		) {
-			migratedPot.amountLeft = Number(migratedPot.currentAmount);
-		}
-		// Ensure usedAmount is calculated if missing
-		if (migratedPot.usedAmount === undefined) {
+		// Perform migration for Pots if needed
+		const pots = (result.pots || []).map((p: any) => {
+			// Migration from old naming: targetAmount -> limitAmount, currentAmount -> amountLeft
+			const migratedPot = { ...p };
 			if (
-				migratedPot.limitAmount !== undefined &&
-				migratedPot.amountLeft !== undefined
+				migratedPot.limitAmount === undefined &&
+				migratedPot.targetAmount !== undefined
 			) {
-				migratedPot.usedAmount =
-					migratedPot.limitAmount - migratedPot.amountLeft;
-			} else {
-				migratedPot.usedAmount = 0;
+				migratedPot.limitAmount = Number(migratedPot.targetAmount);
 			}
-		}
-		return migratedPot;
-	});
+			if (
+				migratedPot.amountLeft === undefined &&
+				migratedPot.currentAmount !== undefined
+			) {
+				migratedPot.amountLeft = Number(migratedPot.currentAmount);
+			}
+			// Ensure usedAmount is calculated if missing
+			if (migratedPot.usedAmount === undefined) {
+				if (
+					migratedPot.limitAmount !== undefined &&
+					migratedPot.amountLeft !== undefined
+				) {
+					migratedPot.usedAmount =
+						migratedPot.limitAmount - migratedPot.amountLeft;
+				} else {
+					migratedPot.usedAmount = 0;
+				}
+			}
+			return migratedPot;
+		});
 
-	return {
-		accounts: result.accounts || [],
-		transactions: result.transactions || [],
-		categories: result.categories || [],
-		goals: result.goals || [],
-		subscriptions: result.subscriptions || [],
-		pots,
-		pockets: result.pockets || [],
-		chatSessions: result.chatsessions || [],
-		profile: result.profile,
+		return {
+			accounts: result.accounts || [],
+			transactions: result.transactions || [],
+			categories: result.categories || [],
+			goals: result.goals || [],
+			subscriptions: result.subscriptions || [],
+			pots,
+			pockets: result.pockets || [],
+			chatSessions: result.chatsessions || [],
+			profile: result.profile,
+			spreadsheetId: fileId,
+		};
 	};
+
+	try {
+		// A dead access token recovers through the silent refresh handler
+		// instead of stranding the app offline until a manual sign-in.
+		// Any failure (after the retry) must surface as a refused load —
+		// never as an "empty cloud", which would overwrite local data.
+		return await attemptWithSessionRefresh(runLoad, {
+			tryRefresh: trySilentRefresh,
+			clearToken: clearGapiAccessToken,
+		});
+	} catch (err: any) {
+		console.warn("Batch load failed", err);
+		return null;
+	}
 };
 /**
  * Opens a Google Picker to let the user select a specific spreadsheet.

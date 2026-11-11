@@ -40,13 +40,6 @@ export const DEFAULT_RADIUS_METERS = 1200;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 20;
 export const DEFAULT_LIMIT = 10;
-/**
- * Raw sample to request when a cuisine keyword is present. Overpass does not
- * sort by distance, so the client picks the nearest matches from whatever the
- * cap returns; a cap near the limit can hold no keyword match at all and the
- * search returns empty despite matches inside the radius.
- */
-const KEYWORD_SAMPLE_SIZE = 200;
 
 /** Great-circle distance between two coordinates, in metres. */
 export const distanceInMeters = (
@@ -170,20 +163,33 @@ export const mapOverpassToPlaces = (
 /** Client-side abort limit; the query already sets [timeout:25] server-side. */
 const OVERPASS_TIMEOUT_MS = 30000;
 
-/** Build the Overpass QL for a nearby-food search around a coordinate. */
+/** Two escape layers: regex metacharacters first, then QL string escapes — the QL string parser runs before the regex engine. */
+const escapeKeywordForOverpass = (keyword: string): string => {
+	const regexLiteral = keyword.replace(/[\\^$.*+?()[\]{}|"]/g, "\\$&");
+	return regexLiteral.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+};
+
+/**
+ * Build the Overpass QL for a nearby-food search around a coordinate.
+ *
+ * The keyword is applied server-side and no cap runs before the client's
+ * distance sort, so the query returns the full match set within the radius.
+ */
 export const buildOverpassQuery = (
 	latitude: number,
 	longitude: number,
 	radiusMeters: number,
-	limit: number,
 	cuisineKeyword?: string,
 ): string => {
-	const sample = cuisineKeyword?.trim() ? KEYWORD_SAMPLE_SIZE : limit * 3;
+	const keyword = cuisineKeyword?.trim();
+	const keywordFilter = keyword
+		? `[~"^(name|cuisine|amenity)$"~"${escapeKeywordForOverpass(keyword)}",i]`
+		: "";
 
 	return `
 [out:json][timeout:25];
-nwr(around:${radiusMeters},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"];
-out center ${sample};`;
+nwr(around:${radiusMeters},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"]${keywordFilter};
+out center;`;
 };
 
 /** Find nearby food places around a coordinate using OpenStreetMap. */
@@ -201,7 +207,6 @@ export const fetchNearbyFood = async (
 		latitude,
 		longitude,
 		safeRadius,
-		safeLimit,
 		cuisineKeyword,
 	);
 

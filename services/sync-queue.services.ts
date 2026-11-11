@@ -18,7 +18,8 @@ const queueKey = () => getKey("zenfinance_sync_queue_v1", KEYS.PROFILE);
 const readJobs = (): SyncQueueJob[] => {
 	try {
 		const raw = localStorage.getItem(queueKey());
-		return raw ? JSON.parse(raw) : [];
+		const parsed = raw ? JSON.parse(raw) : [];
+		return Array.isArray(parsed) ? parsed : [];
 	} catch {
 		return [];
 	}
@@ -34,7 +35,7 @@ const writeJobs = (jobs: SyncQueueJob[]) => {
  * and no-op-if-absent delete, so collapsing a pending insert+update into
  * the newest payload — or an insert+delete into a delete — is safe.
  */
-export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">) => {
+export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">): boolean => {
 	const jobs = readJobs();
 	const entry: SyncQueueJob = { ...job, createdAt: Date.now() };
 	const idx = jobs.findIndex(
@@ -42,7 +43,14 @@ export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">) => {
 	);
 	if (idx >= 0) jobs[idx] = entry;
 	else jobs.push(entry);
-	writeJobs(jobs);
+	try {
+		writeJobs(jobs);
+		return true;
+	} catch (err) {
+		// Full or unavailable storage must never block the local save.
+		console.error("Failed to persist sync queue job", err);
+		return false;
+	}
 };
 
 export const getSyncQueue = (): SyncQueueJob[] => readJobs();
@@ -104,7 +112,12 @@ export const drainSyncQueue = async (deps: {
 		);
 		if (idx >= 0) {
 			current.splice(idx, 1);
-			writeJobs(current);
+			try {
+				writeJobs(current);
+			} catch (err) {
+				console.error("Failed to update sync queue after replay", err);
+				break;
+			}
 		}
 		processed++;
 	}

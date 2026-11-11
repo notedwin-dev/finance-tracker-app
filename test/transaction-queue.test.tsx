@@ -6,7 +6,7 @@ import { useData } from "../context/DataContext";
 import * as StorageService from "../services/storage.services";
 import * as SheetService from "../services/sheets.services";
 import * as SyncQueue from "../services/sync-queue.services";
-import { Transaction, TransactionType, UserProfile } from "../types";
+import { Subscription, Transaction, TransactionType, UserProfile } from "../types";
 
 const auth = vi.hoisted(() => ({
 	profile: {} as UserProfile,
@@ -23,7 +23,7 @@ vi.mock("../services/coin.services", () => ({
 	getCryptoPrices: async () => ({ BTC: 65000, ETH: 3500 }),
 }));
 vi.mock("../services/sheets.services", () => ({
-	isClientReady: () => true,
+	isClientReady: vi.fn(() => true),
 	isGapiInited: () => true,
 	setSheetUser: vi.fn(),
 	initGapiClient: vi.fn(async () => {}),
@@ -86,6 +86,7 @@ const renderProvider = async () => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(SheetService.isClientReady).mockReturnValue(true);
 	vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 	vi.spyOn(console, "log").mockImplementation(() => {});
 	vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -324,5 +325,169 @@ describe("pending local writes survive cloud sync", () => {
 		expect(savedTxs.map((t) => t.id)).not.toContain("tx-9");
 		expect(SheetService.deleteRow).toHaveBeenCalledWith("Transactions", "tx-9");
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+});
+
+describe("cloud configured but unavailable", () => {
+	it("queues the write without attempting it when the client is not ready", async () => {
+		vi.mocked(SheetService.isClientReady).mockReturnValue(false);
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		expect(SheetService.insertOne).not.toHaveBeenCalled();
+		expect(
+			StorageService.getStoredTransactions().map((t) => t.id),
+		).toContain("tx-1");
+		expect(SyncQueue.getSyncQueue()).toMatchObject([
+			{ sheet: "Transactions", op: "insert", itemId: "tx-1" },
+		]);
+
+		// Token comes back: the next sync replays the queued write.
+		vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+		await act(async () => {
+			await data.syncData();
+		});
+		expect(SheetService.upsertRow).toHaveBeenCalledWith(
+			"Transactions",
+			"tx-1",
+			expect.objectContaining({ id: "tx-1", amount: 25 }),
+		);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+
+	it("stays local-only without queueing in offline mode", async () => {
+		auth.profile = { ...auth.profile, offlineMode: true };
+		StorageService.saveProfile(auth.profile);
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		expect(SheetService.insertOne).not.toHaveBeenCalled();
+		expect(
+			StorageService.getStoredTransactions().map((t) => t.id),
+		).toContain("tx-1");
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+});
+
+const sub = (overrides: Partial<Subscription> = {}): Subscription => ({
+	id: "sub-1",
+	userId: "test-user",
+	name: "Streaming",
+	amount: 15,
+	currency: "MYR",
+	accountId: "acc-1",
+	categoryId: "c1",
+	nextPaymentDate: "2026-12-01",
+	frequency: "MONTHLY",
+	active: true,
+	...overrides,
+});
+
+describe("deletes and subscription writes under cloud failure", () => {
+	it("queues a transaction delete when the cloud write fails", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		vi.mocked(SheetService.deleteRow).mockRejectedValue({ status: 401 });
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleTransactionDelete("tx-1");
+		});
+
+		expect(data.transactions.map((t) => t.id)).not.toContain("tx-1");
+		expect(StorageService.getStoredTransactions()).toEqual([]);
+		expect(SyncQueue.getSyncQueue()).toMatchObject([
+			{ sheet: "Transactions", op: "delete", itemId: "tx-1" },
+		]);
+	});
+
+	it("queues every leg of a batch delete when the client is not ready", async () => {
+		const seed = [tx(), tx({ id: "tx-2" })].map((t) => ({
+			...t,
+			userId: "test-user",
+		}));
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify(seed),
+		);
+		vi.mocked(SheetService.isClientReady).mockReturnValue(false);
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleBatchTransactionDelete(["tx-1", "tx-2"]);
+		});
+
+		expect(SheetService.deleteRow).not.toHaveBeenCalled();
+		expect(data.transactions).toEqual([]);
+		const jobs = SyncQueue.getSyncQueue();
+		expect(jobs.map((j) => j.itemId).sort()).toEqual(["tx-1", "tx-2"]);
+		expect(jobs.every((j) => j.op === "delete")).toBe(true);
+	});
+
+	it("queues a subscription delete when the cloud write fails", async () => {
+		localStorage.setItem(
+			`${StorageService.KEYS.SUBSCRIPTIONS}_test-user`,
+			JSON.stringify([sub()]),
+		);
+		vi.mocked(SheetService.deleteRow).mockRejectedValue({ status: 401 });
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleDeleteSubscription("sub-1");
+		});
+
+		expect(data.subscriptions).toEqual([]);
+		expect(SyncQueue.getSyncQueue()).toMatchObject([
+			{ sheet: "Subscriptions", op: "delete", itemId: "sub-1" },
+		]);
+	});
+
+	it("queues a manual subscription add when the client is not ready", async () => {
+		vi.mocked(SheetService.isClientReady).mockReturnValue(false);
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleAddSubscription(sub());
+		});
+
+		expect(SheetService.insertOne).not.toHaveBeenCalled();
+		expect(data.subscriptions.map((s) => s.id)).toContain("sub-1");
+		expect(SyncQueue.getSyncQueue()).toMatchObject([
+			{ sheet: "Subscriptions", op: "insert", itemId: "sub-1" },
+		]);
+	});
+});
+
+describe("local-first invariant under queue storage failure", () => {
+	it("saves locally even when the queue cannot be persisted", async () => {
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		const original = Storage.prototype.setItem;
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+			this: Storage,
+			key: string,
+			value: string,
+		) {
+			if (key.includes("sync_queue")) throw new Error("QuotaExceededError");
+			return original.call(this, key, value);
+		});
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		expect(
+			StorageService.getStoredTransactions().map((t) => t.id),
+		).toContain("tx-1");
+		expect(data.transactions.map((t) => t.id)).toContain("tx-1");
 	});
 });

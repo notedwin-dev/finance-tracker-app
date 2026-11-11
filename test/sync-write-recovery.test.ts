@@ -162,6 +162,17 @@ describe("saveToSheet session recovery", () => {
 		expect(refreshHandler).not.toHaveBeenCalled();
 		expect(localStorage.getItem("google_access_token")).toBe("stale-token");
 	});
+
+	it("keeps the session when the refresh fails transiently", async () => {
+		refreshHandler.mockRejectedValue(new Error("network down"));
+
+		await expect(
+			SheetService.saveToSheet("Transactions", [row]),
+		).rejects.toMatchObject({ status: 401 });
+
+		expect(localStorage.getItem("google_access_token")).toBe("stale-token");
+		expect(SheetService.isClientReady()).toBe(true);
+	});
 });
 
 describe("syncWithGoogleSheets concurrent writes", () => {

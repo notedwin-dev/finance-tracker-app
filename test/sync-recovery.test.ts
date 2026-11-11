@@ -80,4 +80,20 @@ describe("attemptWithSessionRefresh", () => {
     });
     expect(deps.clearToken).not.toHaveBeenCalled();
   });
+
+  it("keeps the token when the refresh attempt fails transiently", async () => {
+    const err401 = { status: 401 };
+    const load = vi.fn(async () => {
+      throw err401;
+    });
+    const deps = {
+      tryRefresh: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+      clearToken: vi.fn(),
+    };
+
+    await expect(attemptWithSessionRefresh(load, deps)).rejects.toBe(err401);
+    expect(deps.clearToken).not.toHaveBeenCalled();
+  });
 });

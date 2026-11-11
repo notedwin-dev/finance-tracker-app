@@ -170,14 +170,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		write: () => Promise<unknown>,
 		payload?: any,
 	): Promise<boolean> => {
-		if (!isCloudEnabled) return false;
+		// No cloud configured (guest or deliberate offline mode): local-only.
+		if (!profile.isLoggedIn || profile.offlineMode) return false;
+		if (!SheetService.isClientReady()) {
+			// Cloud is configured but unreachable (expired token, offline
+			// boot). Queue without attempting so the write survives the
+			// trust-cloud merge on the next successful sync.
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload });
+		}
 		try {
 			await write();
 			return false;
 		} catch (err) {
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
-			SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload });
-			return true;
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload });
 		}
 	};
 
@@ -799,7 +805,14 @@ const normalizeAccount = (acc: any): Account =>
 
 				// Recover the session quietly first. A login popup here would
 				// fire without a user gesture and get blocked mid-boot.
-				if (navigator.onLine) await refreshTokenSilently();
+				if (navigator.onLine) {
+					try {
+						await refreshTokenSilently();
+					} catch {
+						// Transient refresh failure: the isClientReady gate
+						// below falls back to local data.
+					}
+				}
 
 				if (!SheetService.isClientReady()) {
 					// Couldn't recover (offline, or session dead). Stay usable on
@@ -2334,13 +2347,22 @@ const normalizeAccount = (acc: any): Account =>
 		setTransactions(updatedTxs);
 		StorageService.saveTransactions(updatedTxs);
 
-		if (isCloudEnabled) {
-			for (const idToDel of idsToDelete) {
-				await SheetService.deleteOne("Transactions", idToDel);
-			}
+		let queuedAny = false;
+		for (const idToDel of idsToDelete) {
+			queuedAny =
+				(await cloudWriteOrQueue("Transactions", "delete", idToDel, () =>
+					SheetService.deleteRow("Transactions", idToDel),
+				)) || queuedAny;
 		}
 
-		showToast("Transaction deleted", "success");
+		if (queuedAny) {
+			showToast(
+				"Transaction deleted on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		} else {
+			showToast("Transaction deleted", "success");
+		}
 	};
 
 	const handleBatchTransactionDelete = async (ids: string[]) => {
@@ -2600,12 +2622,21 @@ const normalizeAccount = (acc: any): Account =>
 		setTransactions(updatedTxs);
 		StorageService.saveTransactions(updatedTxs);
 
-		if (isCloudEnabled) {
-			for (const id of idsToDelete) {
-				await SheetService.deleteOne("Transactions", id);
-			}
+		let queuedAny = false;
+		for (const id of idsToDelete) {
+			queuedAny =
+				(await cloudWriteOrQueue("Transactions", "delete", id, () =>
+					SheetService.deleteRow("Transactions", id),
+				)) || queuedAny;
 		}
-		showToast(`${txsToProcess.length} transactions deleted`, "success");
+		if (queuedAny) {
+			showToast(
+				`${txsToProcess.length} transactions deleted on this device. They will sync to the cloud automatically.`,
+				"info",
+			);
+		} else {
+			showToast(`${txsToProcess.length} transactions deleted`, "success");
+		}
 	};
 
 	const handleBatchTransactionEdit = async (
@@ -3072,15 +3103,30 @@ const normalizeAccount = (acc: any): Account =>
 		const updated = [...subscriptions, newSub];
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		if (isCloudEnabled) await SheetService.insertOne("Subscriptions", newSub);
-		showToast("Subscription added", "success");
+		const queued = await cloudWriteOrQueue(
+			"Subscriptions",
+			"insert",
+			newSub.id,
+			() => SheetService.insertOne("Subscriptions", newSub),
+			newSub,
+		);
+		if (queued) {
+			showToast(
+				"Subscription saved on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		} else {
+			showToast("Subscription added", "success");
+		}
 	};
 
 	const handleDeleteSubscription = async (id: string) => {
 		const updated = subscriptions.filter((s) => s.id !== id);
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		if (isCloudEnabled) await SheetService.deleteOne("Subscriptions", id);
+		await cloudWriteOrQueue("Subscriptions", "delete", id, () =>
+			SheetService.deleteRow("Subscriptions", id),
+		);
 	};
 
 	const handleSaveChatSession = async (session: ChatSession) => {

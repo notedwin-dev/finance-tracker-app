@@ -944,10 +944,12 @@ const getColumnLetter = (index: number): string => {
  * fire-and-forget wrapper for callers that don't need failure reporting.
  */
 export const upsertRow = async (sheetName: string, id: string, item: any) => {
-	if (!gapiInited || !hasAccessToken || !id) return;
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
+	if (!id) throw new Error(`Cannot upsert a row in ${sheetName} without an id.`);
 
 	const fileId = await getSpreadsheetId();
-	if (!fileId) return;
+	if (!fileId) throw new Error(`No spreadsheet available for ${sheetName}.`);
 
 	// 1. Get Headers to align columns and find ID column
 	const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
@@ -1119,10 +1121,12 @@ export const updateMany = async (
  * job for a later retry. deleteOne is the fire-and-forget wrapper.
  */
 export const deleteRow = async (sheetName: string, id: string) => {
-	if (!gapiInited || !hasAccessToken || !id) return;
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
+	if (!id) throw new Error(`Cannot delete a row in ${sheetName} without an id.`);
 
 	const fileId = await getSpreadsheetId();
-	if (!fileId) return;
+	if (!fileId) throw new Error(`No spreadsheet available for ${sheetName}.`);
 
 	// 1. Get the sheet ID (different from spreadsheetId) and Headers
 	const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({

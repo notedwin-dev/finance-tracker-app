@@ -304,3 +304,50 @@ describe("applyPendingJobs", () => {
 		expect(applyPendingJobs(items, [], "Transactions")).toEqual(items);
 	});
 });
+
+describe("queue storage failures", () => {
+	it("recovers from a corrupt queue payload", () => {
+		localStorage.setItem("zenfinance_sync_queue_v1", "{}");
+
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+
+		expect(getSyncQueue()).toMatchObject([{ itemId: "t1" }]);
+	});
+
+	it("does not throw when the queue cannot be persisted", () => {
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("QuotaExceededError");
+		});
+
+		expect(
+			enqueueSyncJob({
+				sheet: "Transactions",
+				op: "insert",
+				itemId: "t1",
+				payload: txPayload("t1", 10),
+			}),
+		).toBe(false);
+	});
+
+	it("stops a drain gracefully when the queue cannot be rewritten", async () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("QuotaExceededError");
+		});
+		const upsert = vi.fn(async () => {});
+
+		const result = await drainSyncQueue({ upsert, remove: vi.fn(async () => {}) });
+
+		expect(result.remaining).toBe(1);
+	});
+});

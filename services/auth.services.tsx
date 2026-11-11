@@ -38,6 +38,40 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const BACKEND_URL =
 	import.meta.env.VITE_BACKEND_API_URL || "";
 
+/**
+ * Exchange a refresh token for a new access token. Resolves null on a
+ * genuine auth failure (invalid/revoked refresh token); THROWS on transient
+ * failures (network, 5xx/429, malformed response) so callers can keep the
+ * current session instead of clearing it.
+ */
+export const exchangeRefreshToken = async (
+	refreshToken: string,
+	backendUrl: string,
+): Promise<string | null> => {
+	let res: Response;
+	try {
+		res = await fetch(`${backendUrl}/auth/refresh`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ refresh_token: refreshToken }),
+		});
+	} catch (e) {
+		console.error("Token refresh failed", e);
+		throw e;
+	}
+	if (res.status === 429 || res.status >= 500) {
+		throw new Error(`Token refresh backend error: ${res.status}`);
+	}
+	let data: any;
+	try {
+		data = await res.json();
+	} catch (e) {
+		// e.g. an HTML error page from a misconfigured backend URL
+		throw e;
+	}
+	return data?.access_token ?? null;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	children,
 }) => {
@@ -52,24 +86,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		const refreshToken = localStorage.getItem("google_refresh_token");
 		if (!refreshToken) return null;
 
-		try {
-			const res = await fetch(`${BACKEND_URL}/auth/refresh`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ refresh_token: refreshToken }),
-			});
-			const data = await res.json();
-			if (data.access_token) {
-				const expiresAt = Date.now() + 3500 * 1000; // Assume ~1hr
-				SheetService.setGapiAccessToken(data.access_token, 3600);
-				localStorage.setItem("google_access_token", data.access_token);
-				localStorage.setItem("google_token_expiry", expiresAt.toString());
-				return data.access_token;
-			}
-		} catch (e) {
-			console.error("Token refresh failed", e);
+		const token = await exchangeRefreshToken(refreshToken, BACKEND_URL);
+		if (token) {
+			const expiresAt = Date.now() + 3500 * 1000; // Assume ~1hr
+			SheetService.setGapiAccessToken(token, 3600);
+			localStorage.setItem("google_access_token", token);
+			localStorage.setItem("google_token_expiry", expiresAt.toString());
 		}
-		return null;
+		return token;
 	};
 
 	// Initialize GAPI client on mount
@@ -95,7 +119,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			let expiry = parseStoredExpiry(savedExpiry);
 
 			if (refreshToken && (!token || Date.now() > expiry - 300000)) {
-				token = await refreshAccessToken();
+				try {
+					token = await refreshAccessToken();
+				} catch {
+					// Transient backend/network failure: boot on the saved
+					// token (or local data) instead of wedging initialization.
+					token = null;
+				}
 			} else if (token) {
 				SheetService.setGapiAccessToken(token, (expiry - Date.now()) / 1000);
 			}

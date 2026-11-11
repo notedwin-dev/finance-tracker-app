@@ -47,6 +47,28 @@ export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">) => {
 
 export const getSyncQueue = (): SyncQueueJob[] => readJobs();
 
+/**
+ * Re-apply pending jobs on top of a cloud/local merge result. A queued job
+ * is a local write the cloud never acknowledged, so it must survive the
+ * merge: the trust-cloud merge drops local-only items as "deleted" and
+ * stamps cloud rows with updatedAt=now, which would otherwise clobber
+ * older pending edits. The job stays authoritative until replay succeeds.
+ */
+export const applyPendingJobs = <T extends { id: string }>(
+	merged: T[],
+	jobs: SyncQueueJob[],
+	sheet: string,
+): T[] => {
+	const pending = jobs.filter((j) => j.sheet === sheet);
+	if (pending.length === 0) return merged;
+	const map = new Map(merged.map((i) => [String(i.id), i]));
+	for (const job of pending) {
+		if (job.op === "delete") map.delete(job.itemId);
+		else if (job.payload?.id) map.set(String(job.payload.id), job.payload);
+	}
+	return Array.from(map.values());
+};
+
 export const clearSyncQueue = () => {
 	localStorage.removeItem(queueKey());
 };

@@ -1148,10 +1148,18 @@ const normalizeAccount = (acc: any): Account =>
 				setCategories(mergedCategories);
 				StorageService.saveCategories(mergedCategories);
 
-				const mergedTransactions = merge(
-					StorageService.getStoredTransactions(),
-					cloudData.transactions,
-					useCloudAsAuthority,
+				// Pending queued writes are local intent the cloud never
+				// acknowledged; they must survive the merge in both local
+				// state and the outbound full save.
+				const pendingJobs = SyncQueue.getSyncQueue();
+				const mergedTransactions = SyncQueue.applyPendingJobs(
+					merge(
+						StorageService.getStoredTransactions(),
+						cloudData.transactions,
+						useCloudAsAuthority,
+					),
+					pendingJobs,
+					"Transactions",
 				);
 				setTransactions(mergedTransactions);
 				StorageService.saveTransactions(mergedTransactions);
@@ -1164,10 +1172,14 @@ const normalizeAccount = (acc: any): Account =>
 				setGoals(mergedGoals);
 				StorageService.saveGoals(mergedGoals);
 
-				const mergedSubs = merge(
-					StorageService.getStoredSubscriptions(),
-					cloudData.subscriptions || [],
-					useCloudAsAuthority,
+				const mergedSubs = SyncQueue.applyPendingJobs(
+					merge(
+						StorageService.getStoredSubscriptions(),
+						cloudData.subscriptions || [],
+						useCloudAsAuthority,
+					),
+					pendingJobs,
+					"Subscriptions",
 				);
 				setSubscriptions(mergedSubs);
 				StorageService.saveSubscriptions(mergedSubs);

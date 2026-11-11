@@ -4,6 +4,7 @@ import {
 	getSyncQueue,
 	clearSyncQueue,
 	drainSyncQueue,
+	applyPendingJobs,
 } from "../services/sync-queue.services";
 import { KEYS } from "../services/storage.services";
 
@@ -227,5 +228,79 @@ describe("drainSyncQueue", () => {
 		expect(result).toEqual({ processed: 0, remaining: 0 });
 		expect(upsert).not.toHaveBeenCalled();
 		expect(remove).not.toHaveBeenCalled();
+	});
+});
+
+describe("applyPendingJobs", () => {
+	it("restores a pending insert the merge dropped as local-only", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+
+		const merged = applyPendingJobs(
+			[{ id: "t2", amount: 20 }],
+			getSyncQueue(),
+			"Transactions",
+		);
+
+		expect(merged).toEqual([
+			{ id: "t2", amount: 20 },
+			{ id: "t1", amount: 10 },
+		]);
+	});
+
+	it("keeps a pending local edit over a newer cloud version", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: { id: "t1", amount: 10, updatedAt: "2026-11-01T00:00:00.000Z" },
+		});
+
+		const merged = applyPendingJobs(
+			[{ id: "t1", amount: 99, updatedAt: "2026-11-11T00:00:00.000Z" }],
+			getSyncQueue(),
+			"Transactions",
+		);
+
+		expect(merged).toHaveLength(1);
+		expect(merged[0].amount).toBe(10);
+	});
+
+	it("removes an item with a pending delete so the sync cannot resurrect it", () => {
+		enqueueSyncJob({ sheet: "Transactions", op: "delete", itemId: "t1" });
+
+		const merged = applyPendingJobs(
+			[
+				{ id: "t1", amount: 10 },
+				{ id: "t2", amount: 20 },
+			],
+			getSyncQueue(),
+			"Transactions",
+		);
+
+		expect(merged).toEqual([{ id: "t2", amount: 20 }]);
+	});
+
+	it("ignores jobs for other sheets", () => {
+		enqueueSyncJob({
+			sheet: "Subscriptions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 99),
+		});
+
+		const items = [{ id: "t1", amount: 10 }];
+		expect(applyPendingJobs(items, getSyncQueue(), "Transactions")).toEqual(
+			items,
+		);
+	});
+
+	it("returns the merged list unchanged when nothing is pending", () => {
+		const items = [{ id: "t1", amount: 10 }];
+		expect(applyPendingJobs(items, [], "Transactions")).toEqual(items);
 	});
 });

@@ -220,3 +220,109 @@ describe("queued writes replay after recovery", () => {
 		expect(SyncQueue.getSyncQueue()).toHaveLength(1);
 	});
 });
+
+describe("pending local writes survive cloud sync", () => {
+	it("keeps an offline-created transaction when the cloud brings newer items", async () => {
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		// Another device synced a newer transaction while this one was offline.
+		const cloudTx: Transaction = {
+			...tx({ id: "tx-2", amount: 70 }),
+			userId: "test-user",
+			updatedAt: new Date().toISOString(),
+		} as Transaction;
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ transactions: [cloudTx] }),
+		);
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(data.transactions.map((t) => t.id).sort()).toEqual(["tx-1", "tx-2"]);
+		expect(
+			StorageService.getStoredTransactions().map((t) => t.id).sort(),
+		).toEqual(["tx-1", "tx-2"]);
+		const savedTxs = vi.mocked(SheetService.syncWithGoogleSheets).mock
+			.calls[0][1] as Transaction[];
+		expect(savedTxs.map((t) => t.id).sort()).toEqual(["tx-1", "tx-2"]);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+
+	it("does not let a newer cloud version overwrite a queued local edit", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		vi.mocked(SheetService.upsertRow).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 99 }));
+		});
+		expect(SyncQueue.getSyncQueue()).toHaveLength(1);
+
+		// Cloud recovers, but another device's newer version of the same row
+		// must not clobber the edit still pending in the queue.
+		vi.mocked(SheetService.upsertRow).mockResolvedValue(undefined);
+		const cloudTx: Transaction = {
+			...tx({ amount: 50 }),
+			userId: "test-user",
+			updatedAt: new Date().toISOString(),
+		} as Transaction;
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ transactions: [cloudTx] }),
+		);
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(
+			data.transactions.find((t) => t.id === "tx-1")?.amount,
+		).toBe(99);
+		expect(
+			StorageService.getStoredTransactions().find((t) => t.id === "tx-1")
+				?.amount,
+		).toBe(99);
+		const savedTxs = vi.mocked(SheetService.syncWithGoogleSheets).mock
+			.calls[0][1] as Transaction[];
+		expect(savedTxs.find((t) => t.id === "tx-1")?.amount).toBe(99);
+		expect(SheetService.upsertRow).toHaveBeenCalledWith(
+			"Transactions",
+			"tx-1",
+			expect.objectContaining({ id: "tx-1", amount: 99 }),
+		);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+
+	it("applies a queued delete instead of resurrecting the cloud row", async () => {
+		await renderProvider();
+		SyncQueue.enqueueSyncJob({
+			sheet: "Transactions",
+			op: "delete",
+			itemId: "tx-9",
+		});
+
+		const cloudTx: Transaction = {
+			...tx({ id: "tx-9" }),
+			userId: "test-user",
+			updatedAt: new Date().toISOString(),
+		} as Transaction;
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ transactions: [cloudTx] }),
+		);
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(data.transactions.map((t) => t.id)).not.toContain("tx-9");
+		const savedTxs = vi.mocked(SheetService.syncWithGoogleSheets).mock
+			.calls[0][1] as Transaction[];
+		expect(savedTxs.map((t) => t.id)).not.toContain("tx-9");
+		expect(SheetService.deleteRow).toHaveBeenCalledWith("Transactions", "tx-9");
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+});

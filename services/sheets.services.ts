@@ -81,10 +81,20 @@ export const setAuthRefreshHandler = (
 	authRefreshHandler = handler;
 };
 
-const trySilentRefresh = async (): Promise<boolean> => {
-	if (!authRefreshHandler) return false;
-	const token = await authRefreshHandler();
-	return !!token;
+let refreshInFlight: Promise<boolean> | null = null;
+const trySilentRefresh = (): Promise<boolean> => {
+	if (!authRefreshHandler) return Promise.resolve(false);
+	if (!refreshInFlight) {
+		const handler = authRefreshHandler;
+		// Concurrent 401s (Promise.all sync writes) share one refresh
+		// instead of stampeding the backend with parallel token exchanges.
+		refreshInFlight = handler()
+			.then((token) => !!token)
+			.finally(() => {
+				refreshInFlight = null;
+			});
+	}
+	return refreshInFlight;
 };
 
 const GAPI_SCRIPT_TIMEOUT_MS = 10000; // script load window
@@ -623,7 +633,7 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 
-	try {
+	const performSave = async () => {
 		const fileId = await getSpreadsheetId();
 		if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
@@ -789,11 +799,17 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		}
 
 		console.log(`Saved ${sheetName} to Google Sheets`);
+	};
+
+	try {
+		// Same recovery contract as the load path: a token that dies
+		// mid-sync is refreshed once and the save retried, instead of
+		// dropping the whole sync offline.
+		await attemptWithSessionRefresh(performSave, {
+			tryRefresh: trySilentRefresh,
+			clearToken: clearGapiAccessToken,
+		});
 	} catch (err: any) {
-		if (err?.status === 401) {
-			console.warn("Google Access Token expired, clearing session.");
-			clearGapiAccessToken();
-		}
 		console.error(`Error saving ${sheetName}`, err);
 		throw err;
 	}

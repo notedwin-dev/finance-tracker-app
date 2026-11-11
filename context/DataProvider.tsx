@@ -22,6 +22,7 @@ import {
 import { DataContext } from "./DataContext";
 import * as SecurityService from "../services/security.services";
 import * as AccountCrypto from "../services/account-crypto.services";
+import * as SyncQueue from "../services/sync-queue.services";
 
 // Legacy vault type for backward compatibility during migration
 type LegacyVaultProfile = UserProfile & {
@@ -153,6 +154,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// Offline mode: localStorage is source of truth
 			localCache();
 			onSuccess?.();
+			return true;
+		}
+	};
+
+	/**
+	 * Cloud write that never blocks the user: on failure the job is queued
+	 * (persisted) and replayed after the next successful sync. Returns true
+	 * when the write was queued instead of delivered.
+	 */
+	const cloudWriteOrQueue = async (
+		sheet: string,
+		op: SyncQueue.SyncQueueOp,
+		itemId: string,
+		write: () => Promise<unknown>,
+		payload?: any,
+	): Promise<boolean> => {
+		if (!isCloudEnabled) return false;
+		try {
+			await write();
+			return false;
+		} catch (err) {
+			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
+			SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload });
 			return true;
 		}
 	};
@@ -1188,6 +1212,16 @@ const normalizeAccount = (acc: any): Account =>
 						lastUpdatedAt: syncTimestamp,
 					},
 				);
+				// Cloud is reachable again: replay writes that were queued
+				// while it was down. Upserts are idempotent, so jobs already
+				// reconciled by the full sync above are safe to re-apply.
+				const { processed } = await SyncQueue.drainSyncQueue({
+					upsert: (sheet, item) => SheetService.upsertRow(sheet, item.id, item),
+					remove: (sheet, id) => SheetService.deleteRow(sheet, id),
+				});
+				if (processed > 0) {
+					console.log(`Replayed ${processed} queued cloud write(s)`);
+				}
 				processSubscriptions(mergedSubs, mergedTransactions);
 
 				// Update sync status and timestamp (locally use updatedAt)
@@ -1603,6 +1637,7 @@ const normalizeAccount = (acc: any): Account =>
 		const oldTx = transactions.find((t) => t.id === tx.id);
 		const isEdit = !!oldTx;
 		const currentUserId = profile.id || "local";
+		let queuedAny = false;
 
 		// 1. Prepare Main Transaction
 		const txWithUser = {
@@ -1659,8 +1694,14 @@ const normalizeAccount = (acc: any): Account =>
 			updatedTransactions = updatedTransactions.map((t) =>
 				t.id === tx.id ? txWithUser : t,
 			);
-			if (isCloudEnabled)
-				await SheetService.updateOne("Transactions", tx.id, txWithUser);
+			queuedAny =
+				(await cloudWriteOrQueue(
+					"Transactions",
+					"update",
+					tx.id,
+					() => SheetService.upsertRow("Transactions", tx.id, txWithUser),
+					txWithUser,
+				)) || queuedAny;
 
 			if (partnerLeg) {
 				const hasPartnerInList = updatedTransactions.some(
@@ -1670,16 +1711,29 @@ const normalizeAccount = (acc: any): Account =>
 					updatedTransactions = updatedTransactions.map((t) =>
 						t.id === partnerLeg?.id ? (partnerLeg as Transaction) : t,
 					);
-					if (isCloudEnabled)
-						await SheetService.updateOne(
+					queuedAny =
+						(await cloudWriteOrQueue(
 							"Transactions",
+							"update",
 							partnerLeg.id,
+							() =>
+								SheetService.upsertRow(
+									"Transactions",
+									partnerLeg.id,
+									partnerLeg,
+								),
 							partnerLeg,
-						);
+						)) || queuedAny;
 				} else {
 					updatedTransactions.push(partnerLeg);
-					if (isCloudEnabled)
-						await SheetService.insertOne("Transactions", partnerLeg);
+					queuedAny =
+						(await cloudWriteOrQueue(
+							"Transactions",
+							"insert",
+							partnerLeg.id,
+							() => SheetService.insertOne("Transactions", partnerLeg),
+							partnerLeg,
+						)) || queuedAny;
 				}
 			}
 
@@ -1687,18 +1741,35 @@ const normalizeAccount = (acc: any): Account =>
 				updatedTransactions = updatedTransactions.filter(
 					(t) => t.id !== partnerIdToDelete,
 				);
-				if (isCloudEnabled)
-					await SheetService.deleteOne("Transactions", partnerIdToDelete);
+				queuedAny =
+					(await cloudWriteOrQueue(
+						"Transactions",
+						"delete",
+						partnerIdToDelete,
+						() => SheetService.deleteRow("Transactions", partnerIdToDelete),
+					)) || queuedAny;
 			}
 		} else {
 			updatedTransactions.push(txWithUser);
-			if (isCloudEnabled)
-				await SheetService.insertOne("Transactions", txWithUser);
+			queuedAny =
+				(await cloudWriteOrQueue(
+					"Transactions",
+					"insert",
+					txWithUser.id,
+					() => SheetService.insertOne("Transactions", txWithUser),
+					txWithUser,
+				)) || queuedAny;
 
 			if (partnerLeg) {
 				updatedTransactions.push(partnerLeg);
-				if (isCloudEnabled)
-					await SheetService.insertOne("Transactions", partnerLeg);
+				queuedAny =
+					(await cloudWriteOrQueue(
+						"Transactions",
+						"insert",
+						partnerLeg.id,
+						() => SheetService.insertOne("Transactions", partnerLeg),
+						partnerLeg,
+					)) || queuedAny;
 			}
 		}
 		setTransactions(updatedTransactions);
@@ -1724,7 +1795,14 @@ const normalizeAccount = (acc: any): Account =>
 			const updatedSubs = [...subscriptions, sub];
 			setSubscriptions(updatedSubs);
 			StorageService.saveSubscriptions(updatedSubs);
-			if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
+			queuedAny =
+				(await cloudWriteOrQueue(
+					"Subscriptions",
+					"insert",
+					sub.id,
+					() => SheetService.insertOne("Subscriptions", sub),
+					sub,
+				)) || queuedAny;
 		}
 
 		// Handle Link to Existing Subscription
@@ -1755,8 +1833,14 @@ const normalizeAccount = (acc: any): Account =>
 					);
 					setSubscriptions(updatedSubsList);
 					StorageService.saveSubscriptions(updatedSubsList);
-					if (isCloudEnabled)
-						await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
+					queuedAny =
+						(await cloudWriteOrQueue(
+							"Subscriptions",
+							"update",
+							sub.id,
+							() => SheetService.upsertRow("Subscriptions", sub.id, updatedSub),
+							updatedSub,
+						)) || queuedAny;
 				}
 			}
 		}
@@ -2004,7 +2088,14 @@ const normalizeAccount = (acc: any): Account =>
 			}
 		}
 
-		showToast("Transaction saved", "success");
+		if (queuedAny) {
+			showToast(
+				"Transaction saved on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		} else {
+			showToast("Transaction saved", "success");
+		}
 	};
 
 	const handleTransactionDelete = async (id: string) => {

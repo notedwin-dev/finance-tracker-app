@@ -938,86 +938,85 @@ const getColumnLetter = (index: number): string => {
  * Updates a specific row based on the 'id' field.
  * This is much faster than saveToSheet for single edits.
  */
-export const updateOne = async (sheetName: string, id: string, item: any) => {
+/**
+ * Upserts a row by id (inserts when missing) and THROWS on failure so the
+ * sync queue can keep the job for a later retry. updateOne is the
+ * fire-and-forget wrapper for callers that don't need failure reporting.
+ */
+export const upsertRow = async (sheetName: string, id: string, item: any) => {
 	if (!gapiInited || !hasAccessToken || !id) return;
 
-	try {
-		const fileId = await getSpreadsheetId();
-		if (!fileId) return;
+	const fileId = await getSpreadsheetId();
+	if (!fileId) return;
 
-		// 1. Get Headers to align columns and find ID column
-		const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!1:1`,
-		});
-		const headers = headerRes.result.values?.[0] || [];
-		const idColumnIndex = headers.indexOf("id");
+	// 1. Get Headers to align columns and find ID column
+	const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!1:1`,
+	});
+	const headers = headerRes.result.values?.[0] || [];
+	const idColumnIndex = headers.indexOf("id");
 
-		if (idColumnIndex === -1) {
-			// If no id column, we might need a full save or something is wrong
-			return insertOne(sheetName, item);
-		}
+	if (idColumnIndex === -1) {
+		// If no id column, we might need a full save or something is wrong
+		return insertOne(sheetName, item);
+	}
 
-		const idColLetter = getColumnLetter(idColumnIndex);
+	const idColLetter = getColumnLetter(idColumnIndex);
 
-		// 2. Find the row index of the ID
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
-		});
+	// 2. Find the row index of the ID
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
+	});
 
-		const ids = res.result.values || [];
-		const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+	const ids = res.result.values || [];
+	const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
 
-		if (rowIndex === -1) {
-			// If not found, maybe it was deleted or just added. Fallback to insert.
-			return insertOne(sheetName, item);
-		}
+	if (rowIndex === -1) {
+		// If not found, maybe it was deleted or just added. Fallback to insert.
+		return insertOne(sheetName, item);
+	}
 
-		// 3. Prepare the updated row
-		const row = headers.map((header: string) => {
-			const val = item[header];
-			if (typeof val === "object" && val !== null) {
-				return JSON.stringify(val);
-			}
-			return val ?? "";
-		});
-
-		// 4. Update specific row (A1 notation requires 1-based indexing for rows)
-		// Safe update: only update columns present in the item object to prevent clearing legacy data
-		const data: any[] = [];
-		headers.forEach((header: string, colIndex: number) => {
-			const val = item[header];
-			if (val !== undefined) {
-				const colLetter = getColumnLetter(colIndex);
-				data.push({
-					range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
-					values: [
-						[
-							typeof val === "object" && val !== null
-								? JSON.stringify(val)
-								: val,
-						],
+	// 3. Update specific row (A1 notation requires 1-based indexing for rows)
+	// Safe update: only update columns present in the item object to prevent clearing legacy data
+	const data: any[] = [];
+	headers.forEach((header: string, colIndex: number) => {
+		const val = item[header];
+		if (val !== undefined) {
+			const colLetter = getColumnLetter(colIndex);
+			data.push({
+				range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+				values: [
+					[
+						typeof val === "object" && val !== null
+							? JSON.stringify(val)
+							: val,
 					],
-				});
-			}
-		});
-
-		if (data.length > 0) {
-			await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
-				spreadsheetId: fileId,
-				resource: {
-					data,
-					valueInputOption: "USER_ENTERED",
-				},
+				],
 			});
-			console.log(
-				`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
-			);
 		}
+	});
+
+	if (data.length > 0) {
+		await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+			spreadsheetId: fileId,
+			resource: {
+				data,
+				valueInputOption: "USER_ENTERED",
+			},
+		});
+		console.log(
+			`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
+		);
+	}
+};
+
+export const updateOne = async (sheetName: string, id: string, item: any) => {
+	try {
+		await upsertRow(sheetName, id, item);
 	} catch (e) {
 		console.warn(`Error updating row in ${sheetName}`, e);
-		// Fallback: If finding specific row fails, we might need a full sync
 	}
 };
 
@@ -1115,65 +1114,73 @@ export const updateMany = async (
 /**
  * Deletes a specific row based on the 'id' field.
  */
-export const deleteOne = async (sheetName: string, id: string) => {
+/**
+ * Deletes a row by id and THROWS on failure so the sync queue can keep the
+ * job for a later retry. deleteOne is the fire-and-forget wrapper.
+ */
+export const deleteRow = async (sheetName: string, id: string) => {
 	if (!gapiInited || !hasAccessToken || !id) return;
 
-	try {
-		const fileId = await getSpreadsheetId();
-		if (!fileId) return;
+	const fileId = await getSpreadsheetId();
+	if (!fileId) return;
 
-		// 1. Get the sheet ID (different from spreadsheetId) and Headers
-		const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
-			spreadsheetId: fileId,
-		});
-		const sheet = spreadsheet.result.sheets.find(
-			(s: any) => s.properties.title === sheetName,
-		);
-		if (!sheet) return;
+	// 1. Get the sheet ID (different from spreadsheetId) and Headers
+	const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
+		spreadsheetId: fileId,
+	});
+	const sheet = spreadsheet.result.sheets.find(
+		(s: any) => s.properties.title === sheetName,
+	);
+	if (!sheet) return;
 
-		const sheetId = sheet.properties.sheetId;
+	const sheetId = sheet.properties.sheetId;
 
-		const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!1:1`,
-		});
-		const headers = headerRes.result.values?.[0] || [];
-		const idColumnIndex = headers.indexOf("id");
+	const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!1:1`,
+	});
+	const headers = headerRes.result.values?.[0] || [];
+	const idColumnIndex = headers.indexOf("id");
 
-		if (idColumnIndex === -1) return;
-		const idColLetter = getColumnLetter(idColumnIndex);
+	if (idColumnIndex === -1) return;
+	const idColLetter = getColumnLetter(idColumnIndex);
 
-		// 2. Find the row index
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
-		});
+	// 2. Find the row index
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
+	});
 
-		const ids = res.result.values || [];
-		const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+	const ids = res.result.values || [];
+	const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
 
-		if (rowIndex === -1) return;
+	if (rowIndex === -1) return;
 
-		// 3. Delete the specific row
-		await window.gapi.client.sheets.spreadsheets.batchUpdate({
-			spreadsheetId: fileId,
-			resource: {
-				requests: [
-					{
-						deleteDimension: {
-							range: {
-								sheetId: sheetId,
-								dimension: "ROWS",
-								startIndex: rowIndex,
-								endIndex: rowIndex + 1,
-							},
+	// 3. Delete the specific row
+	await window.gapi.client.sheets.spreadsheets.batchUpdate({
+		spreadsheetId: fileId,
+		resource: {
+			requests: [
+				{
+					deleteDimension: {
+						range: {
+							sheetId: sheetId,
+							dimension: "ROWS",
+							startIndex: rowIndex,
+							endIndex: rowIndex + 1,
 						},
 					},
-				],
-			},
-		});
+				},
+			],
+		},
+	});
 
-		console.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
+	console.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
+};
+
+export const deleteOne = async (sheetName: string, id: string) => {
+	try {
+		await deleteRow(sheetName, id);
 	} catch (e) {
 		console.error(`Error deleting row from ${sheetName}`, e);
 	}

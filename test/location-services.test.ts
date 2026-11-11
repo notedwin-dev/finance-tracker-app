@@ -4,12 +4,18 @@
  * Derived from the requirement, not from any implementation:
  *
  *   R10. A place the user cannot reach is never offered: the search radius
- *        and the number of places are clamped to what the data source can
- *        answer.
+ *        is clamped to what the data source can answer, and the number of
+ *        places returned is clamped to a sane range.
  *   R11. Only places with usable coordinates are offered, nearest first.
  *   R12. A cuisine keyword filters on name, cuisine and amenity.
  *   R13. A place without a name is still offered under a fallback name.
  *   R14. A geolocation failure is reported as an error, not swallowed.
+ *   R15. A cuisine keyword finds every matching place inside the radius;
+ *        no match is lost to an arbitrary raw sample.
+ *   R16. Results are nearest first across all matches and only then limited;
+ *        the reported count is the untruncated total. A data-source failure
+ *        (including a partial result flagged as a runtime error) is reported
+ *        as an error, never served as a silent empty or partial list.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -47,10 +53,7 @@ describe("clampLimit", () => {
 		expect(clampLimit(999)).toBe(20);
 	});
 
-	it("floors fractional limits so the query holds an integer", () => {
-		// The limit reaches `out center ${limit * 3}`; a fractional value
-		// such as 4.5 would emit `out center 13.5`, which Overpass QL
-		// rejects as malformed.
+	it("floors fractional limits so the place count is an integer", () => {
 		expect(clampLimit(4.5)).toBe(4);
 		expect(clampLimit(3.999)).toBe(3);
 	});
@@ -162,27 +165,6 @@ describe("mapOverpassToPlaces", () => {
 
 		expect(places[0].name).toBe("Unnamed place");
 	});
-
-	it("R10: honours the limit while totalFound reports all matches", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue({
-				ok: true,
-				json: async () => ({
-					elements: [
-						{ id: 1, lat: 3.101, lon: 101.7, tags: { name: "Place A" } },
-						{ id: 2, lat: 3.102, lon: 101.7, tags: { name: "Place B" } },
-						{ id: 3, lat: 3.103, lon: 101.7, tags: { name: "Place C" } },
-					],
-				}),
-			}),
-		);
-
-		const result = await fetchNearbyFood(3.1, 101.7, 800, 2);
-
-		expect(result.places).toHaveLength(2);
-		expect(result.totalFound).toBe(3);
-	});
 });
 
 describe("getCurrentLocation", () => {
@@ -227,28 +209,64 @@ describe("getCurrentLocation", () => {
 
 describe("buildOverpassQuery", () => {
 	it("searches the given radius around the given coordinates", () => {
-		const query = buildOverpassQuery(3.1, 101.7, 800, 10);
+		const query = buildOverpassQuery(3.1, 101.7, 800);
 
 		expect(query).toContain("nwr(around:800,3.1,101.7)");
 	});
 
-	it("requests a 3x raw sample when no keyword narrows it", () => {
-		expect(buildOverpassQuery(3.1, 101.7, 800, 10)).toContain(
-			"out center 30",
-		);
+	it("R16: requests the full match set when no keyword narrows it", () => {
+		expect(buildOverpassQuery(3.1, 101.7, 800)).toContain("out center;");
 	});
 
-	it("widens the raw sample when a keyword is present", () => {
-		expect(buildOverpassQuery(3.1, 101.7, 800, 10, "ramen")).toContain(
-			"out center 200",
+	it("R15/R16: applies the keyword server-side and requests the full match set", () => {
+		const query = buildOverpassQuery(3.1, 101.7, 800, "ramen");
+
+		expect(query).toContain(
+			String.raw`[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"][~"^(name|cuisine|amenity)$"~"ramen",i]`,
 		);
+		expect(query).toContain("out center;");
 	});
 
-	it("treats a whitespace-only keyword like no keyword", () => {
-		expect(buildOverpassQuery(3.1, 101.7, 800, 10, "   ")).toContain(
-			"out center 30",
-		);
+	it.each(["   ", ""])("R15: treats %j like no keyword", (keyword) => {
+		const query = buildOverpassQuery(3.1, 101.7, 800, keyword);
+
+		expect(query).not.toContain(String.raw`[~"^(name|cuisine|amenity)$"`);
+		expect(query).toContain("out center;");
 	});
+
+	it("R15: trims the keyword before embedding it", () => {
+		const query = buildOverpassQuery(3.1, 101.7, 800, "  ramen  ");
+
+		expect(query).toContain(String.raw`~"ramen",i]`);
+	});
+
+	it.each([
+		["\\", String.raw`\\\\`],
+		['"', String.raw`\"`],
+		["(", String.raw`\\(`],
+		[")", String.raw`\\)`],
+		[".", String.raw`\\.`],
+		["^", String.raw`\\^`],
+		["$", String.raw`\\$`],
+		["*", String.raw`\\*`],
+		["+", String.raw`\\+`],
+		["?", String.raw`\\?`],
+		["[", String.raw`\\[`],
+		["]", String.raw`\\]`],
+		["{", String.raw`\\{`],
+		["}", String.raw`\\}`],
+		["|", String.raw`\\|`],
+		["a\\\"b", String.raw`a\\\\\"b`],
+		["pizza(test", String.raw`pizza\\(test`],
+		["café", "café"],
+	])(
+		"R15: escapes %j so the keyword matches literally",
+		(keyword, escaped) => {
+			const query = buildOverpassQuery(3.1, 101.7, 800, keyword);
+
+			expect(query).toContain(`~"${escaped}",i]`);
+		},
+	);
 });
 
 describe("fetchNearbyFood", () => {
@@ -302,7 +320,7 @@ describe("fetchNearbyFood", () => {
 		expect(init.signal).toBeInstanceOf(AbortSignal);
 	});
 
-	it("keeps the 3x raw sample when no cuisine keyword is given", async () => {
+	it("R16: sends an uncapped query when no cuisine keyword is given", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok: true,
 			json: async () => ({ elements: [] }),
@@ -315,13 +333,10 @@ describe("fetchNearbyFood", () => {
 		const query = decodeURIComponent(
 			url.slice(url.indexOf("data=") + "data=".length),
 		);
-		expect(query).toContain("out center 15");
+		expect(query).toContain("out center;");
 	});
 
-	it("widens the raw sample when a cuisine keyword is present", async () => {
-		// The cap runs before the keyword filter and Overpass does not sort
-		// by distance, so a small raw sample can hold no match at all and
-		// the search returns empty despite matches inside the radius.
+	it("R15: applies the cuisine keyword inside the Overpass query", async () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok: true,
 			json: async () => ({ elements: [] }),
@@ -334,7 +349,40 @@ describe("fetchNearbyFood", () => {
 		const query = decodeURIComponent(
 			url.slice(url.indexOf("data=") + "data=".length),
 		);
-		expect(query).toContain("out center 200");
+		expect(query).toContain(
+			String.raw`[~"^(name|cuisine|amenity)$"~"ramen",i]`,
+		);
+		expect(query).toContain("out center;");
+	});
+
+	it("R16: returns keyword matches nearest first with the untruncated count", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					elements: [
+						{
+							id: 1,
+							lat: 3.2,
+							lon: 101.7,
+							tags: { name: "Far", amenity: "restaurant", cuisine: "ramen" },
+						},
+						{
+							id: 2,
+							lat: 3.101,
+							lon: 101.7,
+							tags: { name: "Near", amenity: "restaurant", cuisine: "ramen" },
+						},
+					],
+				}),
+			}),
+		);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 1, "ramen");
+
+		expect(result.places.map((p) => p.osmId)).toEqual([2]);
+		expect(result.totalFound).toBe(2);
 	});
 
 	it("searches inside the requested radius with the given coordinates", async () => {
@@ -351,5 +399,131 @@ describe("fetchNearbyFood", () => {
 			url.slice(url.indexOf("data=") + "data=".length),
 		);
 		expect(query).toContain("nwr(around:800,3.1,101.7)");
+	});
+
+	it("R10: honours the limit while totalFound reports all matches", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					elements: [
+						{ id: 1, lat: 3.101, lon: 101.7, tags: { name: "Place A" } },
+						{ id: 2, lat: 3.102, lon: 101.7, tags: { name: "Place B" } },
+						{ id: 3, lat: 3.103, lon: 101.7, tags: { name: "Place C" } },
+					],
+				}),
+			}),
+		);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 2);
+
+		expect(result.places).toHaveLength(2);
+		expect(result.totalFound).toBe(3);
+	});
+
+	it("R16: raises when Overpass reports a runtime error despite HTTP 200", async () => {
+		// A timed-out query returns 200 with partial elements and an error
+		// remark; serving those would silently reproduce the false-empty bug.
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					elements: [
+						{ id: 1, lat: 3.1, lon: 101.7, tags: { name: "Partial" } },
+					],
+					remark:
+						'runtime error: Query timed out in "query" at line 3 after 25 seconds.',
+				}),
+			}),
+		);
+
+		await expect(fetchNearbyFood(3.1, 101.7, 800, 5)).rejects.toThrow(
+			"Failed to query nearby places from OpenStreetMap.",
+		);
+	});
+
+	it("R16: keeps results when the remark is not a runtime error", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					elements: [
+						{ id: 1, lat: 3.1, lon: 101.7, tags: { name: "Place" } },
+					],
+					remark: "Data is available under the ODbL.",
+				}),
+			}),
+		);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 5);
+
+		expect(result.totalFound).toBe(1);
+	});
+
+	it("raises a generic error when the body is not JSON", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => {
+					throw new SyntaxError("Unexpected token '<'");
+				},
+			}),
+		);
+
+		await expect(fetchNearbyFood(3.1, 101.7, 800, 5)).rejects.toThrow(
+			"Failed to query nearby places from OpenStreetMap.",
+		);
+	});
+
+	it("ignores a non-string keyword instead of throwing", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ elements: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 5, 123 as any);
+
+		const url = fetchMock.mock.calls[0][0] as string;
+		const query = decodeURIComponent(
+			url.slice(url.indexOf("data=") + "data=".length),
+		);
+		expect(query).not.toContain(String.raw`[~"^(name|cuisine|amenity)$"`);
+		expect(result.cuisineKeyword).toBeNull();
+	});
+
+	it("caps an overlong keyword so the query URL stays bounded", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ elements: [] }),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 5, "a".repeat(200));
+
+		const url = fetchMock.mock.calls[0][0] as string;
+		const query = decodeURIComponent(
+			url.slice(url.indexOf("data=") + "data=".length),
+		);
+		expect(query).toContain(`~"${"a".repeat(128)}",i]`);
+		expect(result.cuisineKeyword).toHaveLength(128);
+	});
+
+	it("reports the trimmed keyword back to the model", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({ elements: [] }),
+			}),
+		);
+
+		const result = await fetchNearbyFood(3.1, 101.7, 800, 5, "  ramen  ");
+
+		expect(result.cuisineKeyword).toBe("ramen");
 	});
 });

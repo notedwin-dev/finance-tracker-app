@@ -40,13 +40,7 @@ export const DEFAULT_RADIUS_METERS = 1200;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 20;
 export const DEFAULT_LIMIT = 10;
-/**
- * Raw sample to request when a cuisine keyword is present. Overpass does not
- * sort by distance, so the client picks the nearest matches from whatever the
- * cap returns; a cap near the limit can hold no keyword match at all and the
- * search returns empty despite matches inside the radius.
- */
-const KEYWORD_SAMPLE_SIZE = 200;
+const MAX_KEYWORD_LENGTH = 128;
 
 /** Great-circle distance between two coordinates, in metres. */
 export const distanceInMeters = (
@@ -169,21 +163,34 @@ export const mapOverpassToPlaces = (
 
 /** Client-side abort limit; the query already sets [timeout:25] server-side. */
 const OVERPASS_TIMEOUT_MS = 30000;
+const OVERPASS_FAILURE_MESSAGE =
+	"Failed to query nearby places from OpenStreetMap.";
+
+/**
+ * Regex escapes first, then QL string escapes: the QL string parser runs
+ * before the regex engine.
+ */
+const escapeKeywordForOverpass = (keyword: string): string => {
+	const regexLiteral = keyword.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+	return regexLiteral.replace(/["\\]/g, "\\$&");
+};
 
 /** Build the Overpass QL for a nearby-food search around a coordinate. */
 export const buildOverpassQuery = (
 	latitude: number,
 	longitude: number,
 	radiusMeters: number,
-	limit: number,
 	cuisineKeyword?: string,
 ): string => {
-	const sample = cuisineKeyword?.trim() ? KEYWORD_SAMPLE_SIZE : limit * 3;
+	const keyword = cuisineKeyword?.trim();
+	const keywordFilter = keyword
+		? `[~"^(name|cuisine|amenity)$"~"${escapeKeywordForOverpass(keyword)}",i]`
+		: "";
 
 	return `
 [out:json][timeout:25];
-nwr(around:${radiusMeters},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"];
-out center ${sample};`;
+nwr(around:${radiusMeters},${latitude},${longitude})[amenity~"restaurant|fast_food|cafe|food_court|ice_cream"]${keywordFilter};
+out center;`;
 };
 
 /** Find nearby food places around a coordinate using OpenStreetMap. */
@@ -196,13 +203,16 @@ export const fetchNearbyFood = async (
 ): Promise<NearbyFoodResult> => {
 	const safeRadius = clampRadius(radiusMeters);
 	const safeLimit = clampLimit(limit);
+	const keyword =
+		typeof cuisineKeyword === "string"
+			? cuisineKeyword.trim().slice(0, MAX_KEYWORD_LENGTH)
+			: undefined;
 
 	const overpassQuery = buildOverpassQuery(
 		latitude,
 		longitude,
 		safeRadius,
-		safeLimit,
-		cuisineKeyword,
+		keyword,
 	);
 
 	const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(
@@ -216,22 +226,33 @@ export const fetchNearbyFood = async (
 	});
 
 	if (!response.ok) {
-		throw new Error("Failed to query nearby places from OpenStreetMap.");
+		throw new Error(OVERPASS_FAILURE_MESSAGE);
 	}
 
-	const data = await response.json();
+	let data: any;
+	try {
+		data = await response.json();
+	} catch {
+		throw new Error(OVERPASS_FAILURE_MESSAGE);
+	}
+
+	// Overpass flags runtime errors (e.g. a query timeout) with a remark on an
+	// HTTP 200 response; the elements are then partial or empty.
+	if (typeof data?.remark === "string" && /runtime error/i.test(data.remark)) {
+		throw new Error(OVERPASS_FAILURE_MESSAGE);
+	}
 
 	const matches = mapOverpassToPlaces(
 		data?.elements || [],
 		latitude,
 		longitude,
-		cuisineKeyword,
+		keyword,
 	);
 
 	return {
 		locationUsed: { latitude, longitude },
 		radiusMeters: safeRadius,
-		cuisineKeyword: cuisineKeyword || null,
+		cuisineKeyword: keyword || null,
 		totalFound: matches.length,
 		places: matches.slice(0, safeLimit),
 	};

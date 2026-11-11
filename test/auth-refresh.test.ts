@@ -42,12 +42,23 @@ describe("exchangeRefreshToken", () => {
 		).resolves.toBeNull();
 	});
 
-	it("returns null when the response carries no access token", async () => {
+	it("throws when a tokenless response carries no auth error", async () => {
 		vi.stubGlobal("fetch", vi.fn(async () => respond(200, {})));
 
 		await expect(
 			exchangeRefreshToken("refresh-1", "https://backend.test"),
-		).resolves.toBeNull();
+		).rejects.toThrow();
+	});
+
+	it("throws on a protocol error like invalid_request", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => respond(400, { error: "invalid_request" })),
+		);
+
+		await expect(
+			exchangeRefreshToken("refresh-1", "https://backend.test"),
+		).rejects.toThrow();
 	});
 
 	it("throws on a network failure", async () => {

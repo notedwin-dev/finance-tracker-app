@@ -36,6 +36,13 @@ type LegacyVaultProfile = UserProfile & {
 	devices?: any[];
 };
 
+// Outcome of a local-first cloud write:
+// - delivered: cloud acknowledged it (or local-only with nothing pending)
+// - queued: saved locally and persisted for replay after the next sync
+// - unprotected: saved locally but the queue could not be persisted, so the
+//   next cloud sync may overwrite it — the user must be warned.
+type CloudWriteStatus = "delivered" | "queued" | "unprotected";
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 	children,
 }) => {
@@ -160,8 +167,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 
 	/**
 	 * Cloud write that never blocks the user: on failure the job is queued
-	 * (persisted) and replayed after the next successful sync. Returns true
-	 * when the write was queued instead of delivered.
+	 * (persisted) and replayed after the next successful sync. Returns the
+	 * outcome so the caller can tell the user whether the write was delivered,
+	 * queued, or left unprotected because the queue could not be persisted.
 	 */
 	const cloudWriteOrQueue = async (
 		sheet: string,
@@ -169,21 +177,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		itemId: string,
 		write: () => Promise<unknown>,
 		payload?: any,
-	): Promise<boolean> => {
+	): Promise<CloudWriteStatus> => {
 		// No cloud configured (guest or deliberate offline mode): local-only.
-		if (!profile.isLoggedIn || profile.offlineMode) return false;
+		// A pending job for this item must still be superseded with the latest
+		// intent, or replay would resurrect a stale payload / undo a delete.
+		if (!profile.isLoggedIn || profile.offlineMode) {
+			if (!SyncQueue.hasSyncJob(sheet, itemId)) return "delivered";
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })
+				? "queued"
+				: "unprotected";
+		}
 		if (!SheetService.isClientReady()) {
 			// Cloud is configured but unreachable (expired token, offline
 			// boot). Queue without attempting so the write survives the
 			// trust-cloud merge on the next successful sync.
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload });
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })
+				? "queued"
+				: "unprotected";
 		}
 		try {
 			await write();
-			return false;
+			// The cloud acknowledged this write: drop any older pending job
+			// for the same item so replay cannot clobber the newer version.
+			SyncQueue.removeSyncJob(sheet, itemId);
+			return "delivered";
 		} catch (err) {
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload });
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })
+				? "queued"
+				: "unprotected";
 		}
 	};
 
@@ -1663,6 +1685,11 @@ const normalizeAccount = (acc: any): Account =>
 		const isEdit = !!oldTx;
 		const currentUserId = profile.id || "local";
 		let queuedAny = false;
+		let unprotectedAny = false;
+		const track = (status: CloudWriteStatus) => {
+			if (status === "queued") queuedAny = true;
+			else if (status === "unprotected") unprotectedAny = true;
+		};
 
 		// 1. Prepare Main Transaction
 		const txWithUser = {
@@ -1719,14 +1746,15 @@ const normalizeAccount = (acc: any): Account =>
 			updatedTransactions = updatedTransactions.map((t) =>
 				t.id === tx.id ? txWithUser : t,
 			);
-			queuedAny =
-				(await cloudWriteOrQueue(
+			track(
+				await cloudWriteOrQueue(
 					"Transactions",
 					"update",
 					tx.id,
 					() => SheetService.upsertRow("Transactions", tx.id, txWithUser),
 					txWithUser,
-				)) || queuedAny;
+				),
+			);
 
 			if (partnerLeg) {
 				const hasPartnerInList = updatedTransactions.some(
@@ -1736,8 +1764,8 @@ const normalizeAccount = (acc: any): Account =>
 					updatedTransactions = updatedTransactions.map((t) =>
 						t.id === partnerLeg?.id ? (partnerLeg as Transaction) : t,
 					);
-					queuedAny =
-						(await cloudWriteOrQueue(
+					track(
+						await cloudWriteOrQueue(
 							"Transactions",
 							"update",
 							partnerLeg.id,
@@ -1748,17 +1776,19 @@ const normalizeAccount = (acc: any): Account =>
 									partnerLeg,
 								),
 							partnerLeg,
-						)) || queuedAny;
+						),
+					);
 				} else {
 					updatedTransactions.push(partnerLeg);
-					queuedAny =
-						(await cloudWriteOrQueue(
+					track(
+						await cloudWriteOrQueue(
 							"Transactions",
 							"insert",
 							partnerLeg.id,
 							() => SheetService.insertOne("Transactions", partnerLeg),
 							partnerLeg,
-						)) || queuedAny;
+						),
+					);
 				}
 			}
 
@@ -1766,35 +1796,38 @@ const normalizeAccount = (acc: any): Account =>
 				updatedTransactions = updatedTransactions.filter(
 					(t) => t.id !== partnerIdToDelete,
 				);
-				queuedAny =
-					(await cloudWriteOrQueue(
+				track(
+					await cloudWriteOrQueue(
 						"Transactions",
 						"delete",
 						partnerIdToDelete,
 						() => SheetService.deleteRow("Transactions", partnerIdToDelete),
-					)) || queuedAny;
+					),
+				);
 			}
 		} else {
 			updatedTransactions.push(txWithUser);
-			queuedAny =
-				(await cloudWriteOrQueue(
+			track(
+				await cloudWriteOrQueue(
 					"Transactions",
 					"insert",
 					txWithUser.id,
 					() => SheetService.insertOne("Transactions", txWithUser),
 					txWithUser,
-				)) || queuedAny;
+				),
+			);
 
 			if (partnerLeg) {
 				updatedTransactions.push(partnerLeg);
-				queuedAny =
-					(await cloudWriteOrQueue(
+				track(
+					await cloudWriteOrQueue(
 						"Transactions",
 						"insert",
 						partnerLeg.id,
 						() => SheetService.insertOne("Transactions", partnerLeg),
 						partnerLeg,
-					)) || queuedAny;
+					),
+				);
 			}
 		}
 		setTransactions(updatedTransactions);
@@ -1820,14 +1853,15 @@ const normalizeAccount = (acc: any): Account =>
 			const updatedSubs = [...subscriptions, sub];
 			setSubscriptions(updatedSubs);
 			StorageService.saveSubscriptions(updatedSubs);
-			queuedAny =
-				(await cloudWriteOrQueue(
+			track(
+				await cloudWriteOrQueue(
 					"Subscriptions",
 					"insert",
 					sub.id,
 					() => SheetService.insertOne("Subscriptions", sub),
 					sub,
-				)) || queuedAny;
+				),
+			);
 		}
 
 		// Handle Link to Existing Subscription
@@ -1858,14 +1892,15 @@ const normalizeAccount = (acc: any): Account =>
 					);
 					setSubscriptions(updatedSubsList);
 					StorageService.saveSubscriptions(updatedSubsList);
-					queuedAny =
-						(await cloudWriteOrQueue(
+					track(
+						await cloudWriteOrQueue(
 							"Subscriptions",
 							"update",
 							sub.id,
 							() => SheetService.upsertRow("Subscriptions", sub.id, updatedSub),
 							updatedSub,
-						)) || queuedAny;
+						),
+					);
 				}
 			}
 		}
@@ -2113,7 +2148,12 @@ const normalizeAccount = (acc: any): Account =>
 			}
 		}
 
-		if (queuedAny) {
+		if (unprotectedAny) {
+			showToast(
+				"Transaction saved on this device only. Cloud backup is unavailable, so the next sync may overwrite it.",
+				"alert",
+			);
+		} else if (queuedAny) {
 			showToast(
 				"Transaction saved on this device. It will sync to the cloud automatically.",
 				"info",
@@ -2348,14 +2388,24 @@ const normalizeAccount = (acc: any): Account =>
 		StorageService.saveTransactions(updatedTxs);
 
 		let queuedAny = false;
+		let unprotectedAny = false;
 		for (const idToDel of idsToDelete) {
-			queuedAny =
-				(await cloudWriteOrQueue("Transactions", "delete", idToDel, () =>
-					SheetService.deleteRow("Transactions", idToDel),
-				)) || queuedAny;
+			const status = await cloudWriteOrQueue(
+				"Transactions",
+				"delete",
+				idToDel,
+				() => SheetService.deleteRow("Transactions", idToDel),
+			);
+			if (status === "queued") queuedAny = true;
+			else if (status === "unprotected") unprotectedAny = true;
 		}
 
-		if (queuedAny) {
+		if (unprotectedAny) {
+			showToast(
+				"Transaction deleted on this device only. Cloud backup is unavailable, so the next sync may restore it.",
+				"alert",
+			);
+		} else if (queuedAny) {
 			showToast(
 				"Transaction deleted on this device. It will sync to the cloud automatically.",
 				"info",
@@ -2623,13 +2673,20 @@ const normalizeAccount = (acc: any): Account =>
 		StorageService.saveTransactions(updatedTxs);
 
 		let queuedAny = false;
+		let unprotectedAny = false;
 		for (const id of idsToDelete) {
-			queuedAny =
-				(await cloudWriteOrQueue("Transactions", "delete", id, () =>
-					SheetService.deleteRow("Transactions", id),
-				)) || queuedAny;
+			const status = await cloudWriteOrQueue("Transactions", "delete", id, () =>
+				SheetService.deleteRow("Transactions", id),
+			);
+			if (status === "queued") queuedAny = true;
+			else if (status === "unprotected") unprotectedAny = true;
 		}
-		if (queuedAny) {
+		if (unprotectedAny) {
+			showToast(
+				`${txsToProcess.length} transactions deleted on this device only. Cloud backup is unavailable, so the next sync may restore them.`,
+				"alert",
+			);
+		} else if (queuedAny) {
 			showToast(
 				`${txsToProcess.length} transactions deleted on this device. They will sync to the cloud automatically.`,
 				"info",
@@ -3103,14 +3160,19 @@ const normalizeAccount = (acc: any): Account =>
 		const updated = [...subscriptions, newSub];
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		const queued = await cloudWriteOrQueue(
+		const status = await cloudWriteOrQueue(
 			"Subscriptions",
 			"insert",
 			newSub.id,
 			() => SheetService.insertOne("Subscriptions", newSub),
 			newSub,
 		);
-		if (queued) {
+		if (status === "unprotected") {
+			showToast(
+				"Subscription saved on this device only. Cloud backup is unavailable, so the next sync may overwrite it.",
+				"alert",
+			);
+		} else if (status === "queued") {
 			showToast(
 				"Subscription saved on this device. It will sync to the cloud automatically.",
 				"info",
@@ -3124,9 +3186,20 @@ const normalizeAccount = (acc: any): Account =>
 		const updated = subscriptions.filter((s) => s.id !== id);
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		await cloudWriteOrQueue("Subscriptions", "delete", id, () =>
+		const status = await cloudWriteOrQueue("Subscriptions", "delete", id, () =>
 			SheetService.deleteRow("Subscriptions", id),
 		);
+		if (status === "unprotected") {
+			showToast(
+				"Subscription deleted on this device only. Cloud backup is unavailable, so the next sync may restore it.",
+				"alert",
+			);
+		} else if (status === "queued") {
+			showToast(
+				"Subscription deleted on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		}
 	};
 
 	const handleSaveChatSession = async (session: ChatSession) => {

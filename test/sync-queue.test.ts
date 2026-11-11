@@ -5,6 +5,8 @@ import {
 	clearSyncQueue,
 	drainSyncQueue,
 	applyPendingJobs,
+	removeSyncJob,
+	hasSyncJob,
 } from "../services/sync-queue.services";
 import { KEYS } from "../services/storage.services";
 
@@ -349,5 +351,94 @@ describe("queue storage failures", () => {
 		const result = await drainSyncQueue({ upsert, remove: vi.fn(async () => {}) });
 
 		expect(result.remaining).toBe(1);
+	});
+});
+
+describe("queue entry validation", () => {
+	it("discards malformed entries but keeps valid jobs", () => {
+		const valid = {
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+			createdAt: 1,
+		};
+		localStorage.setItem(
+			"zenfinance_sync_queue_v1",
+			JSON.stringify([null, valid, { sheet: 1 }, { itemId: "t2" }]),
+		);
+
+		expect(getSyncQueue()).toEqual([valid]);
+		expect(() =>
+			enqueueSyncJob({
+				sheet: "Transactions",
+				op: "update",
+				itemId: "t1",
+				payload: txPayload("t1", 20),
+			}),
+		).not.toThrow();
+		expect(getSyncQueue()).toHaveLength(1);
+		expect(getSyncQueue()[0].payload.amount).toBe(20);
+	});
+});
+
+describe("replay identity", () => {
+	it("keeps a same-millisecond replacement enqueued mid-drain", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(1000);
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		const upsert = vi.fn(async (_sheet: string, item: any) => {
+			if (item.amount === 10) {
+				enqueueSyncJob({
+					sheet: "Transactions",
+					op: "update",
+					itemId: "t1",
+					payload: txPayload("t1", 20),
+				});
+			}
+		});
+
+		const result = await drainSyncQueue({ upsert, remove: vi.fn(async () => {}) });
+
+		expect(upsert).toHaveBeenCalledWith("Transactions", { id: "t1", amount: 20 });
+		expect(result).toEqual({ processed: 2, remaining: 0 });
+	});
+});
+
+describe("job reconciliation", () => {
+	it("removeSyncJob acknowledges only the matching item", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t2",
+			payload: txPayload("t2", 20),
+		});
+
+		expect(hasSyncJob("Transactions", "t1")).toBe(true);
+		removeSyncJob("Transactions", "t1");
+
+		expect(hasSyncJob("Transactions", "t1")).toBe(false);
+		expect(getSyncQueue().map((j) => j.itemId)).toEqual(["t2"]);
+	});
+
+	it("removeSyncJob is a no-op for unknown items", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		removeSyncJob("Transactions", "nope");
+		expect(getSyncQueue()).toHaveLength(1);
 	});
 });

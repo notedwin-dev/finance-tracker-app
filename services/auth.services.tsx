@@ -39,10 +39,11 @@ const BACKEND_URL =
 	import.meta.env.VITE_BACKEND_API_URL || "";
 
 /**
- * Exchange a refresh token for a new access token. Resolves null on a
- * genuine auth failure (invalid/revoked refresh token); THROWS on transient
- * failures (network, 5xx/429, malformed response) so callers can keep the
- * current session instead of clearing it.
+ * Exchange a refresh token for a new access token. Resolves null ONLY on a
+ * parsed OAuth auth failure (invalid/revoked refresh token or client); THROWS
+ * on everything else — network, 5xx/429, malformed body, or a tokenless
+ * response with no recognised auth error — so callers keep the current
+ * session instead of clearing it on an ambiguous backend reply.
  */
 export const exchangeRefreshToken = async (
 	refreshToken: string,
@@ -69,7 +70,19 @@ export const exchangeRefreshToken = async (
 		// e.g. an HTML error page from a misconfigured backend URL
 		throw e;
 	}
-	return data?.access_token ?? null;
+	if (data?.access_token) return data.access_token;
+	// Only these OAuth errors mean the session is genuinely unrecoverable.
+	// A tokenless 200, or a protocol error like invalid_request, is ambiguous
+	// and must throw so the access token is preserved.
+	const authError =
+		typeof data?.error === "string" &&
+		(data.error === "invalid_grant" ||
+			data.error === "invalid_client" ||
+			data.error === "unauthorized_client");
+	if (authError) return null;
+	throw new Error(
+		`Token refresh failed: ${data?.error ?? "no access token in response"}`,
+	);
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({

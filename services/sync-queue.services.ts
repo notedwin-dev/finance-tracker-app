@@ -4,6 +4,9 @@ import { KEYS } from "./storage.services";
 export type SyncQueueOp = "insert" | "update" | "delete";
 
 export interface SyncQueueJob {
+	// Unique per enqueue so a same-millisecond replacement is not mistaken
+	// for the job just replayed. Absent on legacy jobs persisted before ids.
+	id?: string;
 	sheet: string;
 	op: SyncQueueOp;
 	itemId: string;
@@ -15,11 +18,21 @@ export interface SyncQueueJob {
 
 const queueKey = () => getKey("zenfinance_sync_queue_v1", KEYS.PROFILE);
 
+const isValidJob = (j: any): j is SyncQueueJob =>
+	!!j &&
+	typeof j === "object" &&
+	typeof j.sheet === "string" &&
+	typeof j.itemId === "string" &&
+	(j.op === "insert" || j.op === "update" || j.op === "delete") &&
+	typeof j.createdAt === "number";
+
 const readJobs = (): SyncQueueJob[] => {
 	try {
 		const raw = localStorage.getItem(queueKey());
 		const parsed = raw ? JSON.parse(raw) : [];
-		return Array.isArray(parsed) ? parsed : [];
+		// A corrupt/partial entry (null, missing fields) must not crash a
+		// later enqueue or replay; drop it and keep the well-formed jobs.
+		return Array.isArray(parsed) ? parsed.filter(isValidJob) : [];
 	} catch {
 		return [];
 	}
@@ -37,7 +50,11 @@ const writeJobs = (jobs: SyncQueueJob[]) => {
  */
 export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">): boolean => {
 	const jobs = readJobs();
-	const entry: SyncQueueJob = { ...job, createdAt: Date.now() };
+	const entry: SyncQueueJob = {
+		...job,
+		id: crypto.randomUUID(),
+		createdAt: Date.now(),
+	};
 	const idx = jobs.findIndex(
 		(j) => j.sheet === job.sheet && j.itemId === job.itemId,
 	);
@@ -54,6 +71,26 @@ export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">): boolean =>
 };
 
 export const getSyncQueue = (): SyncQueueJob[] => readJobs();
+
+/** True when a write for this item is still awaiting cloud acknowledgement. */
+export const hasSyncJob = (sheet: string, itemId: string): boolean =>
+	readJobs().some((j) => j.sheet === sheet && j.itemId === itemId);
+
+/**
+ * Acknowledge a pending job once a newer write for the same item has reached
+ * the cloud, so replay cannot clobber the delivered version. No-op when the
+ * item is unknown; a storage failure is logged, never thrown (local-first).
+ */
+export const removeSyncJob = (sheet: string, itemId: string): void => {
+	const jobs = readJobs();
+	const next = jobs.filter((j) => !(j.sheet === sheet && j.itemId === itemId));
+	if (next.length === jobs.length) return;
+	try {
+		writeJobs(next);
+	} catch (err) {
+		console.error("Failed to update sync queue after acknowledgement", err);
+	}
+};
 
 /**
  * Re-apply pending jobs on top of a cloud/local merge result. A queued job
@@ -85,8 +122,9 @@ export const clearSyncQueue = () => {
  * Replay queued jobs in order through the injected writers. Stops at the
  * first failure and keeps the failed job plus everything behind it, so a
  * still-dead session never drops pending writes. Each removal re-reads the
- * queue: a write enqueued mid-drain must survive, and a coalesced replacement
- * of the job just replayed (newer createdAt) is kept for the next pass.
+ * queue and matches the job's unique id: a write enqueued mid-drain — even a
+ * same-millisecond replacement of the job just replayed — is kept for the
+ * next pass.
  */
 export const drainSyncQueue = async (deps: {
 	upsert: (sheet: string, item: any) => Promise<void>;
@@ -108,7 +146,7 @@ export const drainSyncQueue = async (deps: {
 			(j) =>
 				j.sheet === job.sheet &&
 				j.itemId === job.itemId &&
-				j.createdAt === job.createdAt,
+				j.id === job.id,
 		);
 		if (idx >= 0) {
 			current.splice(idx, 1);

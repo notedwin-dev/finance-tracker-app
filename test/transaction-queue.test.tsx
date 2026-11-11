@@ -489,5 +489,83 @@ describe("local-first invariant under queue storage failure", () => {
 			StorageService.getStoredTransactions().map((t) => t.id),
 		).toContain("tx-1");
 		expect(data.transactions.map((t) => t.id)).toContain("tx-1");
+		expect(data.toast?.type).toBe("alert");
+	});
+});
+
+describe("pending job reconciliation", () => {
+	it("acknowledges the pending job when a later edit reaches the cloud", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		vi.mocked(SheetService.upsertRow).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 99 }));
+		});
+		expect(SyncQueue.getSyncQueue()).toHaveLength(1);
+
+		vi.mocked(SheetService.upsertRow).mockResolvedValue(undefined);
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 30 }));
+		});
+
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+		expect(
+			StorageService.getStoredTransactions().find((t) => t.id === "tx-1")
+				?.amount,
+		).toBe(30);
+	});
+
+	it("supersedes a pending payload with an offline-mode edit", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		SyncQueue.enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "tx-1",
+			payload: { ...existing, amount: 10 },
+		});
+		auth.profile = { ...auth.profile, offlineMode: true };
+		StorageService.saveProfile(auth.profile);
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 20 }));
+		});
+
+		const jobs = SyncQueue.getSyncQueue();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0].payload.amount).toBe(20);
+	});
+
+	it("supersedes a pending upsert with an offline-mode delete", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		SyncQueue.enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "tx-1",
+			payload: existing,
+		});
+		auth.profile = { ...auth.profile, offlineMode: true };
+		StorageService.saveProfile(auth.profile);
+		await renderProvider();
+
+		await act(async () => {
+			await data.handleTransactionDelete("tx-1");
+		});
+
+		const jobs = SyncQueue.getSyncQueue();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0].op).toBe("delete");
 	});
 });

@@ -7,6 +7,7 @@ import {
 	applyPendingJobs,
 	removeSyncJob,
 	hasSyncJob,
+	getSyncJob,
 } from "../services/sync-queue.services";
 import { KEYS } from "../services/storage.services";
 
@@ -425,7 +426,7 @@ describe("job reconciliation", () => {
 		});
 
 		expect(hasSyncJob("Transactions", "t1")).toBe(true);
-		removeSyncJob("Transactions", "t1");
+		expect(removeSyncJob("Transactions", "t1")).toBe(true);
 
 		expect(hasSyncJob("Transactions", "t1")).toBe(false);
 		expect(getSyncQueue().map((j) => j.itemId)).toEqual(["t2"]);
@@ -438,7 +439,50 @@ describe("job reconciliation", () => {
 			itemId: "t1",
 			payload: txPayload("t1", 10),
 		});
-		removeSyncJob("Transactions", "nope");
+		expect(removeSyncJob("Transactions", "nope")).toBe(true);
 		expect(getSyncQueue()).toHaveLength(1);
+	});
+
+	it("removeSyncJob reports failure when the queue cannot be rewritten", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("QuotaExceededError");
+		});
+
+		// The acknowledgement could not be persisted: the caller must learn
+		// the stale job is still pending rather than assume it was cleared.
+		expect(removeSyncJob("Transactions", "t1")).toBe(false);
+		expect(hasSyncJob("Transactions", "t1")).toBe(true);
+	});
+});
+
+describe("getSyncJob", () => {
+	it("returns the pending job for an item", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+
+		const job = getSyncJob("Transactions", "t1");
+		expect(job).toMatchObject({ sheet: "Transactions", itemId: "t1", op: "update" });
+		expect(job?.id).toBeTruthy();
+	});
+
+	it("returns undefined when no job is pending for the item", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		expect(getSyncJob("Transactions", "t2")).toBeUndefined();
+		expect(getSyncJob("Subscriptions", "t1")).toBeUndefined();
 	});
 });

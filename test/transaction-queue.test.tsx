@@ -569,3 +569,82 @@ describe("pending job reconciliation", () => {
 		expect(jobs[0].op).toBe("delete");
 	});
 });
+
+describe("acknowledgement of a delivered write", () => {
+	it("reports unprotected when a successful write cannot clear the stale job", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		await renderProvider();
+		// A stale job is pending; the next edit reaches the cloud and must
+		// clear it. If the queue cannot be rewritten, the job survives and the
+		// user must be told the write is unprotected rather than "delivered".
+		SyncQueue.enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "tx-1",
+			payload: { ...existing, amount: 10 },
+		});
+		vi.mocked(SheetService.upsertRow).mockResolvedValue(undefined);
+		const original = Storage.prototype.setItem;
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+			this: Storage,
+			key: string,
+			value: string,
+		) {
+			if (key.includes("sync_queue")) throw new Error("QuotaExceededError");
+			return original.call(this, key, value);
+		});
+
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 99 }));
+		});
+
+		expect(data.toast?.type).toBe("alert");
+		const jobs = SyncQueue.getSyncQueue();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0].itemId).toBe("tx-1");
+	});
+
+	it("does not clear a newer intent queued while an older write was in flight", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		await renderProvider();
+
+		// Edit A (amount 10) hangs in the cloud; edit B (amount 20) fails and
+		// queues the newer intent. When A finally succeeds it must NOT ack away
+		// B's newer job — replay still owes the cloud the amount-20 version.
+		let resolveA: () => void = () => {};
+		const deferredA = new Promise<void>((res) => {
+			resolveA = res;
+		});
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.reject({ status: 401 }),
+		);
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(tx({ amount: 10 }));
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 20 }));
+		});
+		expect(SyncQueue.getSyncQueue()).toHaveLength(1);
+
+		await act(async () => {
+			resolveA();
+			await promiseA;
+		});
+
+		const jobs = SyncQueue.getSyncQueue();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]).toMatchObject({ itemId: "tx-1", op: "update" });
+		expect(jobs[0].payload.amount).toBe(20);
+	});
+});

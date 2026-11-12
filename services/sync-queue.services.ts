@@ -76,19 +76,29 @@ export const getSyncQueue = (): SyncQueueJob[] => readJobs();
 export const hasSyncJob = (sheet: string, itemId: string): boolean =>
 	readJobs().some((j) => j.sheet === sheet && j.itemId === itemId);
 
+/** The pending job for this item, or undefined. Used to snapshot intent. */
+export const getSyncJob = (
+	sheet: string,
+	itemId: string,
+): SyncQueueJob | undefined =>
+	readJobs().find((j) => j.sheet === sheet && j.itemId === itemId);
+
 /**
  * Acknowledge a pending job once a newer write for the same item has reached
  * the cloud, so replay cannot clobber the delivered version. No-op when the
- * item is unknown; a storage failure is logged, never thrown (local-first).
+ * item is unknown. Returns false when the removal could not be persisted:
+ * the stale job is still pending, so the caller must not report "delivered".
  */
-export const removeSyncJob = (sheet: string, itemId: string): void => {
+export const removeSyncJob = (sheet: string, itemId: string): boolean => {
 	const jobs = readJobs();
 	const next = jobs.filter((j) => !(j.sheet === sheet && j.itemId === itemId));
-	if (next.length === jobs.length) return;
+	if (next.length === jobs.length) return true;
 	try {
 		writeJobs(next);
+		return true;
 	} catch (err) {
 		console.error("Failed to update sync queue after acknowledgement", err);
+		return false;
 	}
 };
 

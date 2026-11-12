@@ -196,11 +196,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				: "unprotected";
 		}
 		try {
+			// Snapshot the pending intent before the write. A newer edit may
+			// fail and queue a fresher payload while this write is in flight;
+			// on success we must only ack the job we actually delivered, not
+			// clobber that newer intent. Both reads are synchronous, so no
+			// write can interleave between the check and the removal.
+			const priorJobId = SyncQueue.getSyncJob(sheet, itemId)?.id;
 			await write();
-			// The cloud acknowledged this write: drop any older pending job
-			// for the same item so replay cannot clobber the newer version.
-			SyncQueue.removeSyncJob(sheet, itemId);
-			return "delivered";
+			const acked =
+				SyncQueue.getSyncJob(sheet, itemId)?.id === priorJobId
+					? SyncQueue.removeSyncJob(sheet, itemId)
+					: true; // newer intent pending — leave it for replay
+			return acked ? "delivered" : "unprotected";
 		} catch (err) {
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
 			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })

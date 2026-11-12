@@ -13,6 +13,10 @@ export interface SyncQueueJob {
 	// Cloud-ready row: any sensitive fields must already be encrypted before
 	// a job is enqueued — replay sends the payload as-is.
 	payload?: any;
+	// Spreadsheet the failed write targeted. Replay/merge skip jobs bound to
+	// a different spreadsheet so one file's edits never enter another's save.
+	// Absent on legacy jobs and before any spreadsheet has been resolved.
+	spreadsheetId?: string | null;
 	createdAt: number;
 }
 
@@ -41,6 +45,18 @@ const readJobs = (): SyncQueueJob[] => {
 const writeJobs = (jobs: SyncQueueJob[]) => {
 	localStorage.setItem(queueKey(), JSON.stringify(jobs));
 };
+
+// A job replays only into the spreadsheet it was queued for. An unknown
+// target (caller passed none) or an unbound job (legacy / pre-resolution)
+// matches anything, so pending writes are never stranded.
+const matchesSpreadsheet = (
+	job: SyncQueueJob,
+	spreadsheetId?: string,
+): boolean =>
+	spreadsheetId === undefined ||
+	job.spreadsheetId === undefined ||
+	job.spreadsheetId === null ||
+	job.spreadsheetId === spreadsheetId;
 
 /**
  * Queue a failed cloud write for replay after the next successful sync.
@@ -113,8 +129,11 @@ export const applyPendingJobs = <T extends { id: string }>(
 	merged: T[],
 	jobs: SyncQueueJob[],
 	sheet: string,
+	spreadsheetId?: string,
 ): T[] => {
-	const pending = jobs.filter((j) => j.sheet === sheet);
+	const pending = jobs.filter(
+		(j) => j.sheet === sheet && matchesSpreadsheet(j, spreadsheetId),
+	);
 	if (pending.length === 0) return merged;
 	const map = new Map(merged.map((i) => [String(i.id), i]));
 	for (const job of pending) {
@@ -134,15 +153,19 @@ export const clearSyncQueue = () => {
  * still-dead session never drops pending writes. Each removal re-reads the
  * queue and matches the job's unique id: a write enqueued mid-drain — even a
  * same-millisecond replacement of the job just replayed — is kept for the
- * next pass.
+ * next pass. When spreadsheetId is given, only jobs bound to it are replayed;
+ * jobs for other spreadsheets stay queued for their own sync.
  */
-export const drainSyncQueue = async (deps: {
-	upsert: (sheet: string, item: any) => Promise<void>;
-	remove: (sheet: string, id: string) => Promise<void>;
-}): Promise<{ processed: number; remaining: number }> => {
+export const drainSyncQueue = async (
+	deps: {
+		upsert: (sheet: string, item: any) => Promise<void>;
+		remove: (sheet: string, id: string) => Promise<void>;
+	},
+	spreadsheetId?: string,
+): Promise<{ processed: number; remaining: number }> => {
 	let processed = 0;
 	for (;;) {
-		const job = readJobs()[0];
+		const job = readJobs().find((j) => matchesSpreadsheet(j, spreadsheetId));
 		if (!job) break;
 		try {
 			if (job.op === "delete") await deps.remove(job.sheet, job.itemId);

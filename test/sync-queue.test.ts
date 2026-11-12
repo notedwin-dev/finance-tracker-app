@@ -486,3 +486,91 @@ describe("getSyncJob", () => {
 		expect(getSyncJob("Subscriptions", "t1")).toBeUndefined();
 	});
 });
+
+describe("spreadsheet binding", () => {
+	it("applies a pending job only when its source spreadsheet matches the sync target", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+			spreadsheetId: "sheet-A",
+		});
+		const merged = [{ id: "t2", amount: 20 }];
+
+		expect(
+			applyPendingJobs(merged, getSyncQueue(), "Transactions", "sheet-A"),
+		).toEqual([
+			{ id: "t2", amount: 20 },
+			{ id: "t1", amount: 10 },
+		]);
+		// A job queued for sheet-A must not enter sheet-B's merge.
+		expect(
+			applyPendingJobs(merged, getSyncQueue(), "Transactions", "sheet-B"),
+		).toEqual(merged);
+	});
+
+	it("replays an untagged legacy job regardless of the target spreadsheet", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+		});
+		const merged = [{ id: "t2", amount: 20 }];
+
+		expect(
+			applyPendingJobs(merged, getSyncQueue(), "Transactions", "sheet-B"),
+		).toEqual([
+			{ id: "t2", amount: 20 },
+			{ id: "t1", amount: 10 },
+		]);
+	});
+
+	it("drains only jobs bound to the target spreadsheet and keeps the rest", async () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "tA",
+			payload: txPayload("tA", 10),
+			spreadsheetId: "sheet-A",
+		});
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "tB",
+			payload: txPayload("tB", 20),
+			spreadsheetId: "sheet-B",
+		});
+		const upsert = vi.fn(async () => {});
+		const remove = vi.fn(async () => {});
+
+		const result = await drainSyncQueue({ upsert, remove }, "sheet-B");
+
+		expect(result).toEqual({ processed: 1, remaining: 1 });
+		expect(upsert).toHaveBeenCalledTimes(1);
+		expect(upsert).toHaveBeenCalledWith("Transactions", { id: "tB", amount: 20 });
+		expect(getSyncQueue().map((j) => j.itemId)).toEqual(["tA"]);
+	});
+
+	it("drains every job when no target spreadsheet is given", async () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "tA",
+			payload: txPayload("tA", 10),
+			spreadsheetId: "sheet-A",
+		});
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "insert",
+			itemId: "tB",
+			payload: txPayload("tB", 20),
+		});
+		const upsert = vi.fn(async () => {});
+
+		const result = await drainSyncQueue({ upsert, remove: vi.fn(async () => {}) });
+
+		expect(result).toEqual({ processed: 2, remaining: 0 });
+	});
+});

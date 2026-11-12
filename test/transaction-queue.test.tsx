@@ -25,6 +25,7 @@ vi.mock("../services/coin.services", () => ({
 vi.mock("../services/sheets.services", () => ({
 	isClientReady: vi.fn(() => true),
 	isGapiInited: () => true,
+	getCurrentSpreadsheetId: vi.fn(),
 	setSheetUser: vi.fn(),
 	initGapiClient: vi.fn(async () => {}),
 	setGapiAccessToken: vi.fn(),
@@ -646,5 +647,106 @@ describe("acknowledgement of a delivered write", () => {
 		expect(jobs).toHaveLength(1);
 		expect(jobs[0]).toMatchObject({ itemId: "tx-1", op: "update" });
 		expect(jobs[0].payload.amount).toBe(20);
+	});
+});
+
+describe("merged sync snapshot is a local-only cache write", () => {
+	it("does not fire un-awaited full-sheet saves that race the sync and replay", async () => {
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		const cloudTx: Transaction = {
+			...tx({ id: "tx-2", amount: 70 }),
+			userId: "test-user",
+			updatedAt: new Date().toISOString(),
+		} as Transaction;
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ transactions: [cloudTx] }),
+		);
+		// Isolate the sync phase: the submit path above legitimately full-saves
+		// Transactions once. Finding B is about the merge block racing the drain.
+		vi.mocked(SheetService.saveToSheet).mockClear();
+		await act(async () => {
+			await data.syncData();
+		});
+
+		// syncWithGoogleSheets is the single authoritative cloud save. The
+		// merged snapshot must only update the local cache — the per-collection
+		// saveX() calls used to fire un-awaited saveToSheet writes that raced
+		// the awaited sync and the queue replay. Accounts keep their own
+		// awaited save path, so no other sheet may be full-saved here.
+		const fullSavedSheets = vi
+			.mocked(SheetService.saveToSheet)
+			.mock.calls.map(([sheet]) => sheet);
+		expect(fullSavedSheets.every((sheet) => sheet === "Accounts")).toBe(true);
+
+		expect(
+			StorageService.getStoredTransactions().map((t) => t.id).sort(),
+		).toEqual(["tx-1", "tx-2"]);
+		const savedTxs = vi.mocked(SheetService.syncWithGoogleSheets).mock
+			.calls[0][1] as Transaction[];
+		expect(savedTxs.map((t) => t.id).sort()).toEqual(["tx-1", "tx-2"]);
+	});
+});
+
+describe("queued writes are bound to their source spreadsheet", () => {
+	it("tags a queued job with the spreadsheet the failed write targeted", async () => {
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		expect(SyncQueue.getSyncQueue()[0].spreadsheetId).toBe("sheet-A");
+	});
+
+	it("does not replay a job queued for another spreadsheet", async () => {
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		// User switches spreadsheets; the next sync targets sheet-B.
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-B");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ spreadsheetId: "sheet-B" }),
+		);
+		vi.mocked(SheetService.upsertRow).mockClear();
+		await act(async () => {
+			await data.syncData();
+		});
+
+		// The sheet-A job must not be replayed into sheet-B, and stays queued.
+		expect(SheetService.upsertRow).not.toHaveBeenCalled();
+		expect(SyncQueue.getSyncQueue().map((j) => j.itemId)).toEqual(["tx-1"]);
+	});
+
+	it("replays a job when syncing its own spreadsheet", async () => {
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+			cloudData({ spreadsheetId: "sheet-A" }),
+		);
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(SheetService.upsertRow).toHaveBeenCalledWith(
+			"Transactions",
+			"tx-1",
+			expect.objectContaining({ id: "tx-1", amount: 25 }),
+		);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
 });

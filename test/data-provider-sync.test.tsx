@@ -25,6 +25,7 @@ vi.mock("../services/coin.services", () => ({
 }));
 vi.mock("../services/sheets.services", () => ({
 	isClientReady: () => true,
+	getCurrentSpreadsheetId: vi.fn(),
 	setSheetUser: vi.fn(),
 	loadFromGoogleSheets: vi.fn(),
 	saveToSheet: vi.fn().mockResolvedValue(undefined),

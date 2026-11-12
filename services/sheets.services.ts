@@ -226,6 +226,12 @@ export const isGapiInited = () => gapiInited;
 
 let currentSheetTitle = "ZenFinance Data";
 let currentUserId: string | null = null;
+// Last spreadsheet id resolved by getSpreadsheetId. Every cloud write and
+// load goes through that resolver, so this is the id a failed write targeted
+// — used to bind queued jobs to their source spreadsheet.
+let currentSpreadsheetId: string | null = null;
+
+export const getCurrentSpreadsheetId = (): string | null => currentSpreadsheetId;
 
 export const setSheetUser = (userId: string) => {
 	if (userId) {
@@ -252,6 +258,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 				fileId: savedId,
 				fields: "id",
 			});
+			currentSpreadsheetId = savedId;
 			return savedId;
 		} catch (e) {
 			// A 401 here means the session died mid-request: rethrow so the
@@ -271,6 +278,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		});
 		const files = response.result.files;
 		if (files && files.length > 0) {
+			currentSpreadsheetId = files[0].id;
 			return files[0].id;
 		}
 	} catch (err: any) {
@@ -286,6 +294,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		const createResponse = await window.gapi.client.sheets.spreadsheets.create({
 			properties: { title: currentSheetTitle },
 		});
+		currentSpreadsheetId = createResponse.result.spreadsheetId;
 		return createResponse.result.spreadsheetId;
 	} catch (err: any) {
 		if (err?.status === 401) throw err;

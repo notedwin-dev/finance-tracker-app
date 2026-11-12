@@ -183,7 +183,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		// intent, or replay would resurrect a stale payload / undo a delete.
 		if (!profile.isLoggedIn || profile.offlineMode) {
 			if (!SyncQueue.hasSyncJob(sheet, itemId)) return "delivered";
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: SheetService.getCurrentSpreadsheetId() })
 				? "queued"
 				: "unprotected";
 		}
@@ -191,7 +191,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// Cloud is configured but unreachable (expired token, offline
 			// boot). Queue without attempting so the write survives the
 			// trust-cloud merge on the next successful sync.
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: SheetService.getCurrentSpreadsheetId() })
 				? "queued"
 				: "unprotected";
 		}
@@ -210,7 +210,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			return acked ? "delivered" : "unprotected";
 		} catch (err) {
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: SheetService.getCurrentSpreadsheetId() })
 				? "queued"
 				: "unprotected";
 		}
@@ -1188,7 +1188,6 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setCategories(mergedCategories);
-				StorageService.saveCategories(mergedCategories);
 
 				// Pending queued writes are local intent the cloud never
 				// acknowledged; they must survive the merge in both local
@@ -1202,9 +1201,9 @@ const normalizeAccount = (acc: any): Account =>
 					),
 					pendingJobs,
 					"Transactions",
+					cloudData.spreadsheetId,
 				);
 				setTransactions(mergedTransactions);
-				StorageService.saveTransactions(mergedTransactions);
 
 				const mergedGoals = merge(
 					StorageService.getStoredGoals(),
@@ -1212,7 +1211,6 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setGoals(mergedGoals);
-				StorageService.saveGoals(mergedGoals);
 
 				const mergedSubs = SyncQueue.applyPendingJobs(
 					merge(
@@ -1222,9 +1220,9 @@ const normalizeAccount = (acc: any): Account =>
 					),
 					pendingJobs,
 					"Subscriptions",
+					cloudData.spreadsheetId,
 				);
 				setSubscriptions(mergedSubs);
-				StorageService.saveSubscriptions(mergedSubs);
 
 				const mergedPots = merge(
 					StorageService.getStoredPots(),
@@ -1232,7 +1230,6 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setPots(mergedPots);
-				StorageService.savePots(mergedPots);
 
 				const mergedPockets = merge(
 					StorageService.getStoredPockets(),
@@ -1240,7 +1237,6 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setPockets(mergedPockets);
-				StorageService.savePockets(mergedPockets);
 
 				const mergedChatSessions = merge(
 					StorageService.getStoredChatSessions(),
@@ -1249,6 +1245,19 @@ const normalizeAccount = (acc: any): Account =>
 				);
 				setChatSessions(mergedChatSessions);
 				StorageService.saveChatSessions(mergedChatSessions);
+
+				// Local-only cache snapshot of the merge. syncWithGoogleSheets
+				// below is the single authoritative cloud save; the previous
+				// per-collection saveX() calls fired un-awaited full-sheet
+				// writes that raced the awaited sync and the queue replay.
+				StorageService.saveLocalData({
+					transactions: mergedTransactions,
+					categories: mergedCategories,
+					goals: mergedGoals,
+					subscriptions: mergedSubs,
+					pots: mergedPots,
+					pockets: mergedPockets,
+				});
 
 				const syncTimestamp = new Date().toISOString();
 				await SheetService.syncWithGoogleSheets(
@@ -1269,10 +1278,13 @@ const normalizeAccount = (acc: any): Account =>
 				// Cloud is reachable again: replay writes that were queued
 				// while it was down. Upserts are idempotent, so jobs already
 				// reconciled by the full sync above are safe to re-apply.
-				const { processed } = await SyncQueue.drainSyncQueue({
-					upsert: (sheet, item) => SheetService.upsertRow(sheet, item.id, item),
-					remove: (sheet, id) => SheetService.deleteRow(sheet, id),
-				});
+				const { processed } = await SyncQueue.drainSyncQueue(
+					{
+						upsert: (sheet, item) => SheetService.upsertRow(sheet, item.id, item),
+						remove: (sheet, id) => SheetService.deleteRow(sheet, id),
+					},
+					cloudData.spreadsheetId,
+				);
 				if (processed > 0) {
 					console.log(`Replayed ${processed} queued cloud write(s)`);
 				}

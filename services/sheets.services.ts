@@ -97,6 +97,18 @@ const trySilentRefresh = (): Promise<boolean> => {
 	return refreshInFlight;
 };
 
+/**
+ * Run a cloud write under the same 401 recovery contract as the load/save
+ * paths: refresh a dead session once and retry, clearing the token only when
+ * the session is unrecoverable. Row writers use this so a transient 401
+ * retries immediately instead of falling straight back to the offline queue.
+ */
+export const withSessionRefresh = <T>(fn: () => Promise<T>): Promise<T> =>
+	attemptWithSessionRefresh(fn, {
+		tryRefresh: trySilentRefresh,
+		clearToken: clearGapiAccessToken,
+	});
+
 const GAPI_SCRIPT_TIMEOUT_MS = 10000; // script load window
 const GAPI_INIT_TIMEOUT_MS = 20000; // discovery docs + client init window
 
@@ -231,7 +243,11 @@ let currentUserId: string | null = null;
 // — used to bind queued jobs to their source spreadsheet.
 let currentSpreadsheetId: string | null = null;
 
-export const getCurrentSpreadsheetId = (): string | null => currentSpreadsheetId;
+// Prefer the live selection so a spreadsheet picked moments ago is reflected
+// immediately, before getSpreadsheetId runs again. Falls back to the last
+// resolved id for the search/create path, which never writes the selection key.
+export const getCurrentSpreadsheetId = (): string | null =>
+	localStorage.getItem("zenfinance_selected_sheet_id") || currentSpreadsheetId;
 
 export const setSheetUser = (userId: string) => {
 	if (userId) {
@@ -952,12 +968,17 @@ const getColumnLetter = (index: number): string => {
  * sync queue can keep the job for a later retry. updateOne is the
  * fire-and-forget wrapper for callers that don't need failure reporting.
  */
-export const upsertRow = async (sheetName: string, id: string, item: any) => {
+export const upsertRow = async (
+	sheetName: string,
+	id: string,
+	item: any,
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 	if (!id) throw new Error(`Cannot upsert a row in ${sheetName} without an id.`);
 
-	const fileId = await getSpreadsheetId();
+	const fileId = spreadsheetId ?? (await getSpreadsheetId());
 	if (!fileId) throw new Error(`No spreadsheet available for ${sheetName}.`);
 
 	// 1. Get Headers to align columns and find ID column
@@ -1129,12 +1150,16 @@ export const updateMany = async (
  * Deletes a row by id and THROWS on failure so the sync queue can keep the
  * job for a later retry. deleteOne is the fire-and-forget wrapper.
  */
-export const deleteRow = async (sheetName: string, id: string) => {
+export const deleteRow = async (
+	sheetName: string,
+	id: string,
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 	if (!id) throw new Error(`Cannot delete a row in ${sheetName} without an id.`);
 
-	const fileId = await getSpreadsheetId();
+	const fileId = spreadsheetId ?? (await getSpreadsheetId());
 	if (!fileId) throw new Error(`No spreadsheet available for ${sheetName}.`);
 
 	// 1. Get the sheet ID (different from spreadsheetId) and Headers

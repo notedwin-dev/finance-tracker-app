@@ -574,3 +574,87 @@ describe("spreadsheet binding", () => {
 		expect(result).toEqual({ processed: 2, remaining: 0 });
 	});
 });
+
+describe("spreadsheet-scoped job identity", () => {
+	it("keeps jobs for the same item in different spreadsheets independently queued", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+			spreadsheetId: "sheet-A",
+		});
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 20),
+			spreadsheetId: "sheet-B",
+		});
+
+		const jobs = getSyncQueue();
+		expect(jobs).toHaveLength(2);
+		expect(jobs.map((j) => j.spreadsheetId).sort()).toEqual([
+			"sheet-A",
+			"sheet-B",
+		]);
+
+		// Acknowledging sheet-A's delivery must leave sheet-B's write pending.
+		expect(getSyncJob("Transactions", "t1", "sheet-A")?.payload).toEqual({
+			id: "t1",
+			amount: 10,
+		});
+		expect(removeSyncJob("Transactions", "t1", "sheet-A")).toBe(true);
+		expect(hasSyncJob("Transactions", "t1", "sheet-A")).toBe(false);
+		expect(hasSyncJob("Transactions", "t1", "sheet-B")).toBe(true);
+		expect(getSyncQueue().map((j) => j.spreadsheetId)).toEqual(["sheet-B"]);
+	});
+
+	it("replays same-item jobs into their own spreadsheets", async () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+			spreadsheetId: "sheet-A",
+		});
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 20),
+			spreadsheetId: "sheet-B",
+		});
+		const upsert = vi.fn(async () => {});
+		const remove = vi.fn(async () => {});
+
+		const resA = await drainSyncQueue({ upsert, remove }, "sheet-A");
+		expect(resA).toEqual({ processed: 1, remaining: 1 });
+		expect(upsert).toHaveBeenCalledWith("Transactions", { id: "t1", amount: 10 });
+
+		const resB = await drainSyncQueue({ upsert, remove }, "sheet-B");
+		expect(resB).toEqual({ processed: 1, remaining: 0 });
+		expect(upsert).toHaveBeenCalledWith("Transactions", { id: "t1", amount: 20 });
+	});
+
+	it("still collapses latest-wins within the same spreadsheet", () => {
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 10),
+			spreadsheetId: "sheet-A",
+		});
+		enqueueSyncJob({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "t1",
+			payload: txPayload("t1", 30),
+			spreadsheetId: "sheet-A",
+		});
+
+		const jobs = getSyncQueue();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0].payload).toEqual({ id: "t1", amount: 30 });
+	});
+});

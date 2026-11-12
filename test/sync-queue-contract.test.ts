@@ -136,3 +136,68 @@ describe("drain against the real writers", () => {
 		expect(result).toEqual({ processed: 0, remaining: 1 });
 	});
 });
+
+describe("getCurrentSpreadsheetId", () => {
+	it("reflects a new selection immediately, before the next resolution", () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-new");
+		expect(SheetService.getCurrentSpreadsheetId()).toBe("sheet-new");
+	});
+
+	it("falls back to the last resolved spreadsheet when none is selected", async () => {
+		localStorage.removeItem("zenfinance_selected_sheet_id");
+		await SheetService.upsertRow("Transactions", "t1", { id: "t1" });
+		expect(SheetService.getCurrentSpreadsheetId()).toBe("sheet-1");
+	});
+});
+
+describe("withSessionRefresh", () => {
+	it("retries a 401 write once after a silent refresh", async () => {
+		SheetService.setAuthRefreshHandler(async () => "fresh-token");
+		let calls = 0;
+		const result = await SheetService.withSessionRefresh(async () => {
+			calls += 1;
+			if (calls === 1) throw { status: 401 };
+			return "delivered";
+		});
+		expect(result).toBe("delivered");
+		expect(calls).toBe(2);
+	});
+
+	it("clears the token and rethrows when the refresh cannot recover", async () => {
+		SheetService.setAuthRefreshHandler(async () => null);
+		await expect(
+			SheetService.withSessionRefresh(async () => {
+				throw { status: 401 };
+			}),
+		).rejects.toMatchObject({ status: 401 });
+		expect(SheetService.isClientReady()).toBe(false);
+	});
+});
+
+describe("row writers honor a pinned spreadsheet", () => {
+	it("upsertRow targets the pinned id instead of re-resolving the selection", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-current");
+		const get = vi.fn(async () => ({ result: { values: [["id"], ["t1"]] } }));
+		(window as any).gapi.client.sheets.spreadsheets.values.get = get;
+
+		await SheetService.upsertRow("Transactions", "t1", { id: "t1" }, "sheet-pinned");
+
+		expect(get).toHaveBeenCalledWith(
+			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
+		);
+	});
+
+	it("deleteRow targets the pinned id instead of re-resolving the selection", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-current");
+		const getMeta = vi.fn(async () => ({
+			result: { sheets: [{ properties: { title: "Transactions", sheetId: 0 } }] },
+		}));
+		(window as any).gapi.client.sheets.spreadsheets.get = getMeta;
+
+		await SheetService.deleteRow("Transactions", "t1", "sheet-pinned");
+
+		expect(getMeta).toHaveBeenCalledWith(
+			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
+		);
+	});
+});

@@ -39,6 +39,7 @@ vi.mock("../services/sheets.services", () => ({
 	deleteRow: vi.fn(async () => {}),
 	insertMany: vi.fn(async () => {}),
 	updateMany: vi.fn(async () => {}),
+	withSessionRefresh: vi.fn(async (fn: any) => fn()),
 }));
 
 const tx = (
@@ -88,6 +89,7 @@ const renderProvider = async () => {
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+	vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-id");
 	vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 	vi.spyOn(console, "log").mockImplementation(() => {});
 	vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -202,6 +204,7 @@ describe("queued writes replay after recovery", () => {
 			"Transactions",
 			"tx-1",
 			expect.objectContaining({ id: "tx-1", amount: 25 }),
+			"sheet-id",
 		);
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
@@ -324,7 +327,7 @@ describe("pending local writes survive cloud sync", () => {
 		const savedTxs = vi.mocked(SheetService.syncWithGoogleSheets).mock
 			.calls[0][1] as Transaction[];
 		expect(savedTxs.map((t) => t.id)).not.toContain("tx-9");
-		expect(SheetService.deleteRow).toHaveBeenCalledWith("Transactions", "tx-9");
+		expect(SheetService.deleteRow).toHaveBeenCalledWith("Transactions", "tx-9", "sheet-id");
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
 });
@@ -355,6 +358,7 @@ describe("cloud configured but unavailable", () => {
 			"Transactions",
 			"tx-1",
 			expect.objectContaining({ id: "tx-1", amount: 25 }),
+			"sheet-id",
 		);
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
@@ -746,7 +750,40 @@ describe("queued writes are bound to their source spreadsheet", () => {
 			"Transactions",
 			"tx-1",
 			expect.objectContaining({ id: "tx-1", amount: 25 }),
+			"sheet-A",
 		);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+
+	it("stops replay when the selection changes mid-sync, keeping the job queued", async () => {
+		vi.mocked(SheetService.insertOne).mockRejectedValue({ status: 401 });
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+		expect(SyncQueue.getSyncQueue()).toHaveLength(1);
+
+		// The sync loaded sheet-id, but the user has since selected another
+		// spreadsheet. Replay must stop, not redirect the job to the new sheet.
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-other");
+		vi.mocked(SheetService.upsertRow).mockClear();
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(SheetService.upsertRow).not.toHaveBeenCalled();
+		expect(SyncQueue.getSyncQueue().map((j) => j.itemId)).toEqual(["tx-1"]);
+	});
+});
+
+describe("cloud writes recover through session refresh", () => {
+	it("routes the write through withSessionRefresh and delivers without queuing", async () => {
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		expect(SheetService.withSessionRefresh).toHaveBeenCalled();
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
 });

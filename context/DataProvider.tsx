@@ -178,12 +178,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		write: () => Promise<unknown>,
 		payload?: any,
 	): Promise<CloudWriteStatus> => {
+		// Bind every queue operation to the spreadsheet this write targets,
+		// captured once so a selection change mid-write cannot split the job's
+		// identity between enqueue and acknowledgement.
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		// No cloud configured (guest or deliberate offline mode): local-only.
 		// A pending job for this item must still be superseded with the latest
 		// intent, or replay would resurrect a stale payload / undo a delete.
 		if (!profile.isLoggedIn || profile.offlineMode) {
-			if (!SyncQueue.hasSyncJob(sheet, itemId)) return "delivered";
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: SheetService.getCurrentSpreadsheetId() })
+			if (!SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId)) return "delivered";
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
 				? "queued"
 				: "unprotected";
 		}
@@ -191,7 +195,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// Cloud is configured but unreachable (expired token, offline
 			// boot). Queue without attempting so the write survives the
 			// trust-cloud merge on the next successful sync.
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: SheetService.getCurrentSpreadsheetId() })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
 				? "queued"
 				: "unprotected";
 		}
@@ -201,16 +205,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// on success we must only ack the job we actually delivered, not
 			// clobber that newer intent. Both reads are synchronous, so no
 			// write can interleave between the check and the removal.
-			const priorJobId = SyncQueue.getSyncJob(sheet, itemId)?.id;
-			await write();
+			const priorJobId = SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id;
+			// Same 401 recovery as the full-sync save: refresh and retry once
+			// before falling back to the queue.
+			await SheetService.withSessionRefresh(write);
 			const acked =
-				SyncQueue.getSyncJob(sheet, itemId)?.id === priorJobId
-					? SyncQueue.removeSyncJob(sheet, itemId)
+				SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id === priorJobId
+					? SyncQueue.removeSyncJob(sheet, itemId, targetSpreadsheetId)
 					: true; // newer intent pending — leave it for replay
 			return acked ? "delivered" : "unprotected";
 		} catch (err) {
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: SheetService.getCurrentSpreadsheetId() })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
 				? "queued"
 				: "unprotected";
 		}
@@ -1278,12 +1284,28 @@ const normalizeAccount = (acc: any): Account =>
 				// Cloud is reachable again: replay writes that were queued
 				// while it was down. Upserts are idempotent, so jobs already
 				// reconciled by the full sync above are safe to re-apply.
+				// Pin replay to the spreadsheet this sync loaded and stop if the
+				// user switched away mid-sync — never redirect a queued write
+				// into a newly selected spreadsheet.
+				const replayTarget = cloudData.spreadsheetId;
+				const assertReplayTarget = () => {
+					if (SheetService.getCurrentSpreadsheetId() !== replayTarget)
+						throw new Error(
+							"Spreadsheet selection changed; deferring queued replay",
+						);
+				};
 				const { processed } = await SyncQueue.drainSyncQueue(
 					{
-						upsert: (sheet, item) => SheetService.upsertRow(sheet, item.id, item),
-						remove: (sheet, id) => SheetService.deleteRow(sheet, id),
+						upsert: (sheet, item) => {
+							assertReplayTarget();
+							return SheetService.upsertRow(sheet, item.id, item, replayTarget);
+						},
+						remove: (sheet, id) => {
+							assertReplayTarget();
+							return SheetService.deleteRow(sheet, id, replayTarget);
+						},
 					},
-					cloudData.spreadsheetId,
+					replayTarget,
 				);
 				if (processed > 0) {
 					console.log(`Replayed ${processed} queued cloud write(s)`);

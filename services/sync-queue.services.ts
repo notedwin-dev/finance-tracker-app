@@ -46,12 +46,15 @@ const writeJobs = (jobs: SyncQueueJob[]) => {
 	localStorage.setItem(queueKey(), JSON.stringify(jobs));
 };
 
-// A job replays only into the spreadsheet it was queued for. An unknown
-// target (caller passed none) or an unbound job (legacy / pre-resolution)
-// matches anything, so pending writes are never stranded.
+// Shared spreadsheet identity for replay, merge, coalescing and ack. A job
+// bound to a spreadsheet only matches that spreadsheet, so the same itemId in
+// two files is two independent writes. An unbound job (legacy / pre-resolution)
+// and an unknown target (caller passed none) match anything, so pending writes
+// are never stranded and a legacy job is still superseded/acked by the current
+// write instead of lingering to clobber it on replay.
 const matchesSpreadsheet = (
 	job: SyncQueueJob,
-	spreadsheetId?: string,
+	spreadsheetId?: string | null,
 ): boolean =>
 	spreadsheetId === undefined ||
 	job.spreadsheetId === undefined ||
@@ -60,9 +63,10 @@ const matchesSpreadsheet = (
 
 /**
  * Queue a failed cloud write for replay after the next successful sync.
- * Latest-wins per (sheet, itemId): replay uses upsert (insert-if-missing)
- * and no-op-if-absent delete, so collapsing a pending insert+update into
- * the newest payload — or an insert+delete into a delete — is safe.
+ * Latest-wins per (sheet, itemId, spreadsheetId): replay uses upsert
+ * (insert-if-missing) and no-op-if-absent delete, so collapsing a pending
+ * insert+update into the newest payload — or an insert+delete into a delete —
+ * is safe. The same item queued for a different spreadsheet stays separate.
  */
 export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">): boolean => {
 	const jobs = readJobs();
@@ -72,7 +76,10 @@ export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">): boolean =>
 		createdAt: Date.now(),
 	};
 	const idx = jobs.findIndex(
-		(j) => j.sheet === job.sheet && j.itemId === job.itemId,
+		(j) =>
+			j.sheet === job.sheet &&
+			j.itemId === job.itemId &&
+			matchesSpreadsheet(j, job.spreadsheetId),
 	);
 	if (idx >= 0) jobs[idx] = entry;
 	else jobs.push(entry);
@@ -89,25 +96,53 @@ export const enqueueSyncJob = (job: Omit<SyncQueueJob, "createdAt">): boolean =>
 export const getSyncQueue = (): SyncQueueJob[] => readJobs();
 
 /** True when a write for this item is still awaiting cloud acknowledgement. */
-export const hasSyncJob = (sheet: string, itemId: string): boolean =>
-	readJobs().some((j) => j.sheet === sheet && j.itemId === itemId);
+export const hasSyncJob = (
+	sheet: string,
+	itemId: string,
+	spreadsheetId?: string | null,
+): boolean =>
+	readJobs().some(
+		(j) =>
+			j.sheet === sheet &&
+			j.itemId === itemId &&
+			matchesSpreadsheet(j, spreadsheetId),
+	);
 
 /** The pending job for this item, or undefined. Used to snapshot intent. */
 export const getSyncJob = (
 	sheet: string,
 	itemId: string,
+	spreadsheetId?: string | null,
 ): SyncQueueJob | undefined =>
-	readJobs().find((j) => j.sheet === sheet && j.itemId === itemId);
+	readJobs().find(
+		(j) =>
+			j.sheet === sheet &&
+			j.itemId === itemId &&
+			matchesSpreadsheet(j, spreadsheetId),
+	);
 
 /**
  * Acknowledge a pending job once a newer write for the same item has reached
- * the cloud, so replay cannot clobber the delivered version. No-op when the
- * item is unknown. Returns false when the removal could not be persisted:
- * the stale job is still pending, so the caller must not report "delivered".
+ * the cloud, so replay cannot clobber the delivered version. Scoped to the
+ * spreadsheet the write targeted: delivering sheet-A's row must not ack a
+ * still-pending sheet-B job for the same itemId. No-op when the item is
+ * unknown. Returns false when the removal could not be persisted: the stale
+ * job is still pending, so the caller must not report "delivered".
  */
-export const removeSyncJob = (sheet: string, itemId: string): boolean => {
+export const removeSyncJob = (
+	sheet: string,
+	itemId: string,
+	spreadsheetId?: string | null,
+): boolean => {
 	const jobs = readJobs();
-	const next = jobs.filter((j) => !(j.sheet === sheet && j.itemId === itemId));
+	const next = jobs.filter(
+		(j) =>
+			!(
+				j.sheet === sheet &&
+				j.itemId === itemId &&
+				matchesSpreadsheet(j, spreadsheetId)
+			),
+	);
 	if (next.length === jobs.length) return true;
 	try {
 		writeJobs(next);

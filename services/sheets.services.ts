@@ -246,8 +246,18 @@ let currentSpreadsheetId: string | null = null;
 // Prefer the live selection so a spreadsheet picked moments ago is reflected
 // immediately, before getSpreadsheetId runs again. Falls back to the last
 // resolved id for the search/create path, which never writes the selection key.
-export const getCurrentSpreadsheetId = (): string | null =>
-	localStorage.getItem("zenfinance_selected_sheet_id") || currentSpreadsheetId;
+// A throwing storage read (blocked/disabled localStorage) must not break the
+// caller — fall back to the last resolved id instead.
+export const getCurrentSpreadsheetId = (): string | null => {
+	try {
+		return (
+			localStorage.getItem("zenfinance_selected_sheet_id") ||
+			currentSpreadsheetId
+		);
+	} catch {
+		return currentSpreadsheetId;
+	}
+};
 
 export const setSheetUser = (userId: string) => {
 	if (userId) {
@@ -654,12 +664,16 @@ export const updateUser = async (email: string, updates: any) => {
 	}
 };
 
-export const saveToSheet = async (sheetName: string, data: any[]) => {
+export const saveToSheet = async (
+	sheetName: string,
+	data: any[],
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 
 	const performSave = async () => {
-		const fileId = await getSpreadsheetId();
+		const fileId = spreadsheetId ?? (await getSpreadsheetId());
 		if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 		// Check if sheet exists
@@ -840,11 +854,15 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 	}
 };
 
-export const insertOne = async (sheetName: string, item: any) => {
+export const insertOne = async (
+	sheetName: string,
+	item: any,
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 
-	const fileId = await getSpreadsheetId();
+	const fileId = spreadsheetId ?? (await getSpreadsheetId());
 	if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 	// 1. Get Headers to ensure column alignment
@@ -870,7 +888,7 @@ export const insertOne = async (sheetName: string, item: any) => {
 
 	// If no headers, we must initialize the sheet (fallback to saveToSheet)
 	if (headers.length === 0) {
-		return saveToSheet(sheetName, [item]);
+		return saveToSheet(sheetName, [item], fileId);
 	}
 
 	// 2. Align Data to Headers
@@ -991,7 +1009,7 @@ export const upsertRow = async (
 
 	if (idColumnIndex === -1) {
 		// If no id column, we might need a full save or something is wrong
-		return insertOne(sheetName, item);
+		return insertOne(sheetName, item, fileId);
 	}
 
 	const idColLetter = getColumnLetter(idColumnIndex);
@@ -1007,7 +1025,7 @@ export const upsertRow = async (
 
 	if (rowIndex === -1) {
 		// If not found, maybe it was deleted or just added. Fallback to insert.
-		return insertOne(sheetName, item);
+		return insertOne(sheetName, item, fileId);
 	}
 
 	// 3. Update specific row (A1 notation requires 1-based indexing for rows)

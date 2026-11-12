@@ -299,6 +299,7 @@ describe("pending local writes survive cloud sync", () => {
 			"Transactions",
 			"tx-1",
 			expect.objectContaining({ id: "tx-1", amount: 99 }),
+			"sheet-id",
 		);
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
@@ -785,5 +786,118 @@ describe("cloud writes recover through session refresh", () => {
 
 		expect(SheetService.withSessionRefresh).toHaveBeenCalled();
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
+	});
+});
+
+describe("live writes carry the captured spreadsheet target", () => {
+	it("pins the insert to the target captured before the write, not the live selection", async () => {
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		// The selection flips to sheet-B after the target is captured but before
+		// the write body runs (as it would on a 401 refresh-and-retry). The write
+		// must still use sheet-A.
+		vi.mocked(SheetService.withSessionRefresh).mockImplementationOnce(
+			async (fn: any) => {
+				vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-B");
+				return fn();
+			},
+		);
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx());
+		});
+
+		expect(SheetService.insertOne).toHaveBeenCalledWith(
+			"Transactions",
+			expect.objectContaining({ id: "tx-1" }),
+			"sheet-A",
+		);
+	});
+
+	it("pins an edit's upsert to the captured target", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 99 }));
+		});
+
+		expect(SheetService.upsertRow).toHaveBeenCalledWith(
+			"Transactions",
+			"tx-1",
+			expect.objectContaining({ id: "tx-1", amount: 99 }),
+			"sheet-A",
+		);
+	});
+
+	it("pins a delete to the captured target", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionDelete("tx-1");
+		});
+
+		expect(SheetService.deleteRow).toHaveBeenCalledWith(
+			"Transactions",
+			"tx-1",
+			"sheet-A",
+		);
+	});
+});
+
+describe("the full save is guarded by the replay target", () => {
+	it("does not run the full save when the selection changed mid-sync", async () => {
+		await renderProvider();
+		// Load resolved sheet-id, but the user has since selected another sheet.
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-other");
+		vi.mocked(SheetService.syncWithGoogleSheets).mockClear();
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(SheetService.syncWithGoogleSheets).not.toHaveBeenCalled();
+	});
+});
+
+describe("a selection change during an active sync schedules a follow-up", () => {
+	it("re-syncs the newly selected spreadsheet after the active sync finishes", async () => {
+		let releaseFirstLoad!: (value: any) => void;
+		const firstLoad = new Promise((resolve) => {
+			releaseFirstLoad = resolve;
+		});
+		vi.mocked(SheetService.loadFromGoogleSheets)
+			.mockImplementationOnce(() => firstLoad as any)
+			.mockResolvedValue(cloudData({ spreadsheetId: "sheet-B" }));
+
+		await renderProvider();
+
+		// Sync #1 starts and blocks on the cloud load.
+		let firstSync!: Promise<void>;
+		await act(async () => {
+			firstSync = data.syncData();
+		});
+
+		// The user selects another spreadsheet while #1 is still in flight.
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-B");
+		await act(async () => {
+			await data.syncData();
+		});
+
+		// Let #1 finish; the deferred request must trigger sync #2.
+		await act(async () => {
+			releaseFirstLoad(cloudData({ spreadsheetId: "sheet-id" }));
+			await firstSync;
+		});
+		await act(async () => {});
+
+		expect(SheetService.loadFromGoogleSheets).toHaveBeenCalledTimes(2);
 	});
 });

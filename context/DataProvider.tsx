@@ -75,6 +75,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 	const [hasSynced, setHasSynced] = useState(false);
 	const syncInProgress = React.useRef(false);
 	const lastSyncTime = React.useRef<number>(0);
+	// A sync requested while one is already running (e.g. the user selects a
+	// different spreadsheet mid-sync). Runs once the active sync finishes so
+	// the new selection is not silently dropped.
+	const pendingSync = React.useRef(false);
 	const [toast, setToast] = useState<{
 		message: string;
 		type: "success" | "alert" | "info";
@@ -175,7 +179,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		sheet: string,
 		op: SyncQueue.SyncQueueOp,
 		itemId: string,
-		write: () => Promise<unknown>,
+		write: (spreadsheetId: string | null) => Promise<unknown>,
 		payload?: any,
 	): Promise<CloudWriteStatus> => {
 		// Bind every queue operation to the spreadsheet this write targets,
@@ -207,8 +211,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// write can interleave between the check and the removal.
 			const priorJobId = SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id;
 			// Same 401 recovery as the full-sync save: refresh and retry once
-			// before falling back to the queue.
-			await SheetService.withSessionRefresh(write);
+			// before falling back to the queue. The captured target is threaded
+			// through so a retry writes to the same spreadsheet, never the
+			// live selection.
+			await SheetService.withSessionRefresh(() => write(targetSpreadsheetId));
 			const acked =
 				SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id === priorJobId
 					? SyncQueue.removeSyncJob(sheet, itemId, targetSpreadsheetId)
@@ -785,7 +791,13 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const syncData = async () => {
-		if (syncInProgress.current || profile.offlineMode) return;
+		if (profile.offlineMode) return;
+		// A sync is already running: remember that another was requested so the
+		// finally block can run it for the current selection once this one ends.
+		if (syncInProgress.current) {
+			pendingSync.current = true;
+			return;
+		}
 
 		// Debounce: Prevent syncs within 5 seconds of last sync
 		const now = Date.now();
@@ -1266,6 +1278,21 @@ const normalizeAccount = (acc: any): Account =>
 				});
 
 				const syncTimestamp = new Date().toISOString();
+				// Pin to the spreadsheet this sync loaded. If the user switched
+				// away during load/merge, abort before the full save so merged
+				// data cannot be written into a newly selected spreadsheet, and
+				// leave queued jobs for the next sync of their own spreadsheet.
+				const replayTarget = cloudData.spreadsheetId;
+				const assertReplayTarget = () => {
+					const current = SheetService.getCurrentSpreadsheetId();
+					// Only a known, different selection means the user switched
+					// away. An unknown selection (null) must not strand the sync.
+					if (current != null && current !== replayTarget)
+						throw new Error(
+							"Spreadsheet selection changed; deferring queued replay",
+						);
+				};
+				assertReplayTarget();
 				await SheetService.syncWithGoogleSheets(
 					hasOmittedAccounts ? undefined : encryptedAccounts,
 					mergedTransactions,
@@ -1284,16 +1311,6 @@ const normalizeAccount = (acc: any): Account =>
 				// Cloud is reachable again: replay writes that were queued
 				// while it was down. Upserts are idempotent, so jobs already
 				// reconciled by the full sync above are safe to re-apply.
-				// Pin replay to the spreadsheet this sync loaded and stop if the
-				// user switched away mid-sync — never redirect a queued write
-				// into a newly selected spreadsheet.
-				const replayTarget = cloudData.spreadsheetId;
-				const assertReplayTarget = () => {
-					if (SheetService.getCurrentSpreadsheetId() !== replayTarget)
-						throw new Error(
-							"Spreadsheet selection changed; deferring queued replay",
-						);
-				};
 				const { processed } = await SyncQueue.drainSyncQueue(
 					{
 						upsert: (sheet, item) => {
@@ -1342,6 +1359,14 @@ const normalizeAccount = (acc: any): Account =>
 		} finally {
 			setIsSyncing(false);
 			syncInProgress.current = false;
+			// A selection change (or other request) arrived mid-sync: run one
+			// follow-up sync for the current selection. Clear the debounce so it
+			// is not throttled by the sync that just finished.
+			if (pendingSync.current) {
+				pendingSync.current = false;
+				lastSyncTime.current = 0;
+				syncData();
+			}
 		}
 	};
 
@@ -1792,7 +1817,7 @@ const normalizeAccount = (acc: any): Account =>
 					"Transactions",
 					"update",
 					tx.id,
-					() => SheetService.upsertRow("Transactions", tx.id, txWithUser),
+					(sid) => SheetService.upsertRow("Transactions", tx.id, txWithUser, sid ?? undefined),
 					txWithUser,
 				),
 			);
@@ -1810,11 +1835,12 @@ const normalizeAccount = (acc: any): Account =>
 							"Transactions",
 							"update",
 							partnerLeg.id,
-							() =>
+							(sid) =>
 								SheetService.upsertRow(
 									"Transactions",
 									partnerLeg.id,
 									partnerLeg,
+									sid ?? undefined,
 								),
 							partnerLeg,
 						),
@@ -1826,7 +1852,7 @@ const normalizeAccount = (acc: any): Account =>
 							"Transactions",
 							"insert",
 							partnerLeg.id,
-							() => SheetService.insertOne("Transactions", partnerLeg),
+							(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
 							partnerLeg,
 						),
 					);
@@ -1842,7 +1868,7 @@ const normalizeAccount = (acc: any): Account =>
 						"Transactions",
 						"delete",
 						partnerIdToDelete,
-						() => SheetService.deleteRow("Transactions", partnerIdToDelete),
+						(sid) => SheetService.deleteRow("Transactions", partnerIdToDelete, sid ?? undefined),
 					),
 				);
 			}
@@ -1853,7 +1879,7 @@ const normalizeAccount = (acc: any): Account =>
 					"Transactions",
 					"insert",
 					txWithUser.id,
-					() => SheetService.insertOne("Transactions", txWithUser),
+					(sid) => SheetService.insertOne("Transactions", txWithUser, sid ?? undefined),
 					txWithUser,
 				),
 			);
@@ -1865,7 +1891,7 @@ const normalizeAccount = (acc: any): Account =>
 						"Transactions",
 						"insert",
 						partnerLeg.id,
-						() => SheetService.insertOne("Transactions", partnerLeg),
+						(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
 						partnerLeg,
 					),
 				);
@@ -1899,7 +1925,7 @@ const normalizeAccount = (acc: any): Account =>
 					"Subscriptions",
 					"insert",
 					sub.id,
-					() => SheetService.insertOne("Subscriptions", sub),
+					(sid) => SheetService.insertOne("Subscriptions", sub, sid ?? undefined),
 					sub,
 				),
 			);
@@ -1938,7 +1964,7 @@ const normalizeAccount = (acc: any): Account =>
 							"Subscriptions",
 							"update",
 							sub.id,
-							() => SheetService.upsertRow("Subscriptions", sub.id, updatedSub),
+							(sid) => SheetService.upsertRow("Subscriptions", sub.id, updatedSub, sid ?? undefined),
 							updatedSub,
 						),
 					);
@@ -2435,7 +2461,7 @@ const normalizeAccount = (acc: any): Account =>
 				"Transactions",
 				"delete",
 				idToDel,
-				() => SheetService.deleteRow("Transactions", idToDel),
+				(sid) => SheetService.deleteRow("Transactions", idToDel, sid ?? undefined),
 			);
 			if (status === "queued") queuedAny = true;
 			else if (status === "unprotected") unprotectedAny = true;
@@ -2716,8 +2742,8 @@ const normalizeAccount = (acc: any): Account =>
 		let queuedAny = false;
 		let unprotectedAny = false;
 		for (const id of idsToDelete) {
-			const status = await cloudWriteOrQueue("Transactions", "delete", id, () =>
-				SheetService.deleteRow("Transactions", id),
+			const status = await cloudWriteOrQueue("Transactions", "delete", id, (sid) =>
+				SheetService.deleteRow("Transactions", id, sid ?? undefined),
 			);
 			if (status === "queued") queuedAny = true;
 			else if (status === "unprotected") unprotectedAny = true;
@@ -3205,7 +3231,7 @@ const normalizeAccount = (acc: any): Account =>
 			"Subscriptions",
 			"insert",
 			newSub.id,
-			() => SheetService.insertOne("Subscriptions", newSub),
+			(sid) => SheetService.insertOne("Subscriptions", newSub, sid ?? undefined),
 			newSub,
 		);
 		if (status === "unprotected") {
@@ -3227,8 +3253,8 @@ const normalizeAccount = (acc: any): Account =>
 		const updated = subscriptions.filter((s) => s.id !== id);
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		const status = await cloudWriteOrQueue("Subscriptions", "delete", id, () =>
-			SheetService.deleteRow("Subscriptions", id),
+		const status = await cloudWriteOrQueue("Subscriptions", "delete", id, (sid) =>
+			SheetService.deleteRow("Subscriptions", id, sid ?? undefined),
 		);
 		if (status === "unprotected") {
 			showToast(

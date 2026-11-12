@@ -148,6 +148,21 @@ describe("getCurrentSpreadsheetId", () => {
 		await SheetService.upsertRow("Transactions", "t1", { id: "t1" });
 		expect(SheetService.getCurrentSpreadsheetId()).toBe("sheet-1");
 	});
+
+	it("falls back to the last resolved id when the selection read throws", async () => {
+		localStorage.removeItem("zenfinance_selected_sheet_id");
+		await SheetService.upsertRow("Transactions", "t1", { id: "t1" });
+		const original = Storage.prototype.getItem;
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
+			this: Storage,
+			key: string,
+		) {
+			if (key === "zenfinance_selected_sheet_id")
+				throw new Error("SecurityError");
+			return original.call(this, key);
+		});
+		expect(SheetService.getCurrentSpreadsheetId()).toBe("sheet-1");
+	});
 });
 
 describe("withSessionRefresh", () => {
@@ -197,6 +212,52 @@ describe("row writers honor a pinned spreadsheet", () => {
 		await SheetService.deleteRow("Transactions", "t1", "sheet-pinned");
 
 		expect(getMeta).toHaveBeenCalledWith(
+			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
+		);
+	});
+});
+
+describe("upsertRow insert fallbacks honor the pinned spreadsheet", () => {
+	it("pins the row-missing insert fallback to the target id", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-current");
+		// Headers exist but t1 is absent, so upsertRow falls back to insertOne.
+		const get = vi.fn(async () => ({ result: { values: [["id"], ["other"]] } }));
+		const append = vi.fn(async () => ({ result: {} }));
+		(window as any).gapi.client.sheets.spreadsheets.values.get = get;
+		(window as any).gapi.client.sheets.spreadsheets.values.append = append;
+
+		await SheetService.upsertRow("Transactions", "t1", { id: "t1" }, "sheet-pinned");
+
+		expect(append).toHaveBeenCalledWith(
+			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
+		);
+	});
+
+	it("pins the no-id-column insert fallback to the target id", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-current");
+		const get = vi.fn(async () => ({ result: { values: [["name"]] } }));
+		const append = vi.fn(async () => ({ result: {} }));
+		(window as any).gapi.client.sheets.spreadsheets.values.get = get;
+		(window as any).gapi.client.sheets.spreadsheets.values.append = append;
+
+		await SheetService.upsertRow("Transactions", "t1", { id: "t1" }, "sheet-pinned");
+
+		expect(append).toHaveBeenCalledWith(
+			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
+		);
+	});
+
+	it("pins the sheet-initialization saveToSheet fallback to the target id", async () => {
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-current");
+		// No headers at all: upsertRow -> insertOne -> saveToSheet initializes.
+		const get = vi.fn(async () => ({ result: { values: [] } }));
+		const update = vi.fn(async () => ({ result: {} }));
+		(window as any).gapi.client.sheets.spreadsheets.values.get = get;
+		(window as any).gapi.client.sheets.spreadsheets.values.update = update;
+
+		await SheetService.upsertRow("Transactions", "t1", { id: "t1" }, "sheet-pinned");
+
+		expect(update).toHaveBeenCalledWith(
 			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
 		);
 	});

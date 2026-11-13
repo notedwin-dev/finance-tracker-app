@@ -6,7 +6,7 @@
 // The latest delivered intent is also kept per item so a stale older write
 // that succeeds after a newer one was delivered can re-apply the newer value
 // instead of leaving the cloud holding the stale payload.
-import { getSyncJob, type SyncQueueOp } from "./sync-queue.services";
+import { getSyncJob, enqueueSyncJob, type SyncQueueJob, type SyncQueueOp } from "./sync-queue.services";
 
 const submitted = new Map<string, number>();
 
@@ -82,4 +82,30 @@ export const getLatestDeliveredIntent = (
 export const resetWriteIntents = (): void => {
 	submitted.clear();
 	delivered.clear();
+};
+/** Repair a replay that completed after a newer delivery, including races during repair. */
+export const completeReplay = async (
+	job: SyncQueueJob,
+	spreadsheetId: string,
+	write: (intent: DeliveredIntent) => Promise<unknown>,
+): Promise<void> => {
+	recordDeliveredIntent(job.sheet, job.itemId, spreadsheetId, job.intentVersion ?? 0, job.op, job.payload);
+	let version = job.intentVersion ?? 0;
+	for (;;) {
+		const latest = getLatestDeliveredIntent(job.sheet, job.itemId, spreadsheetId);
+		if (!latest || latest.version <= version) return;
+		try {
+			await write(latest);
+		} catch (error) {
+			const current = getLatestDeliveredIntent(job.sheet, job.itemId, spreadsheetId)!;
+			if (current.version > latest.version) continue;
+			const pending = getSyncJob(job.sheet, job.itemId, spreadsheetId);
+			if (!pending || (pending.intentVersion ?? 0) < current.version) {
+				enqueueSyncJob({ sheet: job.sheet, itemId: job.itemId, spreadsheetId,
+					intentVersion: current.version, op: current.op, payload: current.payload });
+			}
+			throw error;
+		}
+		version = latest.version;
+	}
 };

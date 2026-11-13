@@ -197,7 +197,7 @@ export const drainSyncQueue = async (
 	deps: {
 		upsert: (sheet: string, item: any) => Promise<void>;
 		remove: (sheet: string, id: string) => Promise<void>;
-		onDelivered?: (job: SyncQueueJob) => void;
+		onDelivered?: (job: SyncQueueJob) => void | Promise<void>;
 	},
 	spreadsheetId?: string,
 ): Promise<{ processed: number; remaining: number }> => {
@@ -208,12 +208,12 @@ export const drainSyncQueue = async (
 		try {
 			if (job.op === "delete") await deps.remove(job.sheet, job.itemId);
 			else await deps.upsert(job.sheet, job.payload);
+			// Complete any delivery repair before acknowledging the job.
+			await deps.onDelivered?.(job);
 		} catch (err) {
 			console.warn("Sync queue replay failed; will retry on next sync", err);
 			break;
 		}
-		// Publish delivery before removing the pending evidence of this intent.
-		deps.onDelivered?.(job);
 		const current = readJobs();
 		const idx = current.findIndex(
 			(j) =>

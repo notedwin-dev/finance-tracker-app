@@ -27,6 +27,7 @@ vi.mock("../services/sheets.services", () => ({
 	isClientReady: vi.fn(() => true),
 	isGapiInited: () => true,
 	getCurrentSpreadsheetId: vi.fn(),
+ resolveSpreadsheetId: vi.fn(async () => "sheet-id"),
 	setSheetUser: vi.fn(),
 	initGapiClient: vi.fn(async () => {}),
 	setGapiAccessToken: vi.fn(),
@@ -1410,4 +1411,59 @@ describe("write intent race regressions", () => {
   if (delivered) expect(SyncQueue.getSyncQueue()).toEqual([]);
   else expect(SyncQueue.getSyncQueue()).toMatchObject([{ op: "delete" }]);
  });
+});
+
+it("repairs a replay that lands after a newer live write", async () => {
+	vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(cloudData());
+	await renderProvider();
+	SyncQueue.enqueueSyncJob({ sheet: "Transactions", itemId: "tx-1", spreadsheetId: "sheet-id", op: "insert", payload: { ...tx({ amount: 10 }), userId: "test-user" }, intentVersion: 1 });
+	let release!: () => void;
+	const landed: number[] = [];
+	vi.mocked(SheetService.upsertRow).mockImplementation(async (_s, _id, item) => {
+		if (item.amount === 10) await new Promise<void>(r => { release = r; });
+		landed.push(item.amount);
+	});
+	let replay!: Promise<void>;
+	await act(async () => { replay = data.syncData(); });
+	expect(release).toBeDefined();
+	await act(async () => { await data.handleTransactionSubmit(tx({ amount: 20 })); });
+	await act(async () => { release(); await replay; });
+	expect(landed.at(-1)).toBe(20);
+});
+
+it("pins the transaction snapshot after a live write changes selection", async () => {
+	await renderProvider();
+	vi.mocked(SheetService.upsertRow).mockImplementation(async () => {
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("other");
+	});
+	await act(async () => { await data.handleTransactionSubmit(tx()); });
+	expect(SheetService.saveToSheet).toHaveBeenCalledWith("Transactions", expect.any(Array), "sheet-id");
+});
+
+it("uses the resolved target for intent tracking and the transaction write", async () => {
+	await renderProvider();
+	vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue(null);
+	await act(async () => { await data.handleTransactionSubmit(tx({ amount: 10 })); });
+	vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-id");
+	await act(async () => { await data.handleTransactionSubmit(tx({ amount: 20 })); });
+	expect(SheetService.insertOne).toHaveBeenCalledWith("Transactions", expect.objectContaining({ amount: 10 }), "sheet-id");
+	expect(WriteIntent.getLatestDeliveredIntent("Transactions", "tx-1", "sheet-id")).toMatchObject({ version: 2, payload: { amount: 20 } });
+	expect(WriteIntent.getLatestDeliveredIntent("Transactions", "tx-1", null)).toBeUndefined();
+});
+
+it("rechecks delivery after a replay repair and queues the latest on failure", async () => {
+	const job = { sheet: "Transactions", itemId: "tx-1", spreadsheetId: "sheet-id", op: "insert" as const, payload: tx({ amount: 10 }), intentVersion: 1 };
+	SyncQueue.enqueueSyncJob(job);
+	WriteIntent.recordDeliveredIntent(job.sheet, job.itemId, "sheet-id", 2, "update", tx({ amount: 20 }));
+	const repair = vi.fn(async (intent: WriteIntent.DeliveredIntent) => {
+		if (intent.version === 2) {
+			WriteIntent.recordDeliveredIntent(job.sheet, job.itemId, "sheet-id", 3, "delete");
+		} else throw new Error("offline");
+	});
+	const result = await SyncQueue.drainSyncQueue({ upsert: async () => {}, remove: async () => {},
+		onDelivered: (persisted) => WriteIntent.completeReplay(persisted, "sheet-id", repair),
+	}, "sheet-id");
+	expect(repair.mock.calls.map(([intent]) => intent.version)).toEqual([2, 3]);
+	expect(result).toEqual({ processed: 0, remaining: 1 });
+	expect(SyncQueue.getSyncQueue()).toMatchObject([{ op: "delete", intentVersion: 3 }]);
 });

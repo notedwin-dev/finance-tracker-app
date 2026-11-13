@@ -282,10 +282,10 @@ export const getStoredTransactions = (): Transaction[] => {
   return stored ? JSON.parse(stored) : [];
 };
 
-export const saveTransactions = async (transactions: Transaction[]) => {
+export const saveTransactions = async (transactions: Transaction[], spreadsheetId?: string) => {
   localStorage.setItem(getKey(KEYS.TRANSACTIONS), JSON.stringify(transactions));
   if (isLoggedIn()) {
-    await SheetService.saveToSheet("Transactions", transactions);
+    await SheetService.saveToSheet("Transactions", transactions, spreadsheetId);
   }
 };
 

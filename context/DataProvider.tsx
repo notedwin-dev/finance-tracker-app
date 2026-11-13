@@ -190,10 +190,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		// target once and pass it in so a mid-flow selection change cannot split
 		// the writes across spreadsheets; otherwise capture the live selection
 		// so a selection change mid-write cannot split enqueue from ack.
-		const targetSpreadsheetId =
+		let targetSpreadsheetId =
 			spreadsheetId === undefined
 				? SheetService.getCurrentSpreadsheetId()
 				: spreadsheetId;
+		if (targetSpreadsheetId == null && profile.isLoggedIn && !profile.offlineMode && SheetService.isClientReady())
+			targetSpreadsheetId = await SheetService.resolveSpreadsheetId();
 		// Version this intent so a slow older write that fails after a newer
 		// edit was submitted/delivered can be rejected instead of enqueueing a
 		// stale payload. The submit flow passes its own version for the main
@@ -208,7 +210,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 				? "queued"
 				: "unprotected";
 		}
-		if (!SheetService.isClientReady()) {
+		if (!SheetService.isClientReady() || targetSpreadsheetId == null) {
 			// Cloud is configured but unreachable (expired token, offline
 			// boot). Queue without attempting so the write survives the
 			// trust-cloud merge on the next successful sync.
@@ -793,6 +795,7 @@ const normalizeAccount = (acc: any): Account =>
 	const processSubscriptions = (
 		subs: Subscription[],
 		currentTxs: Transaction[],
+		targetSpreadsheetId = SheetService.getCurrentSpreadsheetId(),
 	) => {
 		const today = new Date().toLocaleDateString("en-CA");
 		let newTxs: Transaction[] = [];
@@ -842,7 +845,7 @@ const normalizeAccount = (acc: any): Account =>
 		if (newTxs.length > 0) {
 			const allTxs = [...currentTxs, ...newTxs];
 			setTransactions(allTxs);
-			StorageService.saveTransactions(allTxs);
+			StorageService.saveTransactions(allTxs, targetSpreadsheetId ?? undefined);
 			setSubscriptions(updatedSubs);
 			StorageService.saveSubscriptions(updatedSubs);
 			const accUpdates = new Map<string, number>();
@@ -1402,8 +1405,10 @@ const normalizeAccount = (acc: any): Account =>
 				// reconciled by the full sync above are safe to re-apply.
 				const { processed } = await SyncQueue.drainSyncQueue(
 					{
-						onDelivered: (job) => WriteIntent.recordDeliveredIntent(
-							job.sheet, job.itemId, replayTarget, job.intentVersion ?? 0, job.op, job.payload,
+						onDelivered: (job) => WriteIntent.completeReplay(job, replayTarget, (intent) =>
+							SheetService.withSessionRefresh(() => intent.op === "delete"
+								? SheetService.deleteRow(job.sheet, job.itemId, replayTarget)
+								: SheetService.upsertRow(job.sheet, job.itemId, intent.payload, replayTarget)),
 						),
 						upsert: (sheet, item) => {
 							assertReplayTarget();
@@ -1419,7 +1424,7 @@ const normalizeAccount = (acc: any): Account =>
 				if (processed > 0) {
 					console.log(`Replayed ${processed} queued cloud write(s)`);
 				}
-				processSubscriptions(mergedSubs, mergedTransactions);
+				processSubscriptions(mergedSubs, mergedTransactions, replayTarget);
 
 				// Update sync status and timestamp (locally use updatedAt)
 				// Skip cloud sync since we already synced the profile in syncWithGoogleSheets above
@@ -1465,6 +1470,7 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const handleAccountSave = async (acc: Omit<Account, "userId">) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		const isNew = !accounts.some((a) => a.id === acc.id);
 		const accountWithUser = {
 			...acc,
@@ -1506,7 +1512,7 @@ const normalizeAccount = (acc: any): Account =>
 				};
 				const updatedTxs = [openingTx, ...transactions];
 				setTransactions(updatedTxs);
-				StorageService.saveTransactions(updatedTxs);
+				StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 				if (isCloudEnabled)
 					await SheetService.insertOne("Transactions", openingTx);
 			}
@@ -1533,7 +1539,7 @@ const normalizeAccount = (acc: any): Account =>
 				};
 				const updatedTxs = [adjustmentTx, ...transactions];
 				setTransactions(updatedTxs);
-				StorageService.saveTransactions(updatedTxs);
+				StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 				if (isCloudEnabled)
 					await SheetService.insertOne("Transactions", adjustmentTx);
 			}
@@ -1579,6 +1585,7 @@ const normalizeAccount = (acc: any): Account =>
 		accountId: string,
 		options: { adjustBalance?: boolean; isHistorical?: boolean } = {},
 	) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		const { adjustBalance = true, isHistorical = false } = options;
 		const currentUserId = profile.id || "local";
 
@@ -1619,7 +1626,7 @@ const normalizeAccount = (acc: any): Account =>
 
 		const updatedTransactionsList = [...transactions, ...transactionsToInsert];
 		setTransactions(updatedTransactionsList);
-		StorageService.saveTransactions(updatedTransactionsList);
+		StorageService.saveTransactions(updatedTransactionsList, targetSpreadsheetId ?? undefined);
 
 		if (isCloudEnabled) {
 			SheetService.insertMany("Transactions", transactionsToInsert);
@@ -1699,6 +1706,7 @@ const normalizeAccount = (acc: any): Account =>
 		backup: any,
 		mode: "merge" | "replace" = "merge",
 	) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		if (!backup || typeof backup !== "object") {
 			throw new Error("Invalid backup file.");
 		}
@@ -1787,7 +1795,7 @@ const normalizeAccount = (acc: any): Account =>
 		setAccounts(acc.result);
 		StorageService.saveAccounts(encryptedAccounts);
 		setTransactions(txs.result);
-		StorageService.saveTransactions(txs.result);
+		StorageService.saveTransactions(txs.result, targetSpreadsheetId ?? undefined);
 		setCategories(cats.result);
 		StorageService.saveCategories(cats.result);
 		setGoals(gls.result);
@@ -1851,12 +1859,14 @@ const normalizeAccount = (acc: any): Account =>
 			else if (status === "unprotected") unprotectedAny = true;
 		};
 
-		// Capture the spreadsheet once, before the first await, so every leg of
+		// Capture or resolve the spreadsheet once, so every leg of
 		// this submit (main, partner, linked delete, subscription) targets the
 		// same file even if the user switches selection mid-flow.
-		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId() ??
+			(profile.isLoggedIn && !profile.offlineMode && SheetService.isClientReady()
+				? await SheetService.resolveSpreadsheetId() : null);
 
-		// Version this submit's intent for the main item before any await. A
+		// Version this submit's intent after resolving its target. A
 		// newer edit bumps the counter, so this handler can detect it is stale
 		// and skip both enqueueing an old failure and committing an old local
 		// value. The same token is threaded into the main-leg cloud write.
@@ -2029,7 +2039,7 @@ const normalizeAccount = (acc: any): Account =>
 		// same-tick (no await between) so no newer intent can slip in between.
 		if (WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) return;
 		setTransactions(updatedTransactions);
-		StorageService.saveTransactions(updatedTransactions);
+		StorageService.saveTransactions(updatedTransactions, targetSpreadsheetId ?? undefined);
 
 		// Handle New Subscription
 		if (newSubscription && !isEdit) {
@@ -2586,7 +2596,7 @@ const normalizeAccount = (acc: any): Account =>
 
 		const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
 		setTransactions(updatedTxs);
-		StorageService.saveTransactions(updatedTxs);
+		StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 
 		let queuedAny = false;
 		let unprotectedAny = false;
@@ -2874,7 +2884,7 @@ const normalizeAccount = (acc: any): Account =>
 		const idsToDelete = Array.from(idsToDeleteSet);
 		const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
 		setTransactions(updatedTxs);
-		StorageService.saveTransactions(updatedTxs);
+		StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 
 		let queuedAny = false;
 		let unprotectedAny = false;
@@ -2909,6 +2919,7 @@ const normalizeAccount = (acc: any): Account =>
 		ids: string[],
 		updates: Partial<Transaction>,
 	) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		// 1. Identify all transactions to update, including partners
 		const txMap = new Map<string, Transaction>();
 		transactions.forEach((t) => txMap.set(t.id, t));
@@ -2997,7 +3008,7 @@ const normalizeAccount = (acc: any): Account =>
 		});
 
 		setTransactions(updatedTransactionsList);
-		StorageService.saveTransactions(updatedTransactionsList);
+		StorageService.saveTransactions(updatedTransactionsList, targetSpreadsheetId ?? undefined);
 
 		// Update Cloud Transactions - only for affected transactions (batch update)
 		// Send the FULL transaction object, not just the partial updates, to preserve all fields
@@ -3323,6 +3334,7 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const handlePocketDelete = async (id: string) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		try {
 			const pocketToDelete = pockets.find((p) => p.id === id);
 			if (!pocketToDelete) return;
@@ -3342,7 +3354,7 @@ const normalizeAccount = (acc: any): Account =>
 
 			if (transactionsChanged) {
 				setTransactions(updatedTransactions);
-				StorageService.saveTransactions(updatedTransactions);
+				StorageService.saveTransactions(updatedTransactions, targetSpreadsheetId ?? undefined);
 			}
 
 			if (isCloudEnabled) {

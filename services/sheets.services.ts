@@ -1518,3 +1518,19 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 		picker.setVisible(true);
 	});
 };
+
+// Share initial discovery so concurrent submissions bind to the same concrete file.
+let resolvingSpreadsheet: Promise<string | null> | undefined;
+export const resolveSpreadsheetId = (): Promise<string | null> => {
+	const selected = getCurrentSpreadsheetId();
+	if (selected) return Promise.resolve(selected);
+	if (!resolvingSpreadsheet) {
+		resolvingSpreadsheet = getSpreadsheetId()
+			.catch((error) => {
+				console.warn("Could not resolve spreadsheet for write; deferring to sync", error);
+				return null;
+			})
+			.finally(() => { resolvingSpreadsheet = undefined; });
+	}
+	return resolvingSpreadsheet;
+};

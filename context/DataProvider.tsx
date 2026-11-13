@@ -22,6 +22,8 @@ import {
 import { DataContext } from "./DataContext";
 import * as SecurityService from "../services/security.services";
 import * as AccountCrypto from "../services/account-crypto.services";
+import * as SyncQueue from "../services/sync-queue.services";
+import * as WriteIntent from "../services/write-intent.services";
 
 // Legacy vault type for backward compatibility during migration
 type LegacyVaultProfile = UserProfile & {
@@ -34,6 +36,13 @@ type LegacyVaultProfile = UserProfile & {
 	biometricCredIds?: string[];
 	devices?: any[];
 };
+
+// Outcome of a local-first cloud write:
+// - delivered: cloud acknowledged it (or local-only with nothing pending)
+// - queued: saved locally and persisted for replay after the next sync
+// - unprotected: saved locally but the queue could not be persisted, so the
+//   next cloud sync may overwrite it — the user must be warned.
+type CloudWriteStatus = "delivered" | "queued" | "unprotected";
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 	children,
@@ -67,6 +76,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 	const [hasSynced, setHasSynced] = useState(false);
 	const syncInProgress = React.useRef(false);
 	const lastSyncTime = React.useRef<number>(0);
+	// A sync requested while one is already running (e.g. the user selects a
+	// different spreadsheet mid-sync). Runs once the active sync finishes so
+	// the new selection is not silently dropped.
+	const pendingSync = React.useRef(false);
 	const [toast, setToast] = useState<{
 		message: string;
 		type: "success" | "alert" | "info";
@@ -154,6 +167,154 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			localCache();
 			onSuccess?.();
 			return true;
+		}
+	};
+
+	/**
+	 * Cloud write that never blocks the user: on failure the job is queued
+	 * (persisted) and replayed after the next successful sync. Returns the
+	 * outcome so the caller can tell the user whether the write was delivered,
+	 * queued, or left unprotected because the queue could not be persisted.
+	 */
+	const cloudWriteOrQueue = async (
+		sheet: string,
+		op: SyncQueue.SyncQueueOp,
+		itemId: string,
+		write: (spreadsheetId: string | null) => Promise<unknown>,
+		payload?: any,
+		spreadsheetId?: string | null,
+		intentVersion?: number,
+	): Promise<CloudWriteStatus> => {
+		// Bind every queue operation to the spreadsheet this write targets.
+		// Callers spanning multiple writes (e.g. transfer legs) capture the
+		// target once and pass it in so a mid-flow selection change cannot split
+		// the writes across spreadsheets; otherwise capture the live selection
+		// so a selection change mid-write cannot split enqueue from ack.
+		let targetSpreadsheetId =
+			spreadsheetId === undefined
+				? SheetService.getCurrentSpreadsheetId()
+				: spreadsheetId;
+		if (targetSpreadsheetId == null && profile.isLoggedIn && !profile.offlineMode && SheetService.isClientReady())
+			targetSpreadsheetId = await SheetService.resolveSpreadsheetId();
+		// Version this intent so a slow older write that fails after a newer
+		// edit was submitted/delivered can be rejected instead of enqueueing a
+		// stale payload. The submit flow passes its own version for the main
+		// item so the local-commit guard shares the same token.
+		const version = intentVersion ?? WriteIntent.beginIntent(sheet, itemId, targetSpreadsheetId);
+		// No cloud configured (guest or deliberate offline mode): local-only.
+		// A pending job for this item must still be superseded with the latest
+		// intent, or replay would resurrect a stale payload / undo a delete.
+		if (!profile.isLoggedIn || profile.offlineMode) {
+			if (!SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId)) return "delivered";
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId, intentVersion: version })
+				? "queued"
+				: "unprotected";
+		}
+		if (!SheetService.isClientReady() || targetSpreadsheetId == null) {
+			// Cloud is configured but unreachable (expired token, offline
+			// boot). Queue without attempting so the write survives the
+			// trust-cloud merge on the next successful sync.
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId, intentVersion: version })
+				? "queued"
+				: "unprotected";
+		}
+		try {
+			// Snapshot the pending intent before the write. A newer edit may
+			// fail and queue a fresher payload while this write is in flight;
+			// on success we must only ack the job we actually delivered, not
+			// clobber that newer intent. Both reads are synchronous, so no
+			// write can interleave between the check and the removal.
+			const priorJobId = SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id;
+			// Same 401 recovery as the full-sync save: refresh and retry once
+			// before falling back to the queue. The captured target is threaded
+			// through so a retry writes to the same spreadsheet, never the
+			// live selection.
+			await SheetService.withSessionRefresh(() => write(targetSpreadsheetId));
+			if (WriteIntent.isSuperseded(sheet, itemId, version, targetSpreadsheetId)) {
+				// This stale success just overwrote a newer intent in the cloud.
+				// A still-queued newer job is left for replay to repair; with
+				// nothing pending, re-deliver the latest delivered intent now so
+				// Sheets does not keep the stale value.
+				if (SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId))
+					return "delivered";
+				let latest = WriteIntent.getLatestDeliveredIntent(
+					sheet,
+					itemId,
+					targetSpreadsheetId,
+				);
+				while (latest) {
+					const intent = latest;
+					try {
+						await SheetService.withSessionRefresh(() =>
+							intent.op === "delete"
+								? SheetService.deleteRow(sheet, itemId, targetSpreadsheetId ?? undefined)
+								: SheetService.upsertRow(sheet, itemId, intent.payload, targetSpreadsheetId ?? undefined),
+						);
+					} catch (reconcileErr) {
+						console.warn(
+							`Stale ${op} on ${sheet} overwrote a newer intent; queuing the latest`,
+							reconcileErr,
+						);
+						// Recheck after the await: a newer pending or delivered intent
+						// must never be replaced by this captured reconciliation.
+						if (SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId))
+							return "delivered";
+						const current = WriteIntent.getLatestDeliveredIntent(sheet, itemId, targetSpreadsheetId);
+						if (current && current.version > intent.version) {
+							latest = current;
+							continue;
+						}
+						if (WriteIntent.isSuperseded(sheet, itemId, intent.version, targetSpreadsheetId))
+							return "delivered";
+						return SyncQueue.enqueueSyncJob({
+							sheet,
+							op: intent.op,
+							intentVersion: intent.version,
+							itemId,
+							payload: intent.payload,
+							spreadsheetId: targetSpreadsheetId,
+						})
+							? "queued"
+							: "unprotected";
+					}
+					// A newer intent may have been delivered while this re-delivery
+					// was in flight. Reconcile again so the cloud does not keep the
+					// value we just wrote; stop once nothing newer was delivered.
+					if (!WriteIntent.isSuperseded(sheet, itemId, intent.version, targetSpreadsheetId))
+						return "delivered";
+					const newer = WriteIntent.getLatestDeliveredIntent(
+						sheet,
+						itemId,
+						targetSpreadsheetId,
+					);
+					if (!newer || newer.version === intent.version) return "delivered";
+					latest = newer;
+				}
+				return "delivered";
+			}
+			WriteIntent.recordDeliveredIntent(
+				sheet,
+				itemId,
+				targetSpreadsheetId,
+				version,
+				op,
+				payload,
+			);
+			const acked =
+				SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id === priorJobId
+					? SyncQueue.removeSyncJob(sheet, itemId, targetSpreadsheetId)
+					: true; // newer intent pending — leave it for replay
+			return acked ? "delivered" : "unprotected";
+		} catch (err) {
+			// A newer edit for this item was submitted while this write was in
+			// flight. Its outcome (delivered or its own queued intent) already
+			// represents the latest local value, so enqueueing this stale failure
+			// would resurrect an older payload. Drop it.
+			if (WriteIntent.isSuperseded(sheet, itemId, version, targetSpreadsheetId)) return "delivered";
+			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId, intentVersion: version })
+				? "queued"
+				: "unprotected";
 		}
 	};
 
@@ -634,6 +795,7 @@ const normalizeAccount = (acc: any): Account =>
 	const processSubscriptions = (
 		subs: Subscription[],
 		currentTxs: Transaction[],
+		targetSpreadsheetId = SheetService.getCurrentSpreadsheetId(),
 	) => {
 		const today = new Date().toLocaleDateString("en-CA");
 		let newTxs: Transaction[] = [];
@@ -683,7 +845,7 @@ const normalizeAccount = (acc: any): Account =>
 		if (newTxs.length > 0) {
 			const allTxs = [...currentTxs, ...newTxs];
 			setTransactions(allTxs);
-			StorageService.saveTransactions(allTxs);
+			StorageService.saveTransactions(allTxs, targetSpreadsheetId ?? undefined);
 			setSubscriptions(updatedSubs);
 			StorageService.saveSubscriptions(updatedSubs);
 			const accUpdates = new Map<string, number>();
@@ -720,7 +882,13 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const syncData = async () => {
-		if (syncInProgress.current || profile.offlineMode) return;
+		if (profile.offlineMode) return;
+		// A sync is already running: remember that another was requested so the
+		// finally block can run it for the current selection once this one ends.
+		if (syncInProgress.current) {
+			pendingSync.current = true;
+			return;
+		}
 
 		// Debounce: Prevent syncs within 5 seconds of last sync
 		const now = Date.now();
@@ -775,7 +943,14 @@ const normalizeAccount = (acc: any): Account =>
 
 				// Recover the session quietly first. A login popup here would
 				// fire without a user gesture and get blocked mid-boot.
-				if (navigator.onLine) await refreshTokenSilently();
+				if (navigator.onLine) {
+					try {
+						await refreshTokenSilently();
+					} catch {
+						// Transient refresh failure: the isClientReady gate
+						// below falls back to local data.
+					}
+				}
 
 				if (!SheetService.isClientReady()) {
 					// Couldn't recover (offline, or session dead). Stay usable on
@@ -1109,7 +1284,7 @@ const normalizeAccount = (acc: any): Account =>
 				const hasOmittedAccounts = mergedAccountsRaw.some((a) => !encryptedById.has(a.id));
 				const accountSave = hasOmittedAccounts
 					? undefined
-					: StorageService.saveAccounts(encryptedAccounts);
+					: StorageService.saveAccounts(encryptedAccounts, cloudData.spreadsheetId);
 				// Omitted accounts must remain available locally for a later retry.
 				StorageService.saveAccountsLocal(
 					mergedAccountsRaw.map((a) => encryptedById.get(a.id) ?? a),
@@ -1122,15 +1297,22 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setCategories(mergedCategories);
-				StorageService.saveCategories(mergedCategories);
 
-				const mergedTransactions = merge(
-					StorageService.getStoredTransactions(),
-					cloudData.transactions,
-					useCloudAsAuthority,
+				// Pending queued writes are local intent the cloud never
+				// acknowledged; they must survive the merge in both local
+				// state and the outbound full save.
+				const pendingJobs = SyncQueue.getSyncQueue();
+				const mergedTransactions = SyncQueue.applyPendingJobs(
+					merge(
+						StorageService.getStoredTransactions(),
+						cloudData.transactions,
+						useCloudAsAuthority,
+					),
+					pendingJobs,
+					"Transactions",
+					cloudData.spreadsheetId,
 				);
 				setTransactions(mergedTransactions);
-				StorageService.saveTransactions(mergedTransactions);
 
 				const mergedGoals = merge(
 					StorageService.getStoredGoals(),
@@ -1138,15 +1320,18 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setGoals(mergedGoals);
-				StorageService.saveGoals(mergedGoals);
 
-				const mergedSubs = merge(
-					StorageService.getStoredSubscriptions(),
-					cloudData.subscriptions || [],
-					useCloudAsAuthority,
+				const mergedSubs = SyncQueue.applyPendingJobs(
+					merge(
+						StorageService.getStoredSubscriptions(),
+						cloudData.subscriptions || [],
+						useCloudAsAuthority,
+					),
+					pendingJobs,
+					"Subscriptions",
+					cloudData.spreadsheetId,
 				);
 				setSubscriptions(mergedSubs);
-				StorageService.saveSubscriptions(mergedSubs);
 
 				const mergedPots = merge(
 					StorageService.getStoredPots(),
@@ -1154,7 +1339,6 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setPots(mergedPots);
-				StorageService.savePots(mergedPots);
 
 				const mergedPockets = merge(
 					StorageService.getStoredPockets(),
@@ -1162,7 +1346,6 @@ const normalizeAccount = (acc: any): Account =>
 					useCloudAsAuthority,
 				);
 				setPockets(mergedPockets);
-				StorageService.savePockets(mergedPockets);
 
 				const mergedChatSessions = merge(
 					StorageService.getStoredChatSessions(),
@@ -1172,7 +1355,35 @@ const normalizeAccount = (acc: any): Account =>
 				setChatSessions(mergedChatSessions);
 				StorageService.saveChatSessions(mergedChatSessions);
 
+				// Local-only cache snapshot of the merge. syncWithGoogleSheets
+				// below is the single authoritative cloud save; the previous
+				// per-collection saveX() calls fired un-awaited full-sheet
+				// writes that raced the awaited sync and the queue replay.
+				StorageService.saveLocalData({
+					transactions: mergedTransactions,
+					categories: mergedCategories,
+					goals: mergedGoals,
+					subscriptions: mergedSubs,
+					pots: mergedPots,
+					pockets: mergedPockets,
+				});
+
 				const syncTimestamp = new Date().toISOString();
+				// Pin to the spreadsheet this sync loaded. If the user switched
+				// away during load/merge, abort before the full save so merged
+				// data cannot be written into a newly selected spreadsheet, and
+				// leave queued jobs for the next sync of their own spreadsheet.
+				const replayTarget = cloudData.spreadsheetId;
+				const assertReplayTarget = () => {
+					const current = SheetService.getCurrentSpreadsheetId();
+					// Only a known, different selection means the user switched
+					// away. An unknown selection (null) must not strand the sync.
+					if (current != null && current !== replayTarget)
+						throw new Error(
+							"Spreadsheet selection changed; deferring queued replay",
+						);
+				};
+				assertReplayTarget();
 				await SheetService.syncWithGoogleSheets(
 					hasOmittedAccounts ? undefined : encryptedAccounts,
 					mergedTransactions,
@@ -1187,8 +1398,33 @@ const normalizeAccount = (acc: any): Account =>
 						lastSyncAt: syncTimestamp,
 						lastUpdatedAt: syncTimestamp,
 					},
+					replayTarget,
 				);
-				processSubscriptions(mergedSubs, mergedTransactions);
+				// Cloud is reachable again: replay writes that were queued
+				// while it was down. Upserts are idempotent, so jobs already
+				// reconciled by the full sync above are safe to re-apply.
+				const { processed } = await SyncQueue.drainSyncQueue(
+					{
+						onDelivered: (job) => WriteIntent.completeReplay(job, replayTarget, (intent) =>
+							SheetService.withSessionRefresh(() => intent.op === "delete"
+								? SheetService.deleteRow(job.sheet, job.itemId, replayTarget)
+								: SheetService.upsertRow(job.sheet, job.itemId, intent.payload, replayTarget)),
+						),
+						upsert: (sheet, item) => {
+							assertReplayTarget();
+							return SheetService.upsertRow(sheet, item.id, item, replayTarget);
+						},
+						remove: (sheet, id) => {
+							assertReplayTarget();
+							return SheetService.deleteRow(sheet, id, replayTarget);
+						},
+					},
+					replayTarget,
+				);
+				if (processed > 0) {
+					console.log(`Replayed ${processed} queued cloud write(s)`);
+				}
+				processSubscriptions(mergedSubs, mergedTransactions, replayTarget);
 
 				// Update sync status and timestamp (locally use updatedAt)
 				// Skip cloud sync since we already synced the profile in syncWithGoogleSheets above
@@ -1220,10 +1456,21 @@ const normalizeAccount = (acc: any): Account =>
 		} finally {
 			setIsSyncing(false);
 			syncInProgress.current = false;
+			// A selection change (or other request) arrived mid-sync: run one
+			// follow-up sync for the current selection. Clear the debounce so it
+			// is not throttled by the sync that just finished.
+			if (pendingSync.current) {
+				pendingSync.current = false;
+				lastSyncTime.current = 0;
+				// This closure's profile may be stale: if the user switched to
+				// offline mode mid-sync, the follow-up must not make cloud requests.
+				if (!StorageService.getStoredProfile().offlineMode) syncData();
+			}
 		}
 	};
 
 	const handleAccountSave = async (acc: Omit<Account, "userId">) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		const isNew = !accounts.some((a) => a.id === acc.id);
 		const accountWithUser = {
 			...acc,
@@ -1265,7 +1512,7 @@ const normalizeAccount = (acc: any): Account =>
 				};
 				const updatedTxs = [openingTx, ...transactions];
 				setTransactions(updatedTxs);
-				StorageService.saveTransactions(updatedTxs);
+				StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 				if (isCloudEnabled)
 					await SheetService.insertOne("Transactions", openingTx);
 			}
@@ -1292,7 +1539,7 @@ const normalizeAccount = (acc: any): Account =>
 				};
 				const updatedTxs = [adjustmentTx, ...transactions];
 				setTransactions(updatedTxs);
-				StorageService.saveTransactions(updatedTxs);
+				StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 				if (isCloudEnabled)
 					await SheetService.insertOne("Transactions", adjustmentTx);
 			}
@@ -1338,6 +1585,7 @@ const normalizeAccount = (acc: any): Account =>
 		accountId: string,
 		options: { adjustBalance?: boolean; isHistorical?: boolean } = {},
 	) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		const { adjustBalance = true, isHistorical = false } = options;
 		const currentUserId = profile.id || "local";
 
@@ -1378,7 +1626,7 @@ const normalizeAccount = (acc: any): Account =>
 
 		const updatedTransactionsList = [...transactions, ...transactionsToInsert];
 		setTransactions(updatedTransactionsList);
-		StorageService.saveTransactions(updatedTransactionsList);
+		StorageService.saveTransactions(updatedTransactionsList, targetSpreadsheetId ?? undefined);
 
 		if (isCloudEnabled) {
 			SheetService.insertMany("Transactions", transactionsToInsert);
@@ -1458,6 +1706,7 @@ const normalizeAccount = (acc: any): Account =>
 		backup: any,
 		mode: "merge" | "replace" = "merge",
 	) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		if (!backup || typeof backup !== "object") {
 			throw new Error("Invalid backup file.");
 		}
@@ -1546,7 +1795,7 @@ const normalizeAccount = (acc: any): Account =>
 		setAccounts(acc.result);
 		StorageService.saveAccounts(encryptedAccounts);
 		setTransactions(txs.result);
-		StorageService.saveTransactions(txs.result);
+		StorageService.saveTransactions(txs.result, targetSpreadsheetId ?? undefined);
 		setCategories(cats.result);
 		StorageService.saveCategories(cats.result);
 		setGoals(gls.result);
@@ -1603,6 +1852,25 @@ const normalizeAccount = (acc: any): Account =>
 		const oldTx = transactions.find((t) => t.id === tx.id);
 		const isEdit = !!oldTx;
 		const currentUserId = profile.id || "local";
+		let queuedAny = false;
+		let unprotectedAny = false;
+		const track = (status: CloudWriteStatus) => {
+			if (status === "queued") queuedAny = true;
+			else if (status === "unprotected") unprotectedAny = true;
+		};
+
+		// Capture or resolve the spreadsheet once, so every leg of
+		// this submit (main, partner, linked delete, subscription) targets the
+		// same file even if the user switches selection mid-flow.
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId() ??
+			(profile.isLoggedIn && !profile.offlineMode && SheetService.isClientReady()
+				? await SheetService.resolveSpreadsheetId() : null);
+
+		// Version this submit's intent after resolving its target. A
+		// newer edit bumps the counter, so this handler can detect it is stale
+		// and skip both enqueueing an old failure and committing an old local
+		// value. The same token is threaded into the main-leg cloud write.
+		const intentVersion = WriteIntent.beginIntent("Transactions", tx.id, targetSpreadsheetId);
 
 		// 1. Prepare Main Transaction
 		const txWithUser = {
@@ -1659,8 +1927,17 @@ const normalizeAccount = (acc: any): Account =>
 			updatedTransactions = updatedTransactions.map((t) =>
 				t.id === tx.id ? txWithUser : t,
 			);
-			if (isCloudEnabled)
-				await SheetService.updateOne("Transactions", tx.id, txWithUser);
+			track(
+				await cloudWriteOrQueue(
+					"Transactions",
+					"update",
+					tx.id,
+					(sid) => SheetService.upsertRow("Transactions", tx.id, txWithUser, sid ?? undefined),
+					txWithUser,
+					targetSpreadsheetId,
+					intentVersion,
+				),
+			);
 
 			if (partnerLeg) {
 				const hasPartnerInList = updatedTransactions.some(
@@ -1670,16 +1947,41 @@ const normalizeAccount = (acc: any): Account =>
 					updatedTransactions = updatedTransactions.map((t) =>
 						t.id === partnerLeg?.id ? (partnerLeg as Transaction) : t,
 					);
-					if (isCloudEnabled)
-						await SheetService.updateOne(
-							"Transactions",
-							partnerLeg.id,
-							partnerLeg,
+					// The partner leg shares the main submit's fate: once a newer
+					// edit supersedes this submit, that newer edit owns the partner
+					// row, so abandon this stale leg instead of writing it.
+					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
+						track(
+							await cloudWriteOrQueue(
+								"Transactions",
+								"update",
+								partnerLeg.id,
+								(sid) =>
+									SheetService.upsertRow(
+										"Transactions",
+										partnerLeg.id,
+										partnerLeg,
+										sid ?? undefined,
+									),
+								partnerLeg,
+								targetSpreadsheetId,
+							),
 						);
+					}
 				} else {
 					updatedTransactions.push(partnerLeg);
-					if (isCloudEnabled)
-						await SheetService.insertOne("Transactions", partnerLeg);
+					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
+						track(
+							await cloudWriteOrQueue(
+								"Transactions",
+								"insert",
+								partnerLeg.id,
+								(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
+								partnerLeg,
+								targetSpreadsheetId,
+							),
+						);
+					}
 				}
 			}
 
@@ -1687,22 +1989,57 @@ const normalizeAccount = (acc: any): Account =>
 				updatedTransactions = updatedTransactions.filter(
 					(t) => t.id !== partnerIdToDelete,
 				);
-				if (isCloudEnabled)
-					await SheetService.deleteOne("Transactions", partnerIdToDelete);
+				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
+					track(
+						await cloudWriteOrQueue(
+							"Transactions",
+							"delete",
+							partnerIdToDelete,
+							(sid) => SheetService.deleteRow("Transactions", partnerIdToDelete, sid ?? undefined),
+							undefined,
+							targetSpreadsheetId,
+						),
+					);
+				}
 			}
 		} else {
 			updatedTransactions.push(txWithUser);
-			if (isCloudEnabled)
-				await SheetService.insertOne("Transactions", txWithUser);
+			track(
+				await cloudWriteOrQueue(
+					"Transactions",
+					"insert",
+					txWithUser.id,
+					(sid) => SheetService.insertOne("Transactions", txWithUser, sid ?? undefined),
+					txWithUser,
+					targetSpreadsheetId,
+					intentVersion,
+				),
+			);
 
 			if (partnerLeg) {
 				updatedTransactions.push(partnerLeg);
-				if (isCloudEnabled)
-					await SheetService.insertOne("Transactions", partnerLeg);
+				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
+					track(
+						await cloudWriteOrQueue(
+							"Transactions",
+							"insert",
+							partnerLeg.id,
+							(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
+							partnerLeg,
+							targetSpreadsheetId,
+						),
+					);
+				}
 			}
 		}
+		// A newer edit to this item was submitted while our cloud write was in
+		// flight. Our updatedTransactions was built from the pre-edit snapshot,
+		// so committing it would clobber the newer local value. The newer
+		// handler owns the commit; abandon this stale one. Check and commit are
+		// same-tick (no await between) so no newer intent can slip in between.
+		if (WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) return;
 		setTransactions(updatedTransactions);
-		StorageService.saveTransactions(updatedTransactions);
+		StorageService.saveTransactions(updatedTransactions, targetSpreadsheetId ?? undefined);
 
 		// Handle New Subscription
 		if (newSubscription && !isEdit) {
@@ -1724,7 +2061,16 @@ const normalizeAccount = (acc: any): Account =>
 			const updatedSubs = [...subscriptions, sub];
 			setSubscriptions(updatedSubs);
 			StorageService.saveSubscriptions(updatedSubs);
-			if (isCloudEnabled) await SheetService.insertOne("Subscriptions", sub);
+			track(
+				await cloudWriteOrQueue(
+					"Subscriptions",
+					"insert",
+					sub.id,
+					(sid) => SheetService.insertOne("Subscriptions", sub, sid ?? undefined),
+					sub,
+					targetSpreadsheetId,
+				),
+			);
 		}
 
 		// Handle Link to Existing Subscription
@@ -1755,8 +2101,16 @@ const normalizeAccount = (acc: any): Account =>
 					);
 					setSubscriptions(updatedSubsList);
 					StorageService.saveSubscriptions(updatedSubsList);
-					if (isCloudEnabled)
-						await SheetService.updateOne("Subscriptions", sub.id, updatedSub);
+					track(
+						await cloudWriteOrQueue(
+							"Subscriptions",
+							"update",
+							sub.id,
+							(sid) => SheetService.upsertRow("Subscriptions", sub.id, updatedSub, sid ?? undefined),
+							updatedSub,
+							targetSpreadsheetId,
+						),
+					);
 				}
 			}
 		}
@@ -2004,10 +2358,23 @@ const normalizeAccount = (acc: any): Account =>
 			}
 		}
 
-		showToast("Transaction saved", "success");
+		if (unprotectedAny) {
+			showToast(
+				"Transaction saved on this device only. Cloud backup is unavailable, so the next sync may overwrite it.",
+				"alert",
+			);
+		} else if (queuedAny) {
+			showToast(
+				"Transaction saved on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		} else {
+			showToast("Transaction saved", "success");
+		}
 	};
 
 	const handleTransactionDelete = async (id: string) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		const tx = transactions.find((t) => t.id === id);
 		if (!tx) return;
 
@@ -2229,18 +2596,40 @@ const normalizeAccount = (acc: any): Account =>
 
 		const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
 		setTransactions(updatedTxs);
-		StorageService.saveTransactions(updatedTxs);
+		StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 
-		if (isCloudEnabled) {
-			for (const idToDel of idsToDelete) {
-				await SheetService.deleteOne("Transactions", idToDel);
-			}
+		let queuedAny = false;
+		let unprotectedAny = false;
+		for (const idToDel of idsToDelete) {
+			const status = await cloudWriteOrQueue(
+				"Transactions",
+				"delete",
+				idToDel,
+				(sid) => SheetService.deleteRow("Transactions", idToDel, sid ?? undefined),
+				undefined,
+				targetSpreadsheetId,
+			);
+			if (status === "queued") queuedAny = true;
+			else if (status === "unprotected") unprotectedAny = true;
 		}
 
-		showToast("Transaction deleted", "success");
+		if (unprotectedAny) {
+			showToast(
+				"Transaction deleted on this device only. Cloud backup is unavailable, so the next sync may restore it.",
+				"alert",
+			);
+		} else if (queuedAny) {
+			showToast(
+				"Transaction deleted on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		} else {
+			showToast("Transaction deleted", "success");
+		}
 	};
 
 	const handleBatchTransactionDelete = async (ids: string[]) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		// Collect all unique IDs to delete including partners
 		const idsToDeleteSet = new Set<string>(ids);
 		const txsToProcess: Transaction[] = [];
@@ -2495,20 +2884,42 @@ const normalizeAccount = (acc: any): Account =>
 		const idsToDelete = Array.from(idsToDeleteSet);
 		const updatedTxs = transactions.filter((t) => !idsToDelete.includes(t.id));
 		setTransactions(updatedTxs);
-		StorageService.saveTransactions(updatedTxs);
+		StorageService.saveTransactions(updatedTxs, targetSpreadsheetId ?? undefined);
 
-		if (isCloudEnabled) {
-			for (const id of idsToDelete) {
-				await SheetService.deleteOne("Transactions", id);
-			}
+		let queuedAny = false;
+		let unprotectedAny = false;
+		for (const id of idsToDelete) {
+			const status = await cloudWriteOrQueue(
+				"Transactions",
+				"delete",
+				id,
+				(sid) => SheetService.deleteRow("Transactions", id, sid ?? undefined),
+				undefined,
+				targetSpreadsheetId,
+			);
+			if (status === "queued") queuedAny = true;
+			else if (status === "unprotected") unprotectedAny = true;
 		}
-		showToast(`${txsToProcess.length} transactions deleted`, "success");
+		if (unprotectedAny) {
+			showToast(
+				`${txsToProcess.length} transactions deleted on this device only. Cloud backup is unavailable, so the next sync may restore them.`,
+				"alert",
+			);
+		} else if (queuedAny) {
+			showToast(
+				`${txsToProcess.length} transactions deleted on this device. They will sync to the cloud automatically.`,
+				"info",
+			);
+		} else {
+			showToast(`${txsToProcess.length} transactions deleted`, "success");
+		}
 	};
 
 	const handleBatchTransactionEdit = async (
 		ids: string[],
 		updates: Partial<Transaction>,
 	) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		// 1. Identify all transactions to update, including partners
 		const txMap = new Map<string, Transaction>();
 		transactions.forEach((t) => txMap.set(t.id, t));
@@ -2597,7 +3008,7 @@ const normalizeAccount = (acc: any): Account =>
 		});
 
 		setTransactions(updatedTransactionsList);
-		StorageService.saveTransactions(updatedTransactionsList);
+		StorageService.saveTransactions(updatedTransactionsList, targetSpreadsheetId ?? undefined);
 
 		// Update Cloud Transactions - only for affected transactions (batch update)
 		// Send the FULL transaction object, not just the partial updates, to preserve all fields
@@ -2923,6 +3334,7 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const handlePocketDelete = async (id: string) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		try {
 			const pocketToDelete = pockets.find((p) => p.id === id);
 			if (!pocketToDelete) return;
@@ -2942,7 +3354,7 @@ const normalizeAccount = (acc: any): Account =>
 
 			if (transactionsChanged) {
 				setTransactions(updatedTransactions);
-				StorageService.saveTransactions(updatedTransactions);
+				StorageService.saveTransactions(updatedTransactions, targetSpreadsheetId ?? undefined);
 			}
 
 			if (isCloudEnabled) {
@@ -2969,15 +3381,46 @@ const normalizeAccount = (acc: any): Account =>
 		const updated = [...subscriptions, newSub];
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		if (isCloudEnabled) await SheetService.insertOne("Subscriptions", newSub);
-		showToast("Subscription added", "success");
+		const status = await cloudWriteOrQueue(
+			"Subscriptions",
+			"insert",
+			newSub.id,
+			(sid) => SheetService.insertOne("Subscriptions", newSub, sid ?? undefined),
+			newSub,
+		);
+		if (status === "unprotected") {
+			showToast(
+				"Subscription saved on this device only. Cloud backup is unavailable, so the next sync may overwrite it.",
+				"alert",
+			);
+		} else if (status === "queued") {
+			showToast(
+				"Subscription saved on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		} else {
+			showToast("Subscription added", "success");
+		}
 	};
 
 	const handleDeleteSubscription = async (id: string) => {
 		const updated = subscriptions.filter((s) => s.id !== id);
 		setSubscriptions(updated);
 		StorageService.saveSubscriptions(updated);
-		if (isCloudEnabled) await SheetService.deleteOne("Subscriptions", id);
+		const status = await cloudWriteOrQueue("Subscriptions", "delete", id, (sid) =>
+			SheetService.deleteRow("Subscriptions", id, sid ?? undefined),
+		);
+		if (status === "unprotected") {
+			showToast(
+				"Subscription deleted on this device only. Cloud backup is unavailable, so the next sync may restore it.",
+				"alert",
+			);
+		} else if (status === "queued") {
+			showToast(
+				"Subscription deleted on this device. It will sync to the cloud automatically.",
+				"info",
+			);
+		}
 	};
 
 	const handleSaveChatSession = async (session: ChatSession) => {

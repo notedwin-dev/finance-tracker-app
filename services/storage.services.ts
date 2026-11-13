@@ -282,10 +282,10 @@ export const getStoredTransactions = (): Transaction[] => {
   return stored ? JSON.parse(stored) : [];
 };
 
-export const saveTransactions = async (transactions: Transaction[]) => {
+export const saveTransactions = async (transactions: Transaction[], spreadsheetId?: string) => {
   localStorage.setItem(getKey(KEYS.TRANSACTIONS), JSON.stringify(transactions));
   if (isLoggedIn()) {
-    await SheetService.saveToSheet("Transactions", transactions);
+    await SheetService.saveToSheet("Transactions", transactions, spreadsheetId);
   }
 };
 
@@ -335,10 +335,10 @@ export const saveAccountsLocal = (accounts: Account[]) => {
   localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(accounts));
 };
 
-export const saveAccounts = async (accounts: Account[]) => {
+export const saveAccounts = async (accounts: Account[], spreadsheetId?: string) => {
   saveAccountsLocal(accounts);
   if (isLoggedIn()) {
-    await SheetService.saveToSheet("Accounts", accounts);
+    await SheetService.saveToSheet("Accounts", accounts, spreadsheetId);
   }
 };
 

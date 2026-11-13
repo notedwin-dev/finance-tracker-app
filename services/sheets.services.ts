@@ -81,11 +81,33 @@ export const setAuthRefreshHandler = (
 	authRefreshHandler = handler;
 };
 
-const trySilentRefresh = async (): Promise<boolean> => {
-	if (!authRefreshHandler) return false;
-	const token = await authRefreshHandler();
-	return !!token;
+let refreshInFlight: Promise<boolean> | null = null;
+const trySilentRefresh = (): Promise<boolean> => {
+	if (!authRefreshHandler) return Promise.resolve(false);
+	if (!refreshInFlight) {
+		const handler = authRefreshHandler;
+		// Concurrent 401s (Promise.all sync writes) share one refresh
+		// instead of stampeding the backend with parallel token exchanges.
+		refreshInFlight = handler()
+			.then((token) => !!token)
+			.finally(() => {
+				refreshInFlight = null;
+			});
+	}
+	return refreshInFlight;
 };
+
+/**
+ * Run a cloud write under the same 401 recovery contract as the load/save
+ * paths: refresh a dead session once and retry, clearing the token only when
+ * the session is unrecoverable. Row writers use this so a transient 401
+ * retries immediately instead of falling straight back to the offline queue.
+ */
+export const withSessionRefresh = <T>(fn: () => Promise<T>): Promise<T> =>
+	attemptWithSessionRefresh(fn, {
+		tryRefresh: trySilentRefresh,
+		clearToken: clearGapiAccessToken,
+	});
 
 const GAPI_SCRIPT_TIMEOUT_MS = 10000; // script load window
 const GAPI_INIT_TIMEOUT_MS = 20000; // discovery docs + client init window
@@ -216,6 +238,26 @@ export const isGapiInited = () => gapiInited;
 
 let currentSheetTitle = "ZenFinance Data";
 let currentUserId: string | null = null;
+// Last spreadsheet id resolved by getSpreadsheetId. Every cloud write and
+// load goes through that resolver, so this is the id a failed write targeted
+// — used to bind queued jobs to their source spreadsheet.
+let currentSpreadsheetId: string | null = null;
+
+// Prefer the live selection so a spreadsheet picked moments ago is reflected
+// immediately, before getSpreadsheetId runs again. Falls back to the last
+// resolved id for the search/create path, which never writes the selection key.
+// A throwing storage read (blocked/disabled localStorage) must not break the
+// caller — fall back to the last resolved id instead.
+export const getCurrentSpreadsheetId = (): string | null => {
+	try {
+		return (
+			localStorage.getItem("zenfinance_selected_sheet_id") ||
+			currentSpreadsheetId
+		);
+	} catch {
+		return currentSpreadsheetId;
+	}
+};
 
 export const setSheetUser = (userId: string) => {
 	if (userId) {
@@ -242,6 +284,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 				fileId: savedId,
 				fields: "id",
 			});
+			currentSpreadsheetId = savedId;
 			return savedId;
 		} catch (e) {
 			// A 401 here means the session died mid-request: rethrow so the
@@ -261,6 +304,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		});
 		const files = response.result.files;
 		if (files && files.length > 0) {
+			currentSpreadsheetId = files[0].id;
 			return files[0].id;
 		}
 	} catch (err: any) {
@@ -276,6 +320,7 @@ const getSpreadsheetId = async (): Promise<string | null> => {
 		const createResponse = await window.gapi.client.sheets.spreadsheets.create({
 			properties: { title: currentSheetTitle },
 		});
+		currentSpreadsheetId = createResponse.result.spreadsheetId;
 		return createResponse.result.spreadsheetId;
 	} catch (err: any) {
 		if (err?.status === 401) throw err;
@@ -489,12 +534,16 @@ export const createUser = async (userData: any) => {
 	}
 };
 
-export const updateUser = async (email: string, updates: any) => {
+export const updateUser = async (
+	email: string,
+	updates: any,
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
 		console.log("📝 updateUser called with:", { email, updates });
 
-		const fileId = await getSpreadsheetId();
+		const fileId = spreadsheetId ?? (await getSpreadsheetId());
 		if (!fileId) return false;
 
 		const sheetName = await getProfileSheetName(fileId);
@@ -525,7 +574,7 @@ export const updateUser = async (email: string, updates: any) => {
 			});
 			console.log("✅ Headers added, re-running updateUser");
 			// Re-fetch to get new headers
-			return updateUser(email, updates);
+			return updateUser(email, updates, spreadsheetId);
 		}
 
 		const emailIdx = headers.indexOf("email");
@@ -619,12 +668,16 @@ export const updateUser = async (email: string, updates: any) => {
 	}
 };
 
-export const saveToSheet = async (sheetName: string, data: any[]) => {
+export const saveToSheet = async (
+	sheetName: string,
+	data: any[],
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 
-	try {
-		const fileId = await getSpreadsheetId();
+	const performSave = async () => {
+		const fileId = spreadsheetId ?? (await getSpreadsheetId());
 		if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 		// Check if sheet exists
@@ -789,21 +842,31 @@ export const saveToSheet = async (sheetName: string, data: any[]) => {
 		}
 
 		console.log(`Saved ${sheetName} to Google Sheets`);
+	};
+
+	try {
+		// Same recovery contract as the load path: a token that dies
+		// mid-sync is refreshed once and the save retried, instead of
+		// dropping the whole sync offline.
+		await attemptWithSessionRefresh(performSave, {
+			tryRefresh: trySilentRefresh,
+			clearToken: clearGapiAccessToken,
+		});
 	} catch (err: any) {
-		if (err?.status === 401) {
-			console.warn("Google Access Token expired, clearing session.");
-			clearGapiAccessToken();
-		}
 		console.error(`Error saving ${sheetName}`, err);
 		throw err;
 	}
 };
 
-export const insertOne = async (sheetName: string, item: any) => {
+export const insertOne = async (
+	sheetName: string,
+	item: any,
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken)
 		throw new Error("Google Sheets client is not ready.");
 
-	const fileId = await getSpreadsheetId();
+	const fileId = spreadsheetId ?? (await getSpreadsheetId());
 	if (!fileId) throw new Error("No accessible Google spreadsheet was found.");
 
 	// 1. Get Headers to ensure column alignment
@@ -829,7 +892,7 @@ export const insertOne = async (sheetName: string, item: any) => {
 
 	// If no headers, we must initialize the sheet (fallback to saveToSheet)
 	if (headers.length === 0) {
-		return saveToSheet(sheetName, [item]);
+		return saveToSheet(sheetName, [item], fileId);
 	}
 
 	// 2. Align Data to Headers
@@ -922,86 +985,92 @@ const getColumnLetter = (index: number): string => {
  * Updates a specific row based on the 'id' field.
  * This is much faster than saveToSheet for single edits.
  */
-export const updateOne = async (sheetName: string, id: string, item: any) => {
-	if (!gapiInited || !hasAccessToken || !id) return;
+/**
+ * Upserts a row by id (inserts when missing) and THROWS on failure so the
+ * sync queue can keep the job for a later retry. updateOne is the
+ * fire-and-forget wrapper for callers that don't need failure reporting.
+ */
+export const upsertRow = async (
+	sheetName: string,
+	id: string,
+	item: any,
+	spreadsheetId?: string,
+) => {
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
+	if (!id) throw new Error(`Cannot upsert a row in ${sheetName} without an id.`);
 
-	try {
-		const fileId = await getSpreadsheetId();
-		if (!fileId) return;
+	const fileId = spreadsheetId ?? (await getSpreadsheetId());
+	if (!fileId) throw new Error(`No spreadsheet available for ${sheetName}.`);
 
-		// 1. Get Headers to align columns and find ID column
-		const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!1:1`,
-		});
-		const headers = headerRes.result.values?.[0] || [];
-		const idColumnIndex = headers.indexOf("id");
+	// 1. Get Headers to align columns and find ID column
+	const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!1:1`,
+	});
+	const headers = headerRes.result.values?.[0] || [];
+	const idColumnIndex = headers.indexOf("id");
 
-		if (idColumnIndex === -1) {
-			// If no id column, we might need a full save or something is wrong
-			return insertOne(sheetName, item);
-		}
+	if (idColumnIndex === -1) {
+		// If no id column, we might need a full save or something is wrong
+		return insertOne(sheetName, item, fileId);
+	}
 
-		const idColLetter = getColumnLetter(idColumnIndex);
+	const idColLetter = getColumnLetter(idColumnIndex);
 
-		// 2. Find the row index of the ID
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
-		});
+	// 2. Find the row index of the ID
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
+	});
 
-		const ids = res.result.values || [];
-		const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+	const ids = res.result.values || [];
+	const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
 
-		if (rowIndex === -1) {
-			// If not found, maybe it was deleted or just added. Fallback to insert.
-			return insertOne(sheetName, item);
-		}
+	if (rowIndex === -1) {
+		// If not found, maybe it was deleted or just added. Fallback to insert.
+		return insertOne(sheetName, item, fileId);
+	}
 
-		// 3. Prepare the updated row
-		const row = headers.map((header: string) => {
-			const val = item[header];
-			if (typeof val === "object" && val !== null) {
-				return JSON.stringify(val);
-			}
-			return val ?? "";
-		});
-
-		// 4. Update specific row (A1 notation requires 1-based indexing for rows)
-		// Safe update: only update columns present in the item object to prevent clearing legacy data
-		const data: any[] = [];
-		headers.forEach((header: string, colIndex: number) => {
-			const val = item[header];
-			if (val !== undefined) {
-				const colLetter = getColumnLetter(colIndex);
-				data.push({
-					range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
-					values: [
-						[
-							typeof val === "object" && val !== null
-								? JSON.stringify(val)
-								: val,
-						],
+	// 3. Update specific row (A1 notation requires 1-based indexing for rows)
+	// Safe update: only update columns present in the item object to prevent clearing legacy data
+	const data: any[] = [];
+	headers.forEach((header: string, colIndex: number) => {
+		const val = item[header];
+		if (val !== undefined) {
+			const colLetter = getColumnLetter(colIndex);
+			data.push({
+				range: `'${sheetName}'!${colLetter}${rowIndex + 1}`,
+				values: [
+					[
+						typeof val === "object" && val !== null
+							? JSON.stringify(val)
+							: val,
 					],
-				});
-			}
-		});
-
-		if (data.length > 0) {
-			await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
-				spreadsheetId: fileId,
-				resource: {
-					data,
-					valueInputOption: "USER_ENTERED",
-				},
+				],
 			});
-			console.log(
-				`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
-			);
 		}
+	});
+
+	if (data.length > 0) {
+		await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+			spreadsheetId: fileId,
+			resource: {
+				data,
+				valueInputOption: "USER_ENTERED",
+			},
+		});
+		console.log(
+			`Updated ${data.length} cells in ${sheetName} at row ${rowIndex + 1}`,
+		);
+	}
+};
+
+export const updateOne = async (sheetName: string, id: string, item: any) => {
+	try {
+		await upsertRow(sheetName, id, item);
 	} catch (e) {
 		console.warn(`Error updating row in ${sheetName}`, e);
-		// Fallback: If finding specific row fails, we might need a full sync
 	}
 };
 
@@ -1099,65 +1168,79 @@ export const updateMany = async (
 /**
  * Deletes a specific row based on the 'id' field.
  */
-export const deleteOne = async (sheetName: string, id: string) => {
-	if (!gapiInited || !hasAccessToken || !id) return;
+/**
+ * Deletes a row by id and THROWS on failure so the sync queue can keep the
+ * job for a later retry. deleteOne is the fire-and-forget wrapper.
+ */
+export const deleteRow = async (
+	sheetName: string,
+	id: string,
+	spreadsheetId?: string,
+) => {
+	if (!gapiInited || !hasAccessToken)
+		throw new Error("Google Sheets client is not ready.");
+	if (!id) throw new Error(`Cannot delete a row in ${sheetName} without an id.`);
 
-	try {
-		const fileId = await getSpreadsheetId();
-		if (!fileId) return;
+	const fileId = spreadsheetId ?? (await getSpreadsheetId());
+	if (!fileId) throw new Error(`No spreadsheet available for ${sheetName}.`);
 
-		// 1. Get the sheet ID (different from spreadsheetId) and Headers
-		const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
-			spreadsheetId: fileId,
-		});
-		const sheet = spreadsheet.result.sheets.find(
-			(s: any) => s.properties.title === sheetName,
-		);
-		if (!sheet) return;
+	// 1. Get the sheet ID (different from spreadsheetId) and Headers
+	const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
+		spreadsheetId: fileId,
+	});
+	const sheet = spreadsheet.result.sheets.find(
+		(s: any) => s.properties.title === sheetName,
+	);
+	if (!sheet) return;
 
-		const sheetId = sheet.properties.sheetId;
+	const sheetId = sheet.properties.sheetId;
 
-		const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!1:1`,
-		});
-		const headers = headerRes.result.values?.[0] || [];
-		const idColumnIndex = headers.indexOf("id");
+	const headerRes = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!1:1`,
+	});
+	const headers = headerRes.result.values?.[0] || [];
+	const idColumnIndex = headers.indexOf("id");
 
-		if (idColumnIndex === -1) return;
-		const idColLetter = getColumnLetter(idColumnIndex);
+	if (idColumnIndex === -1) return;
+	const idColLetter = getColumnLetter(idColumnIndex);
 
-		// 2. Find the row index
-		const res = await window.gapi.client.sheets.spreadsheets.values.get({
-			spreadsheetId: fileId,
-			range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
-		});
+	// 2. Find the row index
+	const res = await window.gapi.client.sheets.spreadsheets.values.get({
+		spreadsheetId: fileId,
+		range: `'${sheetName}'!${idColLetter}:${idColLetter}`,
+	});
 
-		const ids = res.result.values || [];
-		const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
+	const ids = res.result.values || [];
+	const rowIndex = ids.findIndex((row: any[]) => row[0] === id);
 
-		if (rowIndex === -1) return;
+	if (rowIndex === -1) return;
 
-		// 3. Delete the specific row
-		await window.gapi.client.sheets.spreadsheets.batchUpdate({
-			spreadsheetId: fileId,
-			resource: {
-				requests: [
-					{
-						deleteDimension: {
-							range: {
-								sheetId: sheetId,
-								dimension: "ROWS",
-								startIndex: rowIndex,
-								endIndex: rowIndex + 1,
-							},
+	// 3. Delete the specific row
+	await window.gapi.client.sheets.spreadsheets.batchUpdate({
+		spreadsheetId: fileId,
+		resource: {
+			requests: [
+				{
+					deleteDimension: {
+						range: {
+							sheetId: sheetId,
+							dimension: "ROWS",
+							startIndex: rowIndex,
+							endIndex: rowIndex + 1,
 						},
 					},
-				],
-			},
-		});
+				},
+			],
+		},
+	});
 
-		console.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
+	console.log(`Deleted row ${rowIndex + 1} from ${sheetName}`);
+};
+
+export const deleteOne = async (sheetName: string, id: string) => {
+	try {
+		await deleteRow(sheetName, id);
 	} catch (e) {
 		console.error(`Error deleting row from ${sheetName}`, e);
 	}
@@ -1173,20 +1256,24 @@ export const syncWithGoogleSheets = async (
 	pockets?: SavingPocket[],
 	chatSessions?: ChatSession[],
 	profile?: any,
+	spreadsheetId?: string,
 ) => {
 	const tasks = [];
-	if (accounts) tasks.push(saveToSheet("Accounts", accounts));
-	if (transactions) tasks.push(saveToSheet("Transactions", transactions));
-	if (categories) tasks.push(saveToSheet("Categories", categories));
-	if (goals) tasks.push(saveToSheet("Goals", goals));
-	if (subscriptions) tasks.push(saveToSheet("Subscriptions", subscriptions));
-	if (pots) tasks.push(saveToSheet("Pots", pots));
-	if (pockets) tasks.push(saveToSheet("Pockets", pockets));
-	if (chatSessions) tasks.push(saveToSheet("ChatSessions", chatSessions));
+	if (accounts) tasks.push(saveToSheet("Accounts", accounts, spreadsheetId));
+	if (transactions)
+		tasks.push(saveToSheet("Transactions", transactions, spreadsheetId));
+	if (categories) tasks.push(saveToSheet("Categories", categories, spreadsheetId));
+	if (goals) tasks.push(saveToSheet("Goals", goals, spreadsheetId));
+	if (subscriptions)
+		tasks.push(saveToSheet("Subscriptions", subscriptions, spreadsheetId));
+	if (pots) tasks.push(saveToSheet("Pots", pots, spreadsheetId));
+	if (pockets) tasks.push(saveToSheet("Pockets", pockets, spreadsheetId));
+	if (chatSessions)
+		tasks.push(saveToSheet("ChatSessions", chatSessions, spreadsheetId));
 
 	// Sync profile/security settings
 	if (profile && profile.email) {
-		tasks.push(updateUser(profile.email, profile));
+		tasks.push(updateUser(profile.email, profile, spreadsheetId));
 	}
 
 	await Promise.all(tasks);
@@ -1430,4 +1517,20 @@ export const selectSpreadsheetWithPicker = async (): Promise<string | null> => {
 
 		picker.setVisible(true);
 	});
+};
+
+// Share initial discovery so concurrent submissions bind to the same concrete file.
+let resolvingSpreadsheet: Promise<string | null> | undefined;
+export const resolveSpreadsheetId = (): Promise<string | null> => {
+	const selected = getCurrentSpreadsheetId();
+	if (selected) return Promise.resolve(selected);
+	if (!resolvingSpreadsheet) {
+		resolvingSpreadsheet = getSpreadsheetId()
+			.catch((error) => {
+				console.warn("Could not resolve spreadsheet for write; deferring to sync", error);
+				return null;
+			})
+			.finally(() => { resolvingSpreadsheet = undefined; });
+	}
+	return resolvingSpreadsheet;
 };

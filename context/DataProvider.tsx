@@ -23,6 +23,7 @@ import { DataContext } from "./DataContext";
 import * as SecurityService from "../services/security.services";
 import * as AccountCrypto from "../services/account-crypto.services";
 import * as SyncQueue from "../services/sync-queue.services";
+import * as WriteIntent from "../services/write-intent.services";
 
 // Legacy vault type for backward compatibility during migration
 type LegacyVaultProfile = UserProfile & {
@@ -182,6 +183,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		write: (spreadsheetId: string | null) => Promise<unknown>,
 		payload?: any,
 		spreadsheetId?: string | null,
+		intentVersion?: number,
 	): Promise<CloudWriteStatus> => {
 		// Bind every queue operation to the spreadsheet this write targets.
 		// Callers spanning multiple writes (e.g. transfer legs) capture the
@@ -192,6 +194,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			spreadsheetId === undefined
 				? SheetService.getCurrentSpreadsheetId()
 				: spreadsheetId;
+		// Version this intent so a slow older write that fails after a newer
+		// edit was submitted/delivered can be rejected instead of enqueueing a
+		// stale payload. The submit flow passes its own version for the main
+		// item so the local-commit guard shares the same token.
+		const version = intentVersion ?? WriteIntent.beginIntent(sheet, itemId);
 		// No cloud configured (guest or deliberate offline mode): local-only.
 		// A pending job for this item must still be superseded with the latest
 		// intent, or replay would resurrect a stale payload / undo a delete.
@@ -227,6 +234,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					: true; // newer intent pending — leave it for replay
 			return acked ? "delivered" : "unprotected";
 		} catch (err) {
+			// A newer edit for this item was submitted while this write was in
+			// flight. Its outcome (delivered or its own queued intent) already
+			// represents the latest local value, so enqueueing this stale failure
+			// would resurrect an older payload. Drop it.
+			if (WriteIntent.isSuperseded(sheet, itemId, version)) return "delivered";
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
 			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
 				? "queued"
@@ -1770,6 +1782,12 @@ const normalizeAccount = (acc: any): Account =>
 		// same file even if the user switches selection mid-flow.
 		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 
+		// Version this submit's intent for the main item before any await. A
+		// newer edit bumps the counter, so this handler can detect it is stale
+		// and skip both enqueueing an old failure and committing an old local
+		// value. The same token is threaded into the main-leg cloud write.
+		const intentVersion = WriteIntent.beginIntent("Transactions", tx.id);
+
 		// 1. Prepare Main Transaction
 		const txWithUser = {
 			...tx,
@@ -1833,6 +1851,7 @@ const normalizeAccount = (acc: any): Account =>
 					(sid) => SheetService.upsertRow("Transactions", tx.id, txWithUser, sid ?? undefined),
 					txWithUser,
 					targetSpreadsheetId,
+					intentVersion,
 				),
 			);
 
@@ -1900,6 +1919,7 @@ const normalizeAccount = (acc: any): Account =>
 					(sid) => SheetService.insertOne("Transactions", txWithUser, sid ?? undefined),
 					txWithUser,
 					targetSpreadsheetId,
+					intentVersion,
 				),
 			);
 
@@ -1917,6 +1937,12 @@ const normalizeAccount = (acc: any): Account =>
 				);
 			}
 		}
+		// A newer edit to this item was submitted while our cloud write was in
+		// flight. Our updatedTransactions was built from the pre-edit snapshot,
+		// so committing it would clobber the newer local value. The newer
+		// handler owns the commit; abandon this stale one. Check and commit are
+		// same-tick (no await between) so no newer intent can slip in between.
+		if (WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) return;
 		setTransactions(updatedTransactions);
 		StorageService.saveTransactions(updatedTransactions);
 

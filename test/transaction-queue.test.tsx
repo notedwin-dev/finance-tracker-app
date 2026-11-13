@@ -6,6 +6,7 @@ import { useData } from "../context/DataContext";
 import * as StorageService from "../services/storage.services";
 import * as SheetService from "../services/sheets.services";
 import * as SyncQueue from "../services/sync-queue.services";
+import * as WriteIntent from "../services/write-intent.services";
 import { Subscription, Transaction, TransactionType, UserProfile } from "../types";
 
 const auth = vi.hoisted(() => ({
@@ -88,6 +89,7 @@ const renderProvider = async () => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	WriteIntent.resetWriteIntents();
 	vi.mocked(SheetService.isClientReady).mockReturnValue(true);
 	vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-id");
 	vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -652,6 +654,46 @@ describe("acknowledgement of a delivered write", () => {
 		expect(jobs).toHaveLength(1);
 		expect(jobs[0]).toMatchObject({ itemId: "tx-1", op: "update" });
 		expect(jobs[0].payload.amount).toBe(20);
+	});
+
+	it("does not enqueue a stale failure or commit its older local value after a newer edit succeeded", async () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+		await renderProvider();
+
+		// Edit A (amount 10) hangs in the cloud; edit B (amount 20) succeeds.
+		// When A finally fails it must NOT enqueue its older payload over B's
+		// delivered version, nor commit amount 10 locally after B's amount 20.
+		let rejectA: (err: any) => void = () => {};
+		const deferredA = new Promise<void>((_, rej) => {
+			rejectA = rej;
+		});
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.resolve(),
+		);
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(tx({ amount: 10 }));
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 20 }));
+		});
+
+		await act(async () => {
+			rejectA({ status: 401 });
+			await promiseA;
+		});
+
+		expect(SyncQueue.getSyncQueue()).toHaveLength(0);
+		const stored = StorageService.getStoredTransactions().find(
+			(t) => t.id === "tx-1",
+		);
+		expect(stored?.amount).toBe(20);
 	});
 });
 

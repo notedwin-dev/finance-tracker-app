@@ -7,6 +7,8 @@ export interface SyncQueueJob {
 	// Unique per enqueue so a same-millisecond replacement is not mistaken
 	// for the job just replayed. Absent on legacy jobs persisted before ids.
 	id?: string;
+	// Preserves intent ordering when replay acknowledges a failed live write.
+	intentVersion?: number;
 	sheet: string;
 	op: SyncQueueOp;
 	itemId: string;
@@ -195,6 +197,7 @@ export const drainSyncQueue = async (
 	deps: {
 		upsert: (sheet: string, item: any) => Promise<void>;
 		remove: (sheet: string, id: string) => Promise<void>;
+		onDelivered?: (job: SyncQueueJob) => void;
 	},
 	spreadsheetId?: string,
 ): Promise<{ processed: number; remaining: number }> => {
@@ -209,6 +212,8 @@ export const drainSyncQueue = async (
 			console.warn("Sync queue replay failed; will retry on next sync", err);
 			break;
 		}
+		// Publish delivery before removing the pending evidence of this intent.
+		deps.onDelivered?.(job);
 		const current = readJobs();
 		const idx = current.findIndex(
 			(j) =>

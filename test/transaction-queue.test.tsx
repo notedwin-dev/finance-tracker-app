@@ -1347,3 +1347,67 @@ describe("a superseded submit does not write a stale partner leg", () => {
 		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
 });
+
+describe("write intent race regressions", () => {
+ const seed = () => StorageService.saveTransactions([{ ...tx(), userId: "test-user" } as Transaction]);
+ it("keeps intent versions independent across spreadsheets", () => {
+  const a = WriteIntent.beginIntent("Transactions", "same", "A");
+  WriteIntent.beginIntent("Transactions", "same", "B");
+  expect(WriteIntent.isSuperseded("Transactions", "same", a, "A")).toBe(false);
+ });
+ it("advances beyond versions restored by replay", () => {
+  WriteIntent.recordDeliveredIntent("Transactions", "same", "A", 100, "delete");
+  expect(WriteIntent.beginIntent("Transactions", "same", "A")).toBeGreaterThan(100);
+ });
+ it("advances beyond a persisted pending version", () => {
+  SyncQueue.enqueueSyncJob({ sheet: "Transactions", itemId: "same", spreadsheetId: "A", op: "delete", intentVersion: 100 });
+  expect(WriteIntent.beginIntent("Transactions", "same", "A")).toBeGreaterThan(100);
+ });
+ it.each([false, true])("pins delete before balance awaits (batch=%s)", async (batch) => {
+  StorageService.saveTransactions([{ ...tx({ potId: "pot-1" }), userId: "test-user" } as Transaction]);
+  StorageService.savePots([{ id: "pot-1", usedAmount: 50, limitAmount: 100 } as any]);
+  await renderProvider();
+  let release!: () => void;
+  vi.mocked(SheetService.updateMany).mockImplementation(() => new Promise<void>(r => { release = r; }));
+  let pending!: Promise<void>;
+  await act(async () => { pending = batch ? data.handleBatchTransactionDelete(["tx-1"]) : data.handleTransactionDelete("tx-1"); });
+  expect(release).toBeDefined();
+  vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("other");
+  await act(async () => { release(); await pending; });
+  expect(SheetService.deleteRow).toHaveBeenCalledWith("Transactions", "tx-1", "sheet-id");
+ });
+ it("records a replayed delete before an older edit completes", async () => {
+  seed(); await renderProvider();
+  let release!: () => void;
+  vi.mocked(SheetService.upsertRow).mockImplementation(() => new Promise<void>(r => { release = r; }));
+  let pending!: Promise<void>;
+  await act(async () => { pending = data.handleTransactionSubmit(tx({ amount: 10 })); });
+  vi.mocked(SheetService.isClientReady).mockReturnValue(false);
+  await act(async () => { await data.handleTransactionDelete("tx-1"); });
+  vi.mocked(SheetService.isClientReady).mockReturnValue(true);
+  await act(async () => { await data.syncData(); });
+  expect(SyncQueue.getSyncQueue()).toEqual([]);
+  await act(async () => { release(); await pending; });
+  expect(SheetService.deleteRow).toHaveBeenCalledTimes(2);
+ });
+ it.each([false, true])("does not queue an old reconciliation over a newer delete (delivered=%s)", async (delivered) => {
+  seed(); await renderProvider();
+  let release!: () => void;
+  let rejectReconcile!: (err: Error) => void;
+  let writes20 = 0;
+  vi.mocked(SheetService.upsertRow).mockImplementation(async (_s, _id, item) => {
+   if (item.amount === 10) await new Promise<void>(r => { release = r; });
+   if (item.amount === 20 && ++writes20 === 2) await new Promise<void>((_r, reject) => { rejectReconcile = reject; });
+  });
+  let pending!: Promise<void>;
+  await act(async () => { pending = data.handleTransactionSubmit(tx({ amount: 10 })); });
+  await act(async () => { await data.handleTransactionSubmit(tx({ amount: 20 })); });
+  await act(async () => { release(); });
+  expect(rejectReconcile).toBeDefined();
+  vi.mocked(SheetService.isClientReady).mockReturnValue(delivered);
+  await act(async () => { await data.handleTransactionDelete("tx-1"); });
+  await act(async () => { rejectReconcile(new Error("offline")); await pending; });
+  if (delivered) expect(SyncQueue.getSyncQueue()).toEqual([]);
+  else expect(SyncQueue.getSyncQueue()).toMatchObject([{ op: "delete" }]);
+ });
+});

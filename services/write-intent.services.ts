@@ -6,16 +6,26 @@
 // The latest delivered intent is also kept per item so a stale older write
 // that succeeds after a newer one was delivered can re-apply the newer value
 // instead of leaving the cloud holding the stale payload.
-import type { SyncQueueOp } from "./sync-queue.services";
+import { getSyncJob, type SyncQueueOp } from "./sync-queue.services";
 
 const submitted = new Map<string, number>();
 
-const key = (sheet: string, itemId: string) => `${sheet}:${itemId}`;
+const key = (sheet: string, itemId: string, spreadsheetId?: string | null) =>
+	JSON.stringify([spreadsheetId ?? null, sheet, itemId]);
 
 /** Record a new write intent and return its version token. */
-export const beginIntent = (sheet: string, itemId: string): number => {
-	const k = key(sheet, itemId);
-	const version = (submitted.get(k) ?? 0) + 1;
+export const beginIntent = (
+	sheet: string,
+	itemId: string,
+	spreadsheetId: string | null | undefined,
+): number => {
+	const k = key(sheet, itemId, spreadsheetId);
+	// Persisted jobs may carry versions from an earlier page session.
+	const version = Math.max(
+		submitted.get(k) ?? 0,
+		delivered.get(k)?.version ?? 0,
+		getSyncJob(sheet, itemId, spreadsheetId)?.intentVersion ?? 0,
+	) + 1;
 	submitted.set(k, version);
 	return version;
 };
@@ -25,7 +35,8 @@ export const isSuperseded = (
 	sheet: string,
 	itemId: string,
 	version: number,
-): boolean => (submitted.get(key(sheet, itemId)) ?? 0) > version;
+	spreadsheetId: string | null | undefined,
+): boolean => (submitted.get(key(sheet, itemId, spreadsheetId)) ?? 0) > version;
 
 export interface DeliveredIntent {
 	version: number;
@@ -41,7 +52,7 @@ const deliveredKey = (
 	sheet: string,
 	itemId: string,
 	spreadsheetId?: string | null,
-) => `${key(sheet, itemId)}:${spreadsheetId ?? ""}`;
+) => key(sheet, itemId, spreadsheetId);
 
 /** Record a delivered write; only the newest version is kept. */
 export const recordDeliveredIntent = (

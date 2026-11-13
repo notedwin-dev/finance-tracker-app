@@ -198,13 +198,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		// edit was submitted/delivered can be rejected instead of enqueueing a
 		// stale payload. The submit flow passes its own version for the main
 		// item so the local-commit guard shares the same token.
-		const version = intentVersion ?? WriteIntent.beginIntent(sheet, itemId);
+		const version = intentVersion ?? WriteIntent.beginIntent(sheet, itemId, targetSpreadsheetId);
 		// No cloud configured (guest or deliberate offline mode): local-only.
 		// A pending job for this item must still be superseded with the latest
 		// intent, or replay would resurrect a stale payload / undo a delete.
 		if (!profile.isLoggedIn || profile.offlineMode) {
 			if (!SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId)) return "delivered";
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId, intentVersion: version })
 				? "queued"
 				: "unprotected";
 		}
@@ -212,7 +212,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// Cloud is configured but unreachable (expired token, offline
 			// boot). Queue without attempting so the write survives the
 			// trust-cloud merge on the next successful sync.
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId, intentVersion: version })
 				? "queued"
 				: "unprotected";
 		}
@@ -228,7 +228,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// through so a retry writes to the same spreadsheet, never the
 			// live selection.
 			await SheetService.withSessionRefresh(() => write(targetSpreadsheetId));
-			if (WriteIntent.isSuperseded(sheet, itemId, version)) {
+			if (WriteIntent.isSuperseded(sheet, itemId, version, targetSpreadsheetId)) {
 				// This stale success just overwrote a newer intent in the cloud.
 				// A still-queued newer job is left for replay to repair; with
 				// nothing pending, re-deliver the latest delivered intent now so
@@ -253,9 +253,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 							`Stale ${op} on ${sheet} overwrote a newer intent; queuing the latest`,
 							reconcileErr,
 						);
+						// Recheck after the await: a newer pending or delivered intent
+						// must never be replaced by this captured reconciliation.
+						if (SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId))
+							return "delivered";
+						const current = WriteIntent.getLatestDeliveredIntent(sheet, itemId, targetSpreadsheetId);
+						if (current && current.version > intent.version) {
+							latest = current;
+							continue;
+						}
+						if (WriteIntent.isSuperseded(sheet, itemId, intent.version, targetSpreadsheetId))
+							return "delivered";
 						return SyncQueue.enqueueSyncJob({
 							sheet,
 							op: intent.op,
+							intentVersion: intent.version,
 							itemId,
 							payload: intent.payload,
 							spreadsheetId: targetSpreadsheetId,
@@ -266,7 +278,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 					// A newer intent may have been delivered while this re-delivery
 					// was in flight. Reconcile again so the cloud does not keep the
 					// value we just wrote; stop once nothing newer was delivered.
-					if (!WriteIntent.isSuperseded(sheet, itemId, intent.version))
+					if (!WriteIntent.isSuperseded(sheet, itemId, intent.version, targetSpreadsheetId))
 						return "delivered";
 					const newer = WriteIntent.getLatestDeliveredIntent(
 						sheet,
@@ -296,9 +308,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// flight. Its outcome (delivered or its own queued intent) already
 			// represents the latest local value, so enqueueing this stale failure
 			// would resurrect an older payload. Drop it.
-			if (WriteIntent.isSuperseded(sheet, itemId, version)) return "delivered";
+			if (WriteIntent.isSuperseded(sheet, itemId, version, targetSpreadsheetId)) return "delivered";
 			console.warn(`Cloud ${op} on ${sheet} failed; queued for next sync`, err);
-			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId })
+			return SyncQueue.enqueueSyncJob({ sheet, op, itemId, payload, spreadsheetId: targetSpreadsheetId, intentVersion: version })
 				? "queued"
 				: "unprotected";
 		}
@@ -1390,6 +1402,9 @@ const normalizeAccount = (acc: any): Account =>
 				// reconciled by the full sync above are safe to re-apply.
 				const { processed } = await SyncQueue.drainSyncQueue(
 					{
+						onDelivered: (job) => WriteIntent.recordDeliveredIntent(
+							job.sheet, job.itemId, replayTarget, job.intentVersion ?? 0, job.op, job.payload,
+						),
 						upsert: (sheet, item) => {
 							assertReplayTarget();
 							return SheetService.upsertRow(sheet, item.id, item, replayTarget);
@@ -1845,7 +1860,7 @@ const normalizeAccount = (acc: any): Account =>
 		// newer edit bumps the counter, so this handler can detect it is stale
 		// and skip both enqueueing an old failure and committing an old local
 		// value. The same token is threaded into the main-leg cloud write.
-		const intentVersion = WriteIntent.beginIntent("Transactions", tx.id);
+		const intentVersion = WriteIntent.beginIntent("Transactions", tx.id, targetSpreadsheetId);
 
 		// 1. Prepare Main Transaction
 		const txWithUser = {
@@ -1925,7 +1940,7 @@ const normalizeAccount = (acc: any): Account =>
 					// The partner leg shares the main submit's fate: once a newer
 					// edit supersedes this submit, that newer edit owns the partner
 					// row, so abandon this stale leg instead of writing it.
-					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
 						track(
 							await cloudWriteOrQueue(
 								"Transactions",
@@ -1945,7 +1960,7 @@ const normalizeAccount = (acc: any): Account =>
 					}
 				} else {
 					updatedTransactions.push(partnerLeg);
-					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
 						track(
 							await cloudWriteOrQueue(
 								"Transactions",
@@ -1964,7 +1979,7 @@ const normalizeAccount = (acc: any): Account =>
 				updatedTransactions = updatedTransactions.filter(
 					(t) => t.id !== partnerIdToDelete,
 				);
-				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
 					track(
 						await cloudWriteOrQueue(
 							"Transactions",
@@ -1993,7 +2008,7 @@ const normalizeAccount = (acc: any): Account =>
 
 			if (partnerLeg) {
 				updatedTransactions.push(partnerLeg);
-				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) {
 					track(
 						await cloudWriteOrQueue(
 							"Transactions",
@@ -2012,7 +2027,7 @@ const normalizeAccount = (acc: any): Account =>
 		// so committing it would clobber the newer local value. The newer
 		// handler owns the commit; abandon this stale one. Check and commit are
 		// same-tick (no await between) so no newer intent can slip in between.
-		if (WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) return;
+		if (WriteIntent.isSuperseded("Transactions", tx.id, intentVersion, targetSpreadsheetId)) return;
 		setTransactions(updatedTransactions);
 		StorageService.saveTransactions(updatedTransactions);
 
@@ -2349,6 +2364,7 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const handleTransactionDelete = async (id: string) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		const tx = transactions.find((t) => t.id === id);
 		if (!tx) return;
 
@@ -2574,9 +2590,6 @@ const normalizeAccount = (acc: any): Account =>
 
 		let queuedAny = false;
 		let unprotectedAny = false;
-		// Capture the target once so a mid-loop selection change cannot split
-		// the deletions (and their queued jobs) across spreadsheets.
-		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		for (const idToDel of idsToDelete) {
 			const status = await cloudWriteOrQueue(
 				"Transactions",
@@ -2606,6 +2619,7 @@ const normalizeAccount = (acc: any): Account =>
 	};
 
 	const handleBatchTransactionDelete = async (ids: string[]) => {
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		// Collect all unique IDs to delete including partners
 		const idsToDeleteSet = new Set<string>(ids);
 		const txsToProcess: Transaction[] = [];
@@ -2864,9 +2878,6 @@ const normalizeAccount = (acc: any): Account =>
 
 		let queuedAny = false;
 		let unprotectedAny = false;
-		// Capture the target once so a mid-loop selection change cannot split
-		// the deletions (and their queued jobs) across spreadsheets.
-		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		for (const id of idsToDelete) {
 			const status = await cloudWriteOrQueue(
 				"Transactions",

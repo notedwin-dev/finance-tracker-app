@@ -901,3 +901,67 @@ describe("a selection change during an active sync schedules a follow-up", () =>
 		expect(SheetService.loadFromGoogleSheets).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe("the deferred follow-up sync respects offline mode", () => {
+	it("does not re-sync when offline mode was enabled mid-sync", async () => {
+		let releaseFirstLoad!: (value: any) => void;
+		const firstLoad = new Promise((resolve) => {
+			releaseFirstLoad = resolve;
+		});
+		vi.mocked(SheetService.loadFromGoogleSheets)
+			.mockImplementationOnce(() => firstLoad as any)
+			.mockResolvedValue(cloudData());
+
+		await renderProvider();
+
+		// Sync #1 starts and blocks on the cloud load.
+		let firstSync!: Promise<void>;
+		await act(async () => {
+			firstSync = data.syncData();
+		});
+
+		// A follow-up is requested while #1 is still in flight...
+		await act(async () => {
+			await data.syncData();
+		});
+		// ...then the user unlinks cloud (offline mode) before #1 finishes.
+		auth.profile = { ...auth.profile, offlineMode: true };
+		StorageService.saveProfile(auth.profile);
+
+		await act(async () => {
+			releaseFirstLoad(cloudData());
+			await firstSync;
+		});
+		await act(async () => {});
+
+		// The deferred follow-up must not make cloud requests in offline mode.
+		expect(SheetService.loadFromGoogleSheets).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("transfer legs share one captured spreadsheet target", () => {
+	it("pins both legs to the target captured before the first write", async () => {
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		// The selection flips to sheet-B while the first leg's write is in
+		// flight. The partner leg must still use sheet-A, not re-capture.
+		vi.mocked(SheetService.withSessionRefresh).mockImplementationOnce(
+			async (fn: any) => {
+				vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-B");
+				return fn();
+			},
+		);
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionSubmit(
+				tx({ type: TransactionType.TRANSFER, toAccountId: "acc-2" }),
+			);
+		});
+
+		const txInserts = vi
+			.mocked(SheetService.insertOne)
+			.mock.calls.filter(([sheet]) => sheet === "Transactions");
+		expect(txInserts).toHaveLength(2);
+		expect(txInserts[0][2]).toBe("sheet-A");
+		expect(txInserts[1][2]).toBe("sheet-A");
+	});
+});

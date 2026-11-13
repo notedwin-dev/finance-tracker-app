@@ -181,11 +181,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 		itemId: string,
 		write: (spreadsheetId: string | null) => Promise<unknown>,
 		payload?: any,
+		spreadsheetId?: string | null,
 	): Promise<CloudWriteStatus> => {
-		// Bind every queue operation to the spreadsheet this write targets,
-		// captured once so a selection change mid-write cannot split the job's
-		// identity between enqueue and acknowledgement.
-		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
+		// Bind every queue operation to the spreadsheet this write targets.
+		// Callers spanning multiple writes (e.g. transfer legs) capture the
+		// target once and pass it in so a mid-flow selection change cannot split
+		// the writes across spreadsheets; otherwise capture the live selection
+		// so a selection change mid-write cannot split enqueue from ack.
+		const targetSpreadsheetId =
+			spreadsheetId === undefined
+				? SheetService.getCurrentSpreadsheetId()
+				: spreadsheetId;
 		// No cloud configured (guest or deliberate offline mode): local-only.
 		// A pending job for this item must still be superseded with the latest
 		// intent, or replay would resurrect a stale payload / undo a delete.
@@ -1193,7 +1199,7 @@ const normalizeAccount = (acc: any): Account =>
 				const hasOmittedAccounts = mergedAccountsRaw.some((a) => !encryptedById.has(a.id));
 				const accountSave = hasOmittedAccounts
 					? undefined
-					: StorageService.saveAccounts(encryptedAccounts);
+					: StorageService.saveAccounts(encryptedAccounts, cloudData.spreadsheetId);
 				// Omitted accounts must remain available locally for a later retry.
 				StorageService.saveAccountsLocal(
 					mergedAccountsRaw.map((a) => encryptedById.get(a.id) ?? a),
@@ -1365,7 +1371,9 @@ const normalizeAccount = (acc: any): Account =>
 			if (pendingSync.current) {
 				pendingSync.current = false;
 				lastSyncTime.current = 0;
-				syncData();
+				// This closure's profile may be stale: if the user switched to
+				// offline mode mid-sync, the follow-up must not make cloud requests.
+				if (!StorageService.getStoredProfile().offlineMode) syncData();
 			}
 		}
 	};
@@ -1757,6 +1765,11 @@ const normalizeAccount = (acc: any): Account =>
 			else if (status === "unprotected") unprotectedAny = true;
 		};
 
+		// Capture the spreadsheet once, before the first await, so every leg of
+		// this submit (main, partner, linked delete, subscription) targets the
+		// same file even if the user switches selection mid-flow.
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
+
 		// 1. Prepare Main Transaction
 		const txWithUser = {
 			...tx,
@@ -1819,6 +1832,7 @@ const normalizeAccount = (acc: any): Account =>
 					tx.id,
 					(sid) => SheetService.upsertRow("Transactions", tx.id, txWithUser, sid ?? undefined),
 					txWithUser,
+					targetSpreadsheetId,
 				),
 			);
 
@@ -1843,6 +1857,7 @@ const normalizeAccount = (acc: any): Account =>
 									sid ?? undefined,
 								),
 							partnerLeg,
+							targetSpreadsheetId,
 						),
 					);
 				} else {
@@ -1854,6 +1869,7 @@ const normalizeAccount = (acc: any): Account =>
 							partnerLeg.id,
 							(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
 							partnerLeg,
+							targetSpreadsheetId,
 						),
 					);
 				}
@@ -1869,6 +1885,8 @@ const normalizeAccount = (acc: any): Account =>
 						"delete",
 						partnerIdToDelete,
 						(sid) => SheetService.deleteRow("Transactions", partnerIdToDelete, sid ?? undefined),
+						undefined,
+						targetSpreadsheetId,
 					),
 				);
 			}
@@ -1881,6 +1899,7 @@ const normalizeAccount = (acc: any): Account =>
 					txWithUser.id,
 					(sid) => SheetService.insertOne("Transactions", txWithUser, sid ?? undefined),
 					txWithUser,
+					targetSpreadsheetId,
 				),
 			);
 
@@ -1893,6 +1912,7 @@ const normalizeAccount = (acc: any): Account =>
 						partnerLeg.id,
 						(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
 						partnerLeg,
+						targetSpreadsheetId,
 					),
 				);
 			}
@@ -1927,6 +1947,7 @@ const normalizeAccount = (acc: any): Account =>
 					sub.id,
 					(sid) => SheetService.insertOne("Subscriptions", sub, sid ?? undefined),
 					sub,
+					targetSpreadsheetId,
 				),
 			);
 		}
@@ -1966,6 +1987,7 @@ const normalizeAccount = (acc: any): Account =>
 							sub.id,
 							(sid) => SheetService.upsertRow("Subscriptions", sub.id, updatedSub, sid ?? undefined),
 							updatedSub,
+							targetSpreadsheetId,
 						),
 					);
 				}

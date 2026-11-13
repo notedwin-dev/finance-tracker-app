@@ -335,10 +335,10 @@ export const saveAccountsLocal = (accounts: Account[]) => {
   localStorage.setItem(getKey(KEYS.ACCOUNTS), JSON.stringify(accounts));
 };
 
-export const saveAccounts = async (accounts: Account[]) => {
+export const saveAccounts = async (accounts: Account[], spreadsheetId?: string) => {
   saveAccountsLocal(accounts);
   if (isLoggedIn()) {
-    await SheetService.saveToSheet("Accounts", accounts);
+    await SheetService.saveToSheet("Accounts", accounts, spreadsheetId);
   }
 };
 

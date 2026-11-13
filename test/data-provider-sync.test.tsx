@@ -118,8 +118,8 @@ describe("DataProvider account sync", () => {
 			isSecurityEnabled: enabled, totpSecret: SECRET,
 		});
 
-		expect(StorageService.saveAccounts).toHaveBeenCalledWith(payload);
-		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", payload);
+		expect(StorageService.saveAccounts).toHaveBeenCalledWith(payload, "sheet-id");
+		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", payload, "sheet-id");
 		expect(payload).toHaveLength(1);
 		expect(isCipherText(payload[0].details)).toBe(shouldEncrypt);
 		if (shouldEncrypt) {
@@ -173,9 +173,40 @@ describe("DataProvider account sync", () => {
 		const payload = await sync([], {});
 
 		expect(payload).toEqual([]);
-		expect(StorageService.saveAccounts).toHaveBeenCalledWith([]);
-		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", []);
+		expect(StorageService.saveAccounts).toHaveBeenCalledWith([], "sheet-id");
+		expect(SheetService.saveToSheet).toHaveBeenCalledWith("Accounts", [], "sheet-id");
 		expect(StorageService.getStoredAccounts()).toEqual([]);
+	});
+
+	it("pins the account cloud save to the loaded spreadsheet even if the selection changed", async () => {
+		// The live selection differs from the spreadsheet this sync loaded (as
+		// if the user switched files during encryption). The account write must
+		// still target the loaded spreadsheet, not re-resolve the live selection.
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-other");
+		vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue({
+			accounts: [account("cloud")],
+			profile: { isSecurityEnabled: true, totpSecret: SECRET },
+			transactions: [],
+			categories: [],
+			goals: [],
+			subscriptions: [],
+			pots: [],
+			pockets: [],
+			chatSessions: [],
+			spreadsheetId: "sheet-id",
+		});
+		await act(async () => {
+			root.render(<DataProvider><Capture /></DataProvider>);
+		});
+		await act(async () => {
+			await data.syncData();
+		});
+
+		expect(SheetService.saveToSheet).toHaveBeenCalledWith(
+			"Accounts",
+			expect.any(Array),
+			"sheet-id",
+		);
 	});
 });
 

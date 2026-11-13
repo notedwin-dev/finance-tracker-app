@@ -224,3 +224,88 @@ describe("syncWithGoogleSheets concurrent writes", () => {
 		expect(localStorage.getItem("google_access_token")).toBe("fresh-token");
 	});
 });
+
+describe("syncWithGoogleSheets full-save pinning", () => {
+	it("pins every full-save task and refresh retry to the passed spreadsheet id", async () => {
+		refreshHandler.mockImplementation(async () => {
+			// Hold open so every concurrent tab hits its 401 first, then flip
+			// the live selection: pinned retries must ignore the new selection.
+			await new Promise((r) => setTimeout(r, 10));
+			localStorage.setItem("zenfinance_selected_sheet_id", "sheet-other");
+			SheetService.setGapiAccessToken("fresh-token", 3600);
+			localStorage.setItem("google_access_token", "fresh-token");
+			return "fresh-token";
+		});
+
+		await SheetService.syncWithGoogleSheets(
+			undefined,
+			[row],
+			[
+				{
+					id: "c1",
+					userId: "user-1",
+					name: "Food",
+					icon: "F",
+					budgetLimit: 0,
+					color: "#fff",
+				},
+			],
+			[
+				{
+					id: "g1",
+					userId: "user-1",
+					name: "Emergency",
+					targetAmount: 1000,
+					currentAmount: 0,
+					currency: "MYR",
+					type: "SHORT_TERM",
+					color: "#fff",
+					icon: "G",
+				},
+			],
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"sheet-1",
+		);
+
+		expect(refreshHandler).toHaveBeenCalledTimes(1);
+		const ids = updateMock.mock.calls.map((call) => call[0].spreadsheetId);
+		expect(ids.length).toBeGreaterThan(0);
+		for (const id of ids) expect(id).toBe("sheet-1");
+	});
+});
+
+describe("updateUser pinning", () => {
+	it("writes to the pinned spreadsheet id, not the live selection", async () => {
+		installGapi(async () => ({ result: {} }));
+		(window as any).gapi.client.sheets.spreadsheets.values.get = async ({
+			range,
+		}: any) =>
+			range.startsWith("'Profile'")
+				? {
+						result: {
+							values: [
+								["email", "name"],
+								["u@example.invalid", "Old"],
+							],
+						},
+					}
+				: { result: {} };
+		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-other");
+
+		const ok = await SheetService.updateUser(
+			"u@example.invalid",
+			{ name: "New" },
+			"sheet-pinned",
+		);
+
+		expect(ok).toBe(true);
+		const write = updateMock.mock.calls.find((call) =>
+			call[0].range.startsWith("'Profile'!A2"),
+		);
+		expect(write?.[0].spreadsheetId).toBe("sheet-pinned");
+	});
+});

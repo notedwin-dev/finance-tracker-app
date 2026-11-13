@@ -534,12 +534,16 @@ export const createUser = async (userData: any) => {
 	}
 };
 
-export const updateUser = async (email: string, updates: any) => {
+export const updateUser = async (
+	email: string,
+	updates: any,
+	spreadsheetId?: string,
+) => {
 	if (!gapiInited || !hasAccessToken) return false;
 	try {
 		console.log("📝 updateUser called with:", { email, updates });
 
-		const fileId = await getSpreadsheetId();
+		const fileId = spreadsheetId ?? (await getSpreadsheetId());
 		if (!fileId) return false;
 
 		const sheetName = await getProfileSheetName(fileId);
@@ -570,7 +574,7 @@ export const updateUser = async (email: string, updates: any) => {
 			});
 			console.log("✅ Headers added, re-running updateUser");
 			// Re-fetch to get new headers
-			return updateUser(email, updates);
+			return updateUser(email, updates, spreadsheetId);
 		}
 
 		const emailIdx = headers.indexOf("email");
@@ -1252,20 +1256,24 @@ export const syncWithGoogleSheets = async (
 	pockets?: SavingPocket[],
 	chatSessions?: ChatSession[],
 	profile?: any,
+	spreadsheetId?: string,
 ) => {
 	const tasks = [];
-	if (accounts) tasks.push(saveToSheet("Accounts", accounts));
-	if (transactions) tasks.push(saveToSheet("Transactions", transactions));
-	if (categories) tasks.push(saveToSheet("Categories", categories));
-	if (goals) tasks.push(saveToSheet("Goals", goals));
-	if (subscriptions) tasks.push(saveToSheet("Subscriptions", subscriptions));
-	if (pots) tasks.push(saveToSheet("Pots", pots));
-	if (pockets) tasks.push(saveToSheet("Pockets", pockets));
-	if (chatSessions) tasks.push(saveToSheet("ChatSessions", chatSessions));
+	if (accounts) tasks.push(saveToSheet("Accounts", accounts, spreadsheetId));
+	if (transactions)
+		tasks.push(saveToSheet("Transactions", transactions, spreadsheetId));
+	if (categories) tasks.push(saveToSheet("Categories", categories, spreadsheetId));
+	if (goals) tasks.push(saveToSheet("Goals", goals, spreadsheetId));
+	if (subscriptions)
+		tasks.push(saveToSheet("Subscriptions", subscriptions, spreadsheetId));
+	if (pots) tasks.push(saveToSheet("Pots", pots, spreadsheetId));
+	if (pockets) tasks.push(saveToSheet("Pockets", pockets, spreadsheetId));
+	if (chatSessions)
+		tasks.push(saveToSheet("ChatSessions", chatSessions, spreadsheetId));
 
 	// Sync profile/security settings
 	if (profile && profile.email) {
-		tasks.push(updateUser(profile.email, profile));
+		tasks.push(updateUser(profile.email, profile, spreadsheetId));
 	}
 
 	await Promise.all(tasks);

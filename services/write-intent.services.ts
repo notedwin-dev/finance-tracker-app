@@ -3,8 +3,11 @@
 // submitted for the same item. This lets a slow older write fail without
 // enqueueing a payload a newer edit already superseded, and lets a stale
 // handler skip its local commit so it cannot clobber the newer local value.
-// Only the submitted counter is needed: a delivered version can never exceed
-// the submitted one, so "a newer intent was submitted" already covers it.
+// The latest delivered intent is also kept per item so a stale older write
+// that succeeds after a newer one was delivered can re-apply the newer value
+// instead of leaving the cloud holding the stale payload.
+import type { SyncQueueOp } from "./sync-queue.services";
+
 const submitted = new Map<string, number>();
 
 const key = (sheet: string, itemId: string) => `${sheet}:${itemId}`;
@@ -24,7 +27,48 @@ export const isSuperseded = (
 	version: number,
 ): boolean => (submitted.get(key(sheet, itemId)) ?? 0) > version;
 
+export interface DeliveredIntent {
+	version: number;
+	op: SyncQueueOp;
+	payload?: any;
+}
+
+// Scoped to the spreadsheet the write targeted: the same itemId in two files
+// is two independent rows, so one file's delivery must not reconcile another.
+const delivered = new Map<string, DeliveredIntent>();
+
+const deliveredKey = (
+	sheet: string,
+	itemId: string,
+	spreadsheetId?: string | null,
+) => `${key(sheet, itemId)}:${spreadsheetId ?? ""}`;
+
+/** Record a delivered write; only the newest version is kept. */
+export const recordDeliveredIntent = (
+	sheet: string,
+	itemId: string,
+	spreadsheetId: string | null | undefined,
+	version: number,
+	op: SyncQueueOp,
+	payload?: any,
+): void => {
+	const k = deliveredKey(sheet, itemId, spreadsheetId);
+	const current = delivered.get(k);
+	if (!current || version > current.version) {
+		delivered.set(k, { version, op, payload });
+	}
+};
+
+/** The newest delivered intent for this item on this spreadsheet, if any. */
+export const getLatestDeliveredIntent = (
+	sheet: string,
+	itemId: string,
+	spreadsheetId?: string | null,
+): DeliveredIntent | undefined =>
+	delivered.get(deliveredKey(sheet, itemId, spreadsheetId));
+
 /** Test hook: drop all tracked intents. */
 export const resetWriteIntents = (): void => {
 	submitted.clear();
+	delivered.clear();
 };

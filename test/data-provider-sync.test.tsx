@@ -208,6 +208,13 @@ describe("DataProvider account sync", () => {
 			"sheet-id",
 		);
 	});
+
+	it("passes the loaded spreadsheet id as the full-save replay target", async () => {
+		await sync([account("cloud")], { isSecurityEnabled: true, totpSecret: SECRET });
+
+		const args = vi.mocked(SheetService.syncWithGoogleSheets).mock.calls[0];
+		expect(args[9]).toBe("sheet-id");
+	});
 });
 
 const cloudData = (overrides: Record<string, unknown> = {}) => ({

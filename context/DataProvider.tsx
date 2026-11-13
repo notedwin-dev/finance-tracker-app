@@ -228,6 +228,64 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			// through so a retry writes to the same spreadsheet, never the
 			// live selection.
 			await SheetService.withSessionRefresh(() => write(targetSpreadsheetId));
+			if (WriteIntent.isSuperseded(sheet, itemId, version)) {
+				// This stale success just overwrote a newer intent in the cloud.
+				// A still-queued newer job is left for replay to repair; with
+				// nothing pending, re-deliver the latest delivered intent now so
+				// Sheets does not keep the stale value.
+				if (SyncQueue.hasSyncJob(sheet, itemId, targetSpreadsheetId))
+					return "delivered";
+				let latest = WriteIntent.getLatestDeliveredIntent(
+					sheet,
+					itemId,
+					targetSpreadsheetId,
+				);
+				while (latest) {
+					const intent = latest;
+					try {
+						await SheetService.withSessionRefresh(() =>
+							intent.op === "delete"
+								? SheetService.deleteRow(sheet, itemId, targetSpreadsheetId ?? undefined)
+								: SheetService.upsertRow(sheet, itemId, intent.payload, targetSpreadsheetId ?? undefined),
+						);
+					} catch (reconcileErr) {
+						console.warn(
+							`Stale ${op} on ${sheet} overwrote a newer intent; queuing the latest`,
+							reconcileErr,
+						);
+						return SyncQueue.enqueueSyncJob({
+							sheet,
+							op: intent.op,
+							itemId,
+							payload: intent.payload,
+							spreadsheetId: targetSpreadsheetId,
+						})
+							? "queued"
+							: "unprotected";
+					}
+					// A newer intent may have been delivered while this re-delivery
+					// was in flight. Reconcile again so the cloud does not keep the
+					// value we just wrote; stop once nothing newer was delivered.
+					if (!WriteIntent.isSuperseded(sheet, itemId, intent.version))
+						return "delivered";
+					const newer = WriteIntent.getLatestDeliveredIntent(
+						sheet,
+						itemId,
+						targetSpreadsheetId,
+					);
+					if (!newer || newer.version === intent.version) return "delivered";
+					latest = newer;
+				}
+				return "delivered";
+			}
+			WriteIntent.recordDeliveredIntent(
+				sheet,
+				itemId,
+				targetSpreadsheetId,
+				version,
+				op,
+				payload,
+			);
 			const acked =
 				SyncQueue.getSyncJob(sheet, itemId, targetSpreadsheetId)?.id === priorJobId
 					? SyncQueue.removeSyncJob(sheet, itemId, targetSpreadsheetId)
@@ -1325,6 +1383,7 @@ const normalizeAccount = (acc: any): Account =>
 						lastSyncAt: syncTimestamp,
 						lastUpdatedAt: syncTimestamp,
 					},
+					replayTarget,
 				);
 				// Cloud is reachable again: replay writes that were queued
 				// while it was down. Upserts are idempotent, so jobs already
@@ -1863,34 +1922,41 @@ const normalizeAccount = (acc: any): Account =>
 					updatedTransactions = updatedTransactions.map((t) =>
 						t.id === partnerLeg?.id ? (partnerLeg as Transaction) : t,
 					);
-					track(
-						await cloudWriteOrQueue(
-							"Transactions",
-							"update",
-							partnerLeg.id,
-							(sid) =>
-								SheetService.upsertRow(
-									"Transactions",
-									partnerLeg.id,
-									partnerLeg,
-									sid ?? undefined,
-								),
-							partnerLeg,
-							targetSpreadsheetId,
-						),
-					);
+					// The partner leg shares the main submit's fate: once a newer
+					// edit supersedes this submit, that newer edit owns the partner
+					// row, so abandon this stale leg instead of writing it.
+					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+						track(
+							await cloudWriteOrQueue(
+								"Transactions",
+								"update",
+								partnerLeg.id,
+								(sid) =>
+									SheetService.upsertRow(
+										"Transactions",
+										partnerLeg.id,
+										partnerLeg,
+										sid ?? undefined,
+									),
+								partnerLeg,
+								targetSpreadsheetId,
+							),
+						);
+					}
 				} else {
 					updatedTransactions.push(partnerLeg);
-					track(
-						await cloudWriteOrQueue(
-							"Transactions",
-							"insert",
-							partnerLeg.id,
-							(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
-							partnerLeg,
-							targetSpreadsheetId,
-						),
-					);
+					if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+						track(
+							await cloudWriteOrQueue(
+								"Transactions",
+								"insert",
+								partnerLeg.id,
+								(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
+								partnerLeg,
+								targetSpreadsheetId,
+							),
+						);
+					}
 				}
 			}
 
@@ -1898,16 +1964,18 @@ const normalizeAccount = (acc: any): Account =>
 				updatedTransactions = updatedTransactions.filter(
 					(t) => t.id !== partnerIdToDelete,
 				);
-				track(
-					await cloudWriteOrQueue(
-						"Transactions",
-						"delete",
-						partnerIdToDelete,
-						(sid) => SheetService.deleteRow("Transactions", partnerIdToDelete, sid ?? undefined),
-						undefined,
-						targetSpreadsheetId,
-					),
-				);
+				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+					track(
+						await cloudWriteOrQueue(
+							"Transactions",
+							"delete",
+							partnerIdToDelete,
+							(sid) => SheetService.deleteRow("Transactions", partnerIdToDelete, sid ?? undefined),
+							undefined,
+							targetSpreadsheetId,
+						),
+					);
+				}
 			}
 		} else {
 			updatedTransactions.push(txWithUser);
@@ -1925,16 +1993,18 @@ const normalizeAccount = (acc: any): Account =>
 
 			if (partnerLeg) {
 				updatedTransactions.push(partnerLeg);
-				track(
-					await cloudWriteOrQueue(
-						"Transactions",
-						"insert",
-						partnerLeg.id,
-						(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
-						partnerLeg,
-						targetSpreadsheetId,
-					),
-				);
+				if (!WriteIntent.isSuperseded("Transactions", tx.id, intentVersion)) {
+					track(
+						await cloudWriteOrQueue(
+							"Transactions",
+							"insert",
+							partnerLeg.id,
+							(sid) => SheetService.insertOne("Transactions", partnerLeg, sid ?? undefined),
+							partnerLeg,
+							targetSpreadsheetId,
+						),
+					);
+				}
 			}
 		}
 		// A newer edit to this item was submitted while our cloud write was in
@@ -2504,12 +2574,17 @@ const normalizeAccount = (acc: any): Account =>
 
 		let queuedAny = false;
 		let unprotectedAny = false;
+		// Capture the target once so a mid-loop selection change cannot split
+		// the deletions (and their queued jobs) across spreadsheets.
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		for (const idToDel of idsToDelete) {
 			const status = await cloudWriteOrQueue(
 				"Transactions",
 				"delete",
 				idToDel,
 				(sid) => SheetService.deleteRow("Transactions", idToDel, sid ?? undefined),
+				undefined,
+				targetSpreadsheetId,
 			);
 			if (status === "queued") queuedAny = true;
 			else if (status === "unprotected") unprotectedAny = true;
@@ -2789,9 +2864,17 @@ const normalizeAccount = (acc: any): Account =>
 
 		let queuedAny = false;
 		let unprotectedAny = false;
+		// Capture the target once so a mid-loop selection change cannot split
+		// the deletions (and their queued jobs) across spreadsheets.
+		const targetSpreadsheetId = SheetService.getCurrentSpreadsheetId();
 		for (const id of idsToDelete) {
-			const status = await cloudWriteOrQueue("Transactions", "delete", id, (sid) =>
-				SheetService.deleteRow("Transactions", id, sid ?? undefined),
+			const status = await cloudWriteOrQueue(
+				"Transactions",
+				"delete",
+				id,
+				(sid) => SheetService.deleteRow("Transactions", id, sid ?? undefined),
+				undefined,
+				targetSpreadsheetId,
 			);
 			if (status === "queued") queuedAny = true;
 			else if (status === "unprotected") unprotectedAny = true;

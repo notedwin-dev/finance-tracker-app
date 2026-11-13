@@ -765,6 +765,7 @@ describe("queued writes are bound to their source spreadsheet", () => {
 			cloudData({ spreadsheetId: "sheet-B" }),
 		);
 		vi.mocked(SheetService.upsertRow).mockClear();
+		vi.mocked(SheetService.syncWithGoogleSheets).mockClear();
 		await act(async () => {
 			await data.syncData();
 		});
@@ -772,6 +773,11 @@ describe("queued writes are bound to their source spreadsheet", () => {
 		// The sheet-A job must not be replayed into sheet-B, and stays queued.
 		expect(SheetService.upsertRow).not.toHaveBeenCalled();
 		expect(SyncQueue.getSyncQueue().map((j) => j.itemId)).toEqual(["tx-1"]);
+		// Nor may it leak into sheet-B's full save: the merge for sheet-B must
+		// exclude the row still pending for sheet-A.
+		const savedTxs = vi.mocked(SheetService.syncWithGoogleSheets).mock
+			.calls[0][1] as Transaction[];
+		expect(savedTxs.map((t) => t.id)).not.toContain("tx-1");
 	});
 
 	it("replays a job when syncing its own spreadsheet", async () => {
@@ -1005,5 +1011,339 @@ describe("transfer legs share one captured spreadsheet target", () => {
 		expect(txInserts).toHaveLength(2);
 		expect(txInserts[0][2]).toBe("sheet-A");
 		expect(txInserts[1][2]).toBe("sheet-A");
+	});
+});
+
+describe("delete loops share one captured spreadsheet target", () => {
+	const seedTwo = () => {
+		const seed = [tx(), tx({ id: "tx-2" })].map((t) => ({
+			...t,
+			userId: "test-user",
+		}));
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify(seed),
+		);
+	};
+
+	it("pins every batch deletion to the target captured before the loop", async () => {
+		seedTwo();
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		// The selection flips to sheet-B while the first deletion is in flight.
+		vi.mocked(SheetService.withSessionRefresh).mockImplementationOnce(
+			async (fn: any) => {
+				vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-B");
+				return fn();
+			},
+		);
+		await renderProvider();
+		await act(async () => {
+			await data.handleBatchTransactionDelete(["tx-1", "tx-2"]);
+		});
+
+		const deletes = vi
+			.mocked(SheetService.deleteRow)
+			.mock.calls.filter(([sheet]) => sheet === "Transactions");
+		expect(deletes).toHaveLength(2);
+		expect(deletes[0][2]).toBe("sheet-A");
+		expect(deletes[1][2]).toBe("sheet-A");
+	});
+
+	it("pins both legs of a single transfer delete to one captured target", async () => {
+		const main = { ...tx({ type: TransactionType.TRANSFER, toAccountId: "acc-2", linkedTransactionId: "tx-2" }), userId: "test-user" };
+		const partner = { ...tx({ id: "tx-2", type: TransactionType.TRANSFER, linkedTransactionId: "tx-1" }), userId: "test-user" };
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([main, partner]),
+		);
+		vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-A");
+		vi.mocked(SheetService.withSessionRefresh).mockImplementationOnce(
+			async (fn: any) => {
+				vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue("sheet-B");
+				return fn();
+			},
+		);
+		await renderProvider();
+		await act(async () => {
+			await data.handleTransactionDelete("tx-1");
+		});
+
+		const deletes = vi
+			.mocked(SheetService.deleteRow)
+			.mock.calls.filter(([sheet]) => sheet === "Transactions");
+		expect(deletes).toHaveLength(2);
+		expect(deletes[0][2]).toBe("sheet-A");
+		expect(deletes[1][2]).toBe("sheet-A");
+	});
+});
+
+describe("a stale older write that succeeds last is reconciled", () => {
+	const seedExisting = () => {
+		const existing: Transaction = { ...tx(), userId: "test-user" } as Transaction;
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([existing]),
+		);
+	};
+
+	it("re-delivers the newer payload after the stale success overwrites it", async () => {
+		seedExisting();
+		await renderProvider();
+
+		// Edit A (amount 10) hangs in the cloud; edit B (amount 20) is delivered.
+		// When A finally succeeds it overwrites B's row in Sheets — the flow must
+		// re-deliver the latest intent so the cloud does not keep amount 10.
+		let resolveA: () => void = () => {};
+		const deferredA = new Promise<void>((res) => {
+			resolveA = res;
+		});
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.resolve(),
+		);
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(tx({ amount: 10 }));
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 20 }));
+		});
+
+		await act(async () => {
+			resolveA();
+			await promiseA;
+		});
+
+		const writes = vi
+			.mocked(SheetService.upsertRow)
+			.mock.calls.filter(
+				([sheet, id]) => sheet === "Transactions" && id === "tx-1",
+			);
+		// B delivered, then the stale A landed, then reconciliation re-delivered
+		// B. Without the reconcile step the stale write is the last one.
+		expect(writes).toHaveLength(3);
+		expect(writes[writes.length - 1][2].amount).toBe(20);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+		expect(
+			StorageService.getStoredTransactions().find((t) => t.id === "tx-1")
+				?.amount,
+		).toBe(20);
+	});
+
+	it("re-deletes the row when a stale upsert succeeds after a delivered delete", async () => {
+		seedExisting();
+		await renderProvider();
+
+		let resolveA: () => void = () => {};
+		const deferredA = new Promise<void>((res) => {
+			resolveA = res;
+		});
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.resolve(),
+		);
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(tx({ amount: 10 }));
+		});
+		await act(async () => {
+			await data.handleTransactionDelete("tx-1");
+		});
+
+		await act(async () => {
+			resolveA();
+			await promiseA;
+		});
+
+		// The stale upsert resurrected the row; reconciliation must delete it
+		// again so the delivered delete stays effective in the cloud.
+		expect(SheetService.deleteRow).toHaveBeenCalledTimes(2);
+		expect(SheetService.deleteRow).toHaveBeenLastCalledWith(
+			"Transactions",
+			"tx-1",
+			"sheet-id",
+		);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+		expect(StorageService.getStoredTransactions()).toEqual([]);
+	});
+
+	it("queues the latest intent when the reconciliation write fails", async () => {
+		seedExisting();
+		await renderProvider();
+
+		let resolveA: () => void = () => {};
+		const deferredA = new Promise<void>((res) => {
+			resolveA = res;
+		});
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.resolve(),
+		);
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(tx({ amount: 10 }));
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 20 }));
+		});
+
+		// Cloud dies again before the stale write lands: the reconciliation
+		// must fall back to the queue with the NEWER payload, not the stale one.
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.reject({ status: 401 }),
+		);
+		await act(async () => {
+			resolveA();
+			await promiseA;
+		});
+
+		const jobs = SyncQueue.getSyncQueue();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]).toMatchObject({
+			sheet: "Transactions",
+			op: "update",
+			itemId: "tx-1",
+		});
+		expect(jobs[0].payload.amount).toBe(20);
+	});
+
+	it("re-delivers a newer intent that lands while the reconciliation is in flight", async () => {
+		seedExisting();
+		await renderProvider();
+
+		// A (10) hangs; B (20) is delivered; A lands stale and starts reconciling
+		// B, but that reconciliation write hangs too. C (30) is delivered while
+		// the reconciliation is in flight. When the stale reconciliation finally
+		// completes it must not leave B's 20 over C's newer 30 in the cloud.
+		let resolveA: () => void = () => {};
+		const deferredA = new Promise<void>((res) => {
+			resolveA = res;
+		});
+		let resolveReconcile: () => void = () => {};
+		const deferredReconcile = new Promise<void>((res) => {
+			resolveReconcile = res;
+		});
+
+		const completions: number[] = [];
+		let amount20Calls = 0;
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			async (_sheet: string, _id: string, item: any) => {
+				if (item.amount === 10) await deferredA;
+				else if (item.amount === 20) {
+					amount20Calls += 1;
+					// The second amount-20 write is the reconciliation re-delivery.
+					if (amount20Calls === 2) await deferredReconcile;
+				}
+				completions.push(item.amount);
+			},
+		);
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(tx({ amount: 10 }));
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 20 }));
+		});
+		await act(async () => {
+			resolveA();
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(tx({ amount: 30 }));
+		});
+		await act(async () => {
+			resolveReconcile();
+			await promiseA;
+		});
+
+		// Completion order: B(20), stale A(10), C(30), stale reconcile(20),
+		// re-reconcile(30). The cloud must end on C's 30, not the reconcile's 20.
+		expect(completions).toHaveLength(5);
+		expect(completions[completions.length - 1]).toBe(30);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
+		expect(
+			StorageService.getStoredTransactions().find((t) => t.id === "tx-1")
+				?.amount,
+		).toBe(30);
+	});
+});
+
+describe("a superseded submit does not write a stale partner leg", () => {
+	const seedTransfer = () => {
+		const main = {
+			...tx({
+				type: TransactionType.TRANSFER,
+				toAccountId: "acc-2",
+				linkedTransactionId: "tx-2",
+			}),
+			userId: "test-user",
+		};
+		const partner = {
+			...tx({
+				id: "tx-2",
+				type: TransactionType.TRANSFER,
+				accountId: "acc-2",
+				toAccountId: "acc-1",
+				linkedTransactionId: "tx-1",
+				transferDirection: "IN",
+			}),
+			userId: "test-user",
+		};
+		localStorage.setItem(
+			`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+			JSON.stringify([main, partner]),
+		);
+	};
+
+	it("skips the stale partner cloud write when the main submit is superseded", async () => {
+		seedTransfer();
+		await renderProvider();
+
+		// Edit A (10) hangs on the main leg; edit B (20) delivers both legs.
+		// When A's main finally lands it is superseded, so A's partner leg must
+		// not overwrite B's newer partner row in the cloud.
+		let resolveA: () => void = () => {};
+		const deferredA = new Promise<void>((res) => {
+			resolveA = res;
+		});
+		vi.mocked(SheetService.upsertRow).mockImplementation(
+			(_sheet: string, _id: string, item: any) =>
+				item.amount === 10 ? deferredA : Promise.resolve(),
+		);
+
+		const edit = (amount: number) =>
+			tx({
+				amount,
+				type: TransactionType.TRANSFER,
+				toAccountId: "acc-2",
+				linkedTransactionId: "tx-2",
+			});
+
+		let promiseA: Promise<void>;
+		await act(async () => {
+			promiseA = data.handleTransactionSubmit(edit(10));
+		});
+		await act(async () => {
+			await data.handleTransactionSubmit(edit(20));
+		});
+		await act(async () => {
+			resolveA();
+			await promiseA;
+		});
+
+		const partnerWrites = vi
+			.mocked(SheetService.upsertRow)
+			.mock.calls.filter(
+				([sheet, id]) => sheet === "Transactions" && id === "tx-2",
+			);
+		// Only B's partner leg (20) reaches the cloud; A's stale partner (10)
+		// is abandoned because the main submit was superseded.
+		expect(partnerWrites).toHaveLength(1);
+		expect(partnerWrites[0][2].amount).toBe(20);
+		expect(SyncQueue.getSyncQueue()).toEqual([]);
 	});
 });

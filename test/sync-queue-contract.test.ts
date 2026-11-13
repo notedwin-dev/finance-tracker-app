@@ -193,11 +193,18 @@ describe("row writers honor a pinned spreadsheet", () => {
 	it("upsertRow targets the pinned id instead of re-resolving the selection", async () => {
 		localStorage.setItem("zenfinance_selected_sheet_id", "sheet-current");
 		const get = vi.fn(async () => ({ result: { values: [["id"], ["t1"]] } }));
+		const batchUpdate = vi.fn(async () => ({ result: {} }));
 		(window as any).gapi.client.sheets.spreadsheets.values.get = get;
+		(window as any).gapi.client.sheets.spreadsheets.values.batchUpdate =
+			batchUpdate;
 
 		await SheetService.upsertRow("Transactions", "t1", { id: "t1" }, "sheet-pinned");
 
 		expect(get).toHaveBeenCalledWith(
+			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
+		);
+		// The mutation must honor the pinned id too, not just the read.
+		expect(batchUpdate).toHaveBeenCalledWith(
 			expect.objectContaining({ spreadsheetId: "sheet-pinned" }),
 		);
 	});

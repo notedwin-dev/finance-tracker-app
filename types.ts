@@ -94,6 +94,18 @@ export interface Transaction {
 
 export interface UserCloudSettings {
   isSecurityEnabled?: boolean; // Replaces isVaultEnabled - enables encryption for sensitive data
+  // Legacy vault fields still present in previously stored profiles and cloud
+  // rows. Read only for migration; new code uses isSecurityEnabled.
+  /** @deprecated Migrated to isSecurityEnabled. */
+  isVaultEnabled?: boolean;
+  /** @deprecated Vault creation state, superseded by isSecurityEnabled. */
+  isVaultCreated?: boolean;
+  /** @deprecated Vault unlock state is in-memory (securityUnlocked). */
+  isVaultLocked?: boolean;
+  /** @deprecated Salt of the retired vault password scheme. */
+  vaultSalt?: string;
+  /** @deprecated Use biometricCredIds[0]. */
+  biometricCredId?: string;
   totpSecret?: string; // TOTP secret for 2FA (stored encrypted in cloud)
   totpEnabled?: boolean; // Whether 2FA is enabled
   biometricEnabled?: boolean; // Whether biometrics is enabled on this device

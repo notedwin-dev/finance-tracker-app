@@ -100,7 +100,11 @@ export interface UserCloudSettings {
   isVaultEnabled?: boolean;
   /** @deprecated Vault creation state, superseded by isSecurityEnabled. */
   isVaultCreated?: boolean;
-  /** @deprecated Vault unlock state is in-memory (securityUnlocked). */
+  /**
+   * @deprecated DataProvider still reads this in its remote-lock effect and
+   * writes it in lockVault/unlockVault*, so the active lock-state handling
+   * must be migrated before the field can be removed.
+   */
   isVaultLocked?: boolean;
   /** @deprecated Salt of the retired vault password scheme. */
   vaultSalt?: string;

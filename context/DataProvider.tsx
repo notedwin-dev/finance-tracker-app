@@ -1431,20 +1431,25 @@ const normalizeAccount = (acc: any): Account =>
 							assertReplayTarget();
 							return SheetService.deleteRow(sheet, id, replayTarget);
 						},
-						queue: (sheet, op, itemId, payload) => {
+						queue: (sheet, op, itemId, payload, intentVersion) => {
 							SyncQueue.enqueueSyncJob({
 								sheet,
 								op,
 								itemId,
 								payload,
 								spreadsheetId: replayTarget,
-								intentVersion: WriteIntent.getLatestDeliveredIntent(
-									sheet,
-									itemId,
-									replayTarget,
-								)?.version,
+								intentVersion,
 							});
 						},
+						latestIntent: (sheet, itemId) =>
+							WriteIntent.getLatestDeliveredIntent(
+								sheet,
+								itemId,
+								replayTarget,
+							),
+						pendingVersion: (sheet, itemId) =>
+							SyncQueue.getSyncJob(sheet, itemId, replayTarget)
+								?.intentVersion ?? 0,
 					},
 				);
 				if (repaired > 0) {

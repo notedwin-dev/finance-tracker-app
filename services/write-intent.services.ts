@@ -27,6 +27,14 @@ export const beginIntent = (
 		getSyncJob(sheet, itemId, spreadsheetId)?.intentVersion ?? 0,
 	) + 1;
 	submitted.set(k, version);
+	// An unbound (null-keyed) intent matches any spreadsheet, just like an
+	// unbound queue job, so a resolved newer edit supersedes it too — otherwise
+	// a submit pinned to an unresolved target would commit a stale local value.
+	if (spreadsheetId != null) {
+		const unbound = key(sheet, itemId, null);
+		const prev = submitted.get(unbound);
+		if (prev !== undefined && prev < version) submitted.set(unbound, version);
+	}
 	return version;
 };
 

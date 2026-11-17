@@ -194,7 +194,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
 			spreadsheetId === undefined
 				? SheetService.getCurrentSpreadsheetId()
 				: spreadsheetId;
-		if (targetSpreadsheetId == null && profile.isLoggedIn && !profile.offlineMode && SheetService.isClientReady())
+		// A pre-bound intent token belongs to the pinned target: re-resolving
+		// here would run it under a concrete key a newer edit can collide with,
+		// so an unresolved pinned target queues instead of re-resolving.
+		if (targetSpreadsheetId == null && intentVersion === undefined && profile.isLoggedIn && !profile.offlineMode && SheetService.isClientReady())
 			targetSpreadsheetId = await SheetService.resolveSpreadsheetId();
 		// Version this intent so a slow older write that fails after a newer
 		// edit was submitted/delivered can be rejected instead of enqueueing a

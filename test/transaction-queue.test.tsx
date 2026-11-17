@@ -1451,6 +1451,72 @@ it("uses the resolved target for intent tracking and the transaction write", asy
 	expect(WriteIntent.getLatestDeliveredIntent("Transactions", "tx-1", null)).toBeUndefined();
 });
 
+it("queues a null-target submit instead of re-resolving under its pinned intent token", async () => {
+	StorageService.saveTransactions([{ ...tx(), userId: "test-user" } as Transaction]);
+	await renderProvider();
+	vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue(null);
+	// First resolution fails; a later retry succeeds. The older submit must
+	// stay bound to its null-keyed token (queued), not run under the concrete
+	// key with a version a newer edit can collide with.
+	vi.mocked(SheetService.resolveSpreadsheetId)
+		.mockResolvedValueOnce(null)
+		.mockResolvedValue("sheet-id");
+	let release: (() => void) | undefined;
+	const landed: number[] = [];
+	vi.mocked(SheetService.upsertRow).mockImplementation(async (_s, _id, item) => {
+		if (item.amount === 10) await new Promise<void>((r) => { release = r; });
+		landed.push(item.amount);
+	});
+	let pending!: Promise<void>;
+	await act(async () => { pending = data.handleTransactionSubmit(tx({ amount: 10 })); });
+	expect(SyncQueue.getSyncQueue()).toMatchObject([
+		{ sheet: "Transactions", itemId: "tx-1", spreadsheetId: null, intentVersion: 1 },
+	]);
+	await act(async () => { await data.handleTransactionSubmit(tx({ amount: 20 })); });
+	await act(async () => { release?.(); await pending; });
+	expect(landed.at(-1)).toBe(20);
+	expect(
+		StorageService.getStoredTransactions().find((t) => t.id === "tx-1")?.amount,
+	).toBe(20);
+	expect(SyncQueue.getSyncQueue()).toEqual([]);
+});
+
+it("supersedes a null-keyed submit when a newer edit resolves the spreadsheet", async () => {
+	const main = {
+		...tx({ type: TransactionType.TRANSFER, toAccountId: "acc-2", linkedTransactionId: "tx-2" }),
+		userId: "test-user",
+	};
+	const partner = {
+		...tx({ id: "tx-2", type: TransactionType.TRANSFER, accountId: "acc-2", toAccountId: "acc-1", linkedTransactionId: "tx-1", transferDirection: "IN" }),
+		userId: "test-user",
+	};
+	StorageService.saveTransactions([main, partner] as Transaction[]);
+	await renderProvider();
+	vi.mocked(SheetService.getCurrentSpreadsheetId).mockReturnValue(null);
+	vi.mocked(SheetService.resolveSpreadsheetId)
+		.mockResolvedValueOnce(null)
+		.mockResolvedValue("sheet-id");
+	// A's main leg queues under the null key; its partner leg re-resolves and
+	// hangs. B resolves the spreadsheet and delivers both legs. When A's
+	// partner lands, A's null-keyed local guard must see B's newer intent.
+	let release: (() => void) | undefined;
+	vi.mocked(SheetService.upsertRow).mockImplementation(async (_s, id, item) => {
+		if (id === "tx-2" && item.amount === 10)
+			await new Promise<void>((r) => { release = r; });
+	});
+	const edit = (amount: number) =>
+		tx({ amount, type: TransactionType.TRANSFER, toAccountId: "acc-2", linkedTransactionId: "tx-2" });
+	let pending!: Promise<void>;
+	await act(async () => { pending = data.handleTransactionSubmit(edit(10)); });
+	expect(release).toBeDefined();
+	await act(async () => { await data.handleTransactionSubmit(edit(20)); });
+	await act(async () => { release?.(); await pending; });
+	expect(
+		StorageService.getStoredTransactions().find((t) => t.id === "tx-1")?.amount,
+	).toBe(20);
+	expect(SyncQueue.getSyncQueue()).toEqual([]);
+});
+
 it("rechecks delivery after a replay repair and queues the latest on failure", async () => {
 	const job = { sheet: "Transactions", itemId: "tx-1", spreadsheetId: "sheet-id", op: "insert" as const, payload: tx({ amount: 10 }), intentVersion: 1 };
 	SyncQueue.enqueueSyncJob(job);

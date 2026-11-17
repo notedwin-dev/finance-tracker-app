@@ -261,6 +261,8 @@ export const getCurrentSpreadsheetId = (): string | null => {
 
 export const setSheetUser = (userId: string) => {
 	if (userId) {
+		if (currentUserId !== userId) currentSpreadsheetId = null;
+
 		currentUserId = userId;
 	}
 };

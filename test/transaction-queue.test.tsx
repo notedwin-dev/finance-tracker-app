@@ -1431,6 +1431,85 @@ it("repairs a replay that lands after a newer live write", async () => {
 	expect(landed.at(-1)).toBe(20);
 });
 
+it("re-applies a live edit that lands while the full save is in flight", async () => {
+	const existing = { ...tx(), userId: "test-user" } as Transaction;
+	localStorage.setItem(
+		`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+		JSON.stringify([existing]),
+	);
+	vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+		cloudData({
+			transactions: [{ ...existing, updatedAt: "2026-11-01T00:00:00.000Z" }],
+		}),
+	);
+	await renderProvider();
+
+	const events: string[] = [];
+	let release!: () => void;
+	vi.mocked(SheetService.syncWithGoogleSheets).mockImplementation(
+		async (_accounts, transactions) => {
+			events.push(
+				`full-save:${(transactions as Transaction[]).find((t) => t.id === "tx-1")?.amount}`,
+			);
+			await new Promise<void>((r) => { release = r; });
+			events.push("full-save-end");
+		},
+	);
+	vi.mocked(SheetService.upsertRow).mockImplementation(async (_s, id, item) => {
+		if (id === "tx-1") events.push(`row:${item.amount}`);
+	});
+	let sync!: Promise<void>;
+	await act(async () => { sync = data.syncData(); });
+	expect(release).toBeDefined();
+	expect(events).toEqual(["full-save:25"]);
+	await act(async () => {
+		await data.handleTransactionSubmit(tx({ amount: 20 }));
+	});
+	// The live row landed while the stale pre-edit snapshot was still in flight.
+	expect(events).toEqual(["full-save:25", "row:20"]);
+	await act(async () => { release(); await sync; });
+	// The full save wrote the older snapshot last, so the live value must be
+	// re-applied after it for Sheets to keep the newer intent.
+	expect(events.slice(2)).toEqual(["full-save-end", "row:20"]);
+	expect(StorageService.getStoredTransactions().find((t) => t.id === "tx-1")?.amount).toBe(20);
+	expect(SyncQueue.getSyncQueue()).toEqual([]);
+});
+
+it("re-applies a live delete that lands while the full save is in flight", async () => {
+	const existing = { ...tx(), userId: "test-user" } as Transaction;
+	localStorage.setItem(
+		`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+		JSON.stringify([existing]),
+	);
+	vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+		cloudData({
+			transactions: [{ ...existing, updatedAt: "2026-11-01T00:00:00.000Z" }],
+		}),
+	);
+	await renderProvider();
+
+	const events: string[] = [];
+	let release!: () => void;
+	vi.mocked(SheetService.syncWithGoogleSheets).mockImplementation(async () => {
+		events.push("full-save");
+		await new Promise<void>((r) => { release = r; });
+		events.push("full-save-end");
+	});
+	vi.mocked(SheetService.deleteRow).mockImplementation(async (_s, id) => {
+		events.push(`delete:${id}`);
+	});
+	let sync!: Promise<void>;
+	await act(async () => { sync = data.syncData(); });
+	expect(release).toBeDefined();
+	await act(async () => { await data.handleTransactionDelete("tx-1"); });
+	expect(events).toEqual(["full-save", "delete:tx-1"]);
+	await act(async () => { release(); await sync; });
+	// The full save resurrected the pre-delete row last; the delete must be
+	// re-applied or Sheets keeps a transaction the user removed.
+	expect(events.slice(1)).toEqual(["delete:tx-1", "full-save-end", "delete:tx-1"]);
+	expect(StorageService.getStoredTransactions()).toEqual([]);
+});
+
 it("pins the transaction snapshot after a live write changes selection", async () => {
 	await renderProvider();
 	vi.mocked(SheetService.upsertRow).mockImplementation(async () => {
@@ -1514,6 +1593,51 @@ it("supersedes a null-keyed submit when a newer edit resolves the spreadsheet", 
 	expect(
 		StorageService.getStoredTransactions().find((t) => t.id === "tx-1")?.amount,
 	).toBe(20);
+	expect(SyncQueue.getSyncQueue()).toEqual([]);
+});
+
+it("generates subscription payments from the post-replay state, not the merge snapshot", async () => {
+	const dueYesterday = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
+	const existing = { ...tx(), userId: "test-user" } as Transaction;
+	localStorage.setItem(
+		`${StorageService.KEYS.TRANSACTIONS}_test-user`,
+		JSON.stringify([existing]),
+	);
+	vi.mocked(SheetService.loadFromGoogleSheets).mockResolvedValue(
+		cloudData({
+			transactions: [{ ...existing, updatedAt: "2026-11-01T00:00:00.000Z" }],
+			subscriptions: [sub({ nextPaymentDate: dueYesterday })],
+		}),
+	);
+	await renderProvider();
+	SyncQueue.enqueueSyncJob({
+		sheet: "Transactions",
+		itemId: "tx-1",
+		spreadsheetId: "sheet-id",
+		op: "update",
+		payload: { ...existing, amount: 10, updatedAt: "2026-11-02T00:00:00.000Z" },
+		intentVersion: 1,
+	});
+	// The replay hangs while a live edit (20) completes and is delivered. The
+	// payment generated after the replay must be appended to that newer state,
+	// or the stale merge snapshot restores 10 locally and in Sheets.
+	let release!: () => void;
+	vi.mocked(SheetService.upsertRow).mockImplementation(async (_s, _id, item) => {
+		if (item.amount === 10) await new Promise<void>((r) => { release = r; });
+	});
+	let sync!: Promise<void>;
+	await act(async () => { sync = data.syncData(); });
+	expect(release).toBeDefined();
+	await act(async () => { await data.handleTransactionSubmit(tx({ amount: 20 })); });
+	await act(async () => { release(); await sync; });
+
+	const stored = StorageService.getStoredTransactions();
+	expect(stored.find((t) => t.id === "tx-1")?.amount).toBe(20);
+	expect(stored.filter((t) => t.subscriptionId === "sub-1")).toHaveLength(1);
+	const sheetWrites = vi
+		.mocked(SheetService.saveToSheet)
+		.mock.calls.filter(([sheet]) => sheet === "Transactions");
+	expect((sheetWrites.at(-1)?.[1] as Transaction[]).find((t) => t.id === "tx-1")?.amount).toBe(20);
 	expect(SyncQueue.getSyncQueue()).toEqual([]);
 });
 

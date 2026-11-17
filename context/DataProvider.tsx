@@ -24,6 +24,7 @@ import * as SecurityService from "../services/security.services";
 import * as AccountCrypto from "../services/account-crypto.services";
 import * as SyncQueue from "../services/sync-queue.services";
 import * as WriteIntent from "../services/write-intent.services";
+import { reconcileFullSave } from "../services/full-save-reconcile.services";
 
 // Legacy vault type for backward compatibility during migration
 type LegacyVaultProfile = UserProfile & {
@@ -1403,6 +1404,52 @@ const normalizeAccount = (acc: any): Account =>
 					},
 					replayTarget,
 				);
+				// A live write can land while the full save above is in flight;
+				// the save then rewrites its sheets from the pre-write snapshot
+				// and clobbers the newer row. Its queue job is already
+				// acknowledged, so replay cannot repair it: re-apply the rows
+				// that changed locally since the snapshot.
+				const repaired = await reconcileFullSave<Transaction | Subscription>(
+					[
+						{
+							sheet: "Transactions",
+							rows: mergedTransactions,
+							current: () => StorageService.getStoredTransactions(),
+						},
+						{
+							sheet: "Subscriptions",
+							rows: mergedSubs,
+							current: () => StorageService.getStoredSubscriptions(),
+						},
+					],
+					{
+						upsert: (sheet, item) => {
+							assertReplayTarget();
+							return SheetService.upsertRow(sheet, item.id, item, replayTarget);
+						},
+						remove: (sheet, id) => {
+							assertReplayTarget();
+							return SheetService.deleteRow(sheet, id, replayTarget);
+						},
+						queue: (sheet, op, itemId, payload) => {
+							SyncQueue.enqueueSyncJob({
+								sheet,
+								op,
+								itemId,
+								payload,
+								spreadsheetId: replayTarget,
+								intentVersion: WriteIntent.getLatestDeliveredIntent(
+									sheet,
+									itemId,
+									replayTarget,
+								)?.version,
+							});
+						},
+					},
+				);
+				if (repaired > 0) {
+					console.log(`Re-applied ${repaired} live write(s) after the full save`);
+				}
 				// Cloud is reachable again: replay writes that were queued
 				// while it was down. Upserts are idempotent, so jobs already
 				// reconciled by the full sync above are safe to re-apply.
@@ -1427,7 +1474,16 @@ const normalizeAccount = (acc: any): Account =>
 				if (processed > 0) {
 					console.log(`Replayed ${processed} queued cloud write(s)`);
 				}
-				processSubscriptions(mergedSubs, mergedTransactions, replayTarget);
+				// Replay can overlap live edits, which commit newer values to
+				// storage as they land. Generate payments from that current
+				// state, not the pre-replay merge snapshot: processSubscriptions
+				// saves the full array locally and to Sheets, so stale rows
+				// would clobber the values the replay just reconciled.
+				processSubscriptions(
+					StorageService.getStoredSubscriptions(),
+					StorageService.getStoredTransactions(),
+					replayTarget,
+				);
 
 				// Update sync status and timestamp (locally use updatedAt)
 				// Skip cloud sync since we already synced the profile in syncWithGoogleSheets above

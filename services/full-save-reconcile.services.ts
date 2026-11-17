@@ -196,14 +196,22 @@ export const reconcileFullSave = async <T extends { id: string }>(
 			if (await repair(sheet, "update", id, payload, version, deps))
 				repaired++;
 		}
+		// Membership index for the deletion pass. Rebuilt after every awaited
+		// repair: a row restored locally while that repair was in flight must
+		// not be deleted.
+		const presentIds = () =>
+			new Set(
+				current()
+					.filter((row) => row.id != null)
+					.map((row) => String(row.id)),
+			);
+		let present = presentIds();
 		for (const id of written.keys()) {
-			// Re-read membership right before deleting: a row restored locally
-			// while earlier repairs were in flight must not be deleted.
-			if (current().some((row) => row.id != null && String(row.id) === id))
-				continue;
+			if (present.has(id)) continue;
 			const version = deps.latestIntent?.(sheet, id)?.version ?? 0;
 			if (await repair(sheet, "delete", id, undefined, version, deps))
 				repaired++;
+			present = presentIds();
 		}
 	}
 	return repaired;

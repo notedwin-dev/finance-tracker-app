@@ -86,6 +86,33 @@ describe("reconcileFullSave", () => {
 		expect(d.remove).not.toHaveBeenCalled();
 	});
 
+	it("does not delete rows restored while an earlier deletion was in flight", async () => {
+		let stored: { id: string; amount: number }[] = [];
+		const d = deps({
+			remove: vi.fn(async (_sheet: string, id: string) => {
+				if (id === "b") stored = [{ id: "d", amount: 4 }];
+			}),
+		});
+
+		await reconcileFullSave(
+			[
+				{
+					sheet: "Transactions",
+					rows: [
+						{ id: "b", amount: 2 },
+						{ id: "c", amount: 3 },
+						{ id: "d", amount: 4 },
+					],
+					current: () => stored,
+				},
+			],
+			d,
+		);
+
+		expect(d.remove).toHaveBeenCalledTimes(2);
+		expect(d.remove).not.toHaveBeenCalledWith("Transactions", "d");
+	});
+
 	it("re-applies a newer intent delivered while its deletion was in flight", async () => {
 		let delivered:
 			| { version: number; op: "update"; payload: { id: string; amount: number } }

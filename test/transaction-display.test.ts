@@ -225,7 +225,7 @@ describe("getTransferAmountForAccount", () => {
 		expect(getTransferAmountForAccount(t, undefined, "cimb", "MYR", accounts, 4.5)).toBe(100);
 	});
 
-	it("keeps debiting the source by the transfer amount", () => {
+	it("debits the source by the amount plus an INCLUSIVE fee", () => {
 		const t = tx({
 			type: TransactionType.TRANSFER,
 			accountId: "maybank",
@@ -233,6 +233,19 @@ describe("getTransferAmountForAccount", () => {
 			amount: 100,
 			fee: 2,
 			feeType: "INCLUSIVE",
+		});
+
+		expect(getTransferAmountForAccount(t, undefined, "maybank", "MYR", accounts, 4.5)).toBe(-102);
+	});
+
+	it("debits the source by the amount alone for an EXCLUSIVE fee", () => {
+		const t = tx({
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			amount: 100,
+			fee: 2,
+			feeType: "EXCLUSIVE",
 		});
 
 		expect(getTransferAmountForAccount(t, undefined, "maybank", "MYR", accounts, 4.5)).toBe(-100);

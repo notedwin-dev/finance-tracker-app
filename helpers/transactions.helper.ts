@@ -95,8 +95,8 @@ const convertCurrency = (
 
 /**
  * Signed balance change a transfer causes on one account, mirroring the rules
- * in DataProvider: the source pays the amount and the destination receives it
- * minus an EXCLUSIVE fee.
+ * in DataProvider: the source pays the amount plus an INCLUSIVE fee, and the
+ * destination receives it minus an EXCLUSIVE fee.
  */
 export const getTransferAmountForAccount = (
 	t: Transaction,
@@ -115,7 +115,9 @@ export const getTransferAmountForAccount = (
 	);
 	const feeType = t.feeType ?? "INCLUSIVE";
 
-	if (route.sourceId === accountId) return -amount;
+	if (route.sourceId === accountId) {
+		return -(feeType === "INCLUSIVE" ? amount + fee : amount);
+	}
 	if (route.destinationId === accountId) {
 		return feeType === "EXCLUSIVE" ? amount - fee : amount;
 	}

@@ -109,8 +109,9 @@ const recoveryErrStatus = (err: any): number | undefined =>
 /**
  * Retry `performLoad` once through a silent token refresh when it fails
  * with 401 (dead access token). The token is cleared only when the session
- * is unrecoverable — refresh failed or the refreshed retry 401'd again —
- * so one stale hour never forces a manual reconnect. Any other error is
+ * is unrecoverable — refresh reported an auth failure or the refreshed
+ * retry 401'd again. A refresh that throws (transient network/backend
+ * failure) keeps the token so a later sync can retry. Any other error is
  * rethrown untouched for the caller's usual handling.
  */
 export const attemptWithSessionRefresh = async <T>(
@@ -121,7 +122,16 @@ export const attemptWithSessionRefresh = async <T>(
     return await performLoad();
   } catch (err) {
     if (recoveryErrStatus(err) !== 401) throw err;
-    if (!(await deps.tryRefresh())) {
+    let refreshed = false;
+    try {
+      refreshed = await deps.tryRefresh();
+    } catch {
+      // Transient refresh failure (network, 5xx, malformed response):
+      // keep the token so a later sync can retry. Clearing it here would
+      // disable cloud writes until a manual re-auth.
+      throw err;
+    }
+    if (!refreshed) {
       deps.clearToken();
       throw err;
     }

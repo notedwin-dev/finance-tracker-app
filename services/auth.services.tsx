@@ -38,6 +38,53 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const BACKEND_URL =
 	import.meta.env.VITE_BACKEND_API_URL || "";
 
+/**
+ * Exchange a refresh token for a new access token. Resolves null ONLY on a
+ * parsed OAuth auth failure (invalid/revoked refresh token or client); THROWS
+ * on everything else — network, 5xx/429, malformed body, or a tokenless
+ * response with no recognised auth error — so callers keep the current
+ * session instead of clearing it on an ambiguous backend reply.
+ */
+export const exchangeRefreshToken = async (
+	refreshToken: string,
+	backendUrl: string,
+): Promise<string | null> => {
+	let res: Response;
+	try {
+		res = await fetch(`${backendUrl}/auth/refresh`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ refresh_token: refreshToken }),
+		});
+	} catch (e) {
+		console.error("Token refresh failed", e);
+		throw e;
+	}
+	if (res.status === 429 || res.status >= 500) {
+		throw new Error(`Token refresh backend error: ${res.status}`);
+	}
+	let data: any;
+	try {
+		data = await res.json();
+	} catch (e) {
+		// e.g. an HTML error page from a misconfigured backend URL
+		throw e;
+	}
+	if (data?.access_token) return data.access_token;
+	// Only these OAuth errors mean the session is genuinely unrecoverable.
+	// A tokenless 200, or a protocol error like invalid_request, is ambiguous
+	// and must throw so the access token is preserved.
+	const authError =
+		typeof data?.error === "string" &&
+		(data.error === "invalid_grant" ||
+			data.error === "invalid_client" ||
+			data.error === "unauthorized_client");
+	if (authError) return null;
+	throw new Error(
+		`Token refresh failed: ${data?.error ?? "no access token in response"}`,
+	);
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 	children,
 }) => {
@@ -52,24 +99,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 		const refreshToken = localStorage.getItem("google_refresh_token");
 		if (!refreshToken) return null;
 
-		try {
-			const res = await fetch(`${BACKEND_URL}/auth/refresh`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ refresh_token: refreshToken }),
-			});
-			const data = await res.json();
-			if (data.access_token) {
-				const expiresAt = Date.now() + 3500 * 1000; // Assume ~1hr
-				SheetService.setGapiAccessToken(data.access_token, 3600);
-				localStorage.setItem("google_access_token", data.access_token);
-				localStorage.setItem("google_token_expiry", expiresAt.toString());
-				return data.access_token;
-			}
-		} catch (e) {
-			console.error("Token refresh failed", e);
+		const token = await exchangeRefreshToken(refreshToken, BACKEND_URL);
+		if (token) {
+			const expiresAt = Date.now() + 3500 * 1000; // Assume ~1hr
+			SheetService.setGapiAccessToken(token, 3600);
+			localStorage.setItem("google_access_token", token);
+			localStorage.setItem("google_token_expiry", expiresAt.toString());
 		}
-		return null;
+		return token;
 	};
 
 	// Initialize GAPI client on mount
@@ -95,7 +132,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 			let expiry = parseStoredExpiry(savedExpiry);
 
 			if (refreshToken && (!token || Date.now() > expiry - 300000)) {
-				token = await refreshAccessToken();
+				try {
+					token = await refreshAccessToken();
+				} catch {
+					// Transient backend/network failure: boot on the saved
+					// token (or local data) instead of wedging initialization.
+					token = null;
+				}
 			} else if (token) {
 				SheetService.setGapiAccessToken(token, (expiry - Date.now()) / 1000);
 			}

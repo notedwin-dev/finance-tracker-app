@@ -71,10 +71,10 @@ If a change touches `services/account-crypto.services.ts`, add a test that fails
 before the change and passes after. If you cannot state the failing test, the
 change is not understood well enough to make.
 
-## Known pre-existing failures
+## Legacy vault fields
 
-`npx tsc --noEmit` reports 6 errors in `services/storage.services.ts` (legacy
-`isVaultEnabled` / `isVaultCreated` / `isVaultLocked` / `vaultSalt` /
-`biometricCredId` fields missing from `UserProfile`). These predate current
-work — do not treat them as regressions, and do not count them as introduced by
-your change.
+`npx tsc --noEmit` is clean. The retired vault fields `isVaultEnabled` /
+`isVaultCreated` / `isVaultLocked` / `vaultSalt` / `biometricCredId` remain on
+`UserCloudSettings` as deprecated optional properties so older stored profiles
+and cloud rows still load and migrate. New logic must use `isSecurityEnabled`
+(and `biometricCredIds`), never these fields.

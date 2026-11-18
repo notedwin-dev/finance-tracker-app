@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Account, Transaction, TransactionType } from "../types";
 import {
 	getAccountTransactions,
+	getTransferAmountForAccount,
 	getViewedTransferDirection,
 	groupTransactions,
 	resolveTransferRoute,
@@ -150,6 +151,107 @@ describe("getViewedTransferDirection", () => {
 		const inboundRoute = resolveTransferRoute(inboundRecord, undefined, accounts);
 
 		expect(getViewedTransferDirection(inboundRoute, "maybank")).toBe("OUT");
+	});
+});
+
+describe("groupTransactions unlinked transfers", () => {
+	it("keeps independent legacy transfers as separate rows", () => {
+		const out = tx({
+			id: "legacy-out",
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			shopName: "Round trip out",
+		});
+		const back = tx({
+			id: "legacy-back",
+			type: TransactionType.TRANSFER,
+			accountId: "cimb",
+			toAccountId: "maybank",
+			shopName: "Round trip back",
+		});
+
+		expect(groupTransactions([out, back])).toHaveLength(2);
+	});
+
+	it("still merges complementary unlinked OUT/IN legs", () => {
+		const out = tx({
+			id: "out",
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			transferDirection: "OUT",
+		});
+		const inbound = tx({
+			id: "in",
+			type: TransactionType.TRANSFER,
+			accountId: "cimb",
+			toAccountId: "maybank",
+			transferDirection: "IN",
+		});
+
+		const grouped = groupTransactions([out, inbound]);
+
+		expect(grouped).toHaveLength(1);
+		expect(grouped[0].id).toBe("out");
+		expect(grouped[0].linkedTransaction?.id).toBe("in");
+	});
+});
+
+describe("getTransferAmountForAccount", () => {
+	it("credits the destination minus an EXCLUSIVE fee", () => {
+		const t = tx({
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			amount: 100,
+			fee: 2,
+			feeType: "EXCLUSIVE",
+		});
+
+		expect(getTransferAmountForAccount(t, undefined, "cimb", "MYR", accounts, 4.5)).toBe(98);
+	});
+
+	it("credits the full amount to the destination for an INCLUSIVE fee", () => {
+		const t = tx({
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			amount: 100,
+			fee: 2,
+			feeType: "INCLUSIVE",
+		});
+
+		expect(getTransferAmountForAccount(t, undefined, "cimb", "MYR", accounts, 4.5)).toBe(100);
+	});
+
+	it("keeps debiting the source by the transfer amount", () => {
+		const t = tx({
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			amount: 100,
+			fee: 2,
+			feeType: "INCLUSIVE",
+		});
+
+		expect(getTransferAmountForAccount(t, undefined, "maybank", "MYR", accounts, 4.5)).toBe(-100);
+	});
+
+	it("converts a USD amount and fee into the account currency", () => {
+		const t = tx({
+			type: TransactionType.TRANSFER,
+			accountId: "maybank",
+			toAccountId: "cimb",
+			amount: 10,
+			fee: 1,
+			feeType: "EXCLUSIVE",
+			currency: "USD",
+		});
+
+		expect(
+			getTransferAmountForAccount(t, undefined, "cimb", "MYR", accounts, 4.5),
+		).toBeCloseTo(40.5);
 	});
 });
 

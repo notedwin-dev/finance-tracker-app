@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Transaction } from "../../types";
+import { Transaction, TransactionType } from "../../types";
 import {
   groupTransactions,
   GroupedTransaction,
@@ -47,6 +47,21 @@ export function matchesSearch(t: Transaction, query: string, categories: { id: s
   return false;
 }
 
+// A transfer belongs to both of its accounts, so filtering by either endpoint
+// must include it; grouping collapses the two legs back into one row.
+export function matchesAccountFilter(
+  t: Transaction,
+  accountIds: string[],
+): boolean {
+  if (accountIds.length === 0) return true;
+  if (accountIds.includes(t.accountId)) return true;
+  return (
+    t.type === TransactionType.TRANSFER &&
+    !!t.toAccountId &&
+    accountIds.includes(t.toAccountId)
+  );
+}
+
 export function useFilteredTransactions(
   transactions: Transaction[],
   startDate: string,
@@ -63,7 +78,7 @@ export function useFilteredTransactions(
       const tDate = normalizeDate(t.date);
       if (startDate && tDate < startDate) return false;
       if (endDate && tDate > endDate) return false;
-      if (accountIds.length > 0 && !accountIds.includes(t.accountId)) return false;
+      if (!matchesAccountFilter(t, accountIds)) return false;
       if (!matchesSearch(t, searchQuery, categories, accounts)) return false;
       return true;
     });

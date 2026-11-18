@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { matchesSearch } from "../components/history/useFilteredTransactions";
+import {
+  matchesAccountFilter,
+  matchesSearch,
+} from "../components/history/useFilteredTransactions";
+import { groupTransactions } from "../helpers/transactions.helper";
 
 describe("matchesSearch with malformed field types", () => {
   const categories = [{ id: "c1", name: "Food" }];
@@ -50,5 +54,57 @@ describe("matchesSearch with malformed field types", () => {
 
   it(" tolerates missing categories/accounts pages", () => {
     expect(() => matchesSearch(malformedTx, "a", [], [])).not.toThrow();
+  });
+});
+
+describe("matchesAccountFilter", () => {
+  const transfer: any = {
+    id: "transfer-1",
+    accountId: "maybank",
+    toAccountId: "cimb",
+    type: "TRANSFER",
+    amount: 50,
+    currency: "MYR",
+    date: "2026-11-18",
+  };
+
+  it("matches a transfer when the selected account is the destination", () => {
+    expect(matchesAccountFilter(transfer, ["cimb"])).toBe(true);
+  });
+
+  it("matches a transfer when the selected account is the source", () => {
+    expect(matchesAccountFilter(transfer, ["maybank"])).toBe(true);
+  });
+
+  it("rejects transactions unrelated to the selection", () => {
+    expect(matchesAccountFilter(transfer, ["other"])).toBe(false);
+  });
+
+  it("keeps everything when no account is selected", () => {
+    expect(matchesAccountFilter(transfer, [])).toBe(true);
+  });
+
+  it("still groups both filtered legs of a linked transfer into one row", () => {
+    const outLeg: any = {
+      ...transfer,
+      id: "out",
+      transferDirection: "OUT",
+      linkedTransactionId: "in",
+    };
+    const inLeg: any = {
+      ...transfer,
+      id: "in",
+      accountId: "cimb",
+      toAccountId: "maybank",
+      transferDirection: "IN",
+      linkedTransactionId: "out",
+    };
+
+    const selected = [outLeg, inLeg].filter((t) =>
+      matchesAccountFilter(t, ["cimb"]),
+    );
+
+    expect(selected).toHaveLength(2);
+    expect(groupTransactions(selected)).toHaveLength(1);
   });
 });

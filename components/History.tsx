@@ -19,7 +19,10 @@ import { cn } from "./history/cn";
 import { SCROLL_THRESHOLD } from "./history/constants";
 import { prepareTransactionForEdit } from "./history/getTransferEditPayload";
 import { formatDateHeader } from "./history/formatDateHeader";
-import { useFilteredTransactions } from "./history/useFilteredTransactions";
+import {
+	matchesAccountFilter,
+	useFilteredTransactions,
+} from "./history/useFilteredTransactions";
 import { useSwipeGesture } from "./history/useSwipeGesture";
 import { useBatchSelection } from "./history/useBatchSelection";
 import TransactionItem from "./history/TransactionItem";
@@ -97,7 +100,7 @@ const History: React.FC<Props> = ({
 				if (startDate && tDate < startDate) return false;
 				if (endDate && tDate > endDate) return false;
 			}
-			if (filterAccountIds.length > 0 && !filterAccountIds.includes(t.accountId)) return false;
+			if (!matchesAccountFilter(t, filterAccountIds)) return false;
 			return true;
 		});
 	}, [transactions, startDate, endDate, filterAccountIds]);

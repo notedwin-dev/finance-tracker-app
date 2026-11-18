@@ -36,8 +36,8 @@ import {
 	normalizeDate,
 	formatDateReadable,
 	getAccountTransactions,
+	getTransferAmountForAccount,
 	groupTransactions,
-	resolveTransferRoute,
 } from "../helpers/transactions.helper";
 
 // Register ChartJS components
@@ -220,12 +220,14 @@ const AccountPage: React.FC = () => {
 			const absAmount = Math.abs(t.amount);
 
 			if (t.type === TransactionType.TRANSFER) {
-				// Direction is relative to the account being viewed, not the leg
-				// record that happens to represent the grouped transfer.
-				const route = resolveTransferRoute(t, t.linkedTransaction, accounts);
-				if (route.sourceId === account.id) amount -= absAmount;
-				else if (route.destinationId === account.id) amount += absAmount;
-				else return;
+				amount = getTransferAmountForAccount(
+					t,
+					t.linkedTransaction,
+					account.id,
+					account.currency,
+					accounts,
+					usdRate,
+				);
 			} else {
 				if (t.accountId !== account.id) return;
 				if (t.type === TransactionType.EXPENSE) amount -= absAmount;
@@ -272,7 +274,7 @@ const AccountPage: React.FC = () => {
 				},
 			],
 		};
-	}, [account, groupedAccountTransactions, accounts]);
+	}, [account, groupedAccountTransactions, accounts, usdRate]);
 
 	const chartOptions = {
 		responsive: true,

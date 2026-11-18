@@ -81,6 +81,47 @@ export const getViewedTransferDirection = (
 	return undefined;
 };
 
+const convertCurrency = (
+	amount: number,
+	from: string,
+	to: string,
+	usdRate: number,
+): number => {
+	if (from === to) return amount;
+	if (from === "USD" && to === "MYR") return amount * usdRate;
+	if (from === "MYR" && to === "USD") return amount / usdRate;
+	return amount;
+};
+
+/**
+ * Signed balance change a transfer causes on one account, mirroring the rules
+ * in DataProvider: the source pays the amount and the destination receives it
+ * minus an EXCLUSIVE fee.
+ */
+export const getTransferAmountForAccount = (
+	t: Transaction,
+	linked: Transaction | undefined,
+	accountId: string,
+	accountCurrency: string,
+	accounts: Account[],
+	usdRate: number,
+): number => {
+	const route = resolveTransferRoute(t, linked, accounts);
+	const amount = Math.abs(
+		convertCurrency(t.amount, t.currency, accountCurrency, usdRate),
+	);
+	const fee = Math.abs(
+		convertCurrency(t.fee ?? 0, t.currency, accountCurrency, usdRate),
+	);
+	const feeType = t.feeType ?? "INCLUSIVE";
+
+	if (route.sourceId === accountId) return -amount;
+	if (route.destinationId === accountId) {
+		return feeType === "EXCLUSIVE" ? amount - fee : amount;
+	}
+	return 0;
+};
+
 export const groupTransactions = (
 	transactions: Transaction[],
 ): GroupedTransaction[] => {
@@ -125,11 +166,19 @@ export const groupTransactions = (
 
 		// 2. Fuzzy Merge for Symmetric Transfers (Unlinked legs)
 		if (t.type === TransactionType.TRANSFER) {
+			// Only complementary OUT/IN legs are one transfer. Legacy records
+			// without a direction each describe a whole transfer, so matching
+			// them by symmetry alone would merge two independent transfers.
+			const isComplementary = (p: Transaction) =>
+				(t.transferDirection === "OUT" && p.transferDirection === "IN") ||
+				(t.transferDirection === "IN" && p.transferDirection === "OUT");
+
 			const partner = transactions.find(
 				(p) =>
 					!processedIds.has(p.id) &&
 					p.id !== t.id &&
 					p.type === TransactionType.TRANSFER &&
+					isComplementary(p) &&
 					normalizeDate(p.date) === normalizeDate(t.date) &&
 					p.amount === t.amount &&
 					((p.accountId === t.toAccountId && p.toAccountId === t.accountId) || // Symmetric
@@ -147,8 +196,7 @@ export const groupTransactions = (
 					t.accountId === partner.toAccountId;
 
 				if (isActuallySymmetric) {
-					const main =
-						t.transferDirection === "OUT" || !t.transferDirection ? t : partner;
+					const main = t.transferDirection === "OUT" ? t : partner;
 					const linked = main === t ? partner : t;
 
 					grouped.push({ ...main, linkedTransaction: linked });

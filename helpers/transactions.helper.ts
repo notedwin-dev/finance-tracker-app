@@ -1,8 +1,128 @@
-import { Transaction, TransactionType } from "../types";
+import { Account, Transaction, TransactionType } from "../types";
 
 export interface GroupedTransaction extends Transaction {
 	linkedTransaction?: Transaction;
 }
+
+export interface TransferRoute {
+	sourceId?: string;
+	destinationId?: string;
+	source?: Account;
+	destination?: Account;
+}
+
+/**
+ * Transactions whose accountId is the given account, plus both legs of any
+ * transfer that touches it. Grouping then collapses each transfer to one row.
+ */
+export const getAccountTransactions = (
+	transactions: Transaction[],
+	accountId: string,
+): Transaction[] =>
+	transactions.filter(
+		(t) =>
+			t.accountId === accountId ||
+			(t.type === TransactionType.TRANSFER && t.toAccountId === accountId),
+	);
+
+/**
+ * Resolves where a transfer's money moved. The outgoing leg always identifies
+ * the source, so a grouped pair reads the same direction regardless of which
+ * leg the caller holds on to.
+ */
+export const resolveTransferRoute = (
+	t: Transaction,
+	linked: Transaction | undefined,
+	accounts: Account[],
+): TransferRoute => {
+	if (t.type !== TransactionType.TRANSFER) return {};
+
+	let sourceId: string | undefined;
+	let destinationId: string | undefined;
+
+	if (linked) {
+		const legs = [t, linked];
+		const outLeg =
+			legs.find((l) => l.transferDirection === "OUT") ??
+			legs.find((l) => !l.transferDirection) ??
+			t;
+		const inLeg = outLeg.id === t.id ? linked : t;
+
+		sourceId = outLeg.accountId ?? inLeg.toAccountId;
+		destinationId = outLeg.toAccountId ?? inLeg.accountId;
+	} else if (t.transferDirection === "IN") {
+		sourceId = t.toAccountId;
+		destinationId = t.accountId;
+	} else {
+		sourceId = t.accountId;
+		destinationId = t.toAccountId;
+	}
+
+	return {
+		sourceId,
+		destinationId,
+		source: accounts.find((a) => a.id === sourceId),
+		destination: accounts.find((a) => a.id === destinationId),
+	};
+};
+
+/** The transfer direction as seen from an account, if it is part of the route. */
+export const getViewedTransferDirection = (
+	route: TransferRoute,
+	viewingAccountId?: string,
+): "IN" | "OUT" | undefined => {
+	if (!viewingAccountId) return undefined;
+
+	const isSource = route.sourceId === viewingAccountId;
+	const isDestination = route.destinationId === viewingAccountId;
+
+	if (isDestination && !isSource) return "IN";
+	if (isSource) return "OUT";
+	return undefined;
+};
+
+const convertCurrency = (
+	amount: number,
+	from: string,
+	to: string,
+	usdRate: number,
+): number => {
+	if (from === to) return amount;
+	if (from === "USD" && to === "MYR") return amount * usdRate;
+	if (from === "MYR" && to === "USD") return amount / usdRate;
+	return amount;
+};
+
+/**
+ * Signed balance change a transfer causes on one account, mirroring the rules
+ * in DataProvider: the source pays the amount plus an INCLUSIVE fee, and the
+ * destination receives it minus an EXCLUSIVE fee.
+ */
+export const getTransferAmountForAccount = (
+	t: Transaction,
+	linked: Transaction | undefined,
+	accountId: string,
+	accountCurrency: string,
+	accounts: Account[],
+	usdRate: number,
+): number => {
+	const route = resolveTransferRoute(t, linked, accounts);
+	const amount = Math.abs(
+		convertCurrency(t.amount, t.currency, accountCurrency, usdRate),
+	);
+	const fee = Math.abs(
+		convertCurrency(t.fee ?? 0, t.currency, accountCurrency, usdRate),
+	);
+	const feeType = t.feeType ?? "INCLUSIVE";
+
+	if (route.sourceId === accountId) {
+		return -(feeType === "INCLUSIVE" ? amount + fee : amount);
+	}
+	if (route.destinationId === accountId) {
+		return feeType === "EXCLUSIVE" ? amount - fee : amount;
+	}
+	return 0;
+};
 
 export const groupTransactions = (
 	transactions: Transaction[],
@@ -48,11 +168,19 @@ export const groupTransactions = (
 
 		// 2. Fuzzy Merge for Symmetric Transfers (Unlinked legs)
 		if (t.type === TransactionType.TRANSFER) {
+			// Only complementary OUT/IN legs are one transfer. Legacy records
+			// without a direction each describe a whole transfer, so matching
+			// them by symmetry alone would merge two independent transfers.
+			const isComplementary = (p: Transaction) =>
+				(t.transferDirection === "OUT" && p.transferDirection === "IN") ||
+				(t.transferDirection === "IN" && p.transferDirection === "OUT");
+
 			const partner = transactions.find(
 				(p) =>
 					!processedIds.has(p.id) &&
 					p.id !== t.id &&
 					p.type === TransactionType.TRANSFER &&
+					isComplementary(p) &&
 					normalizeDate(p.date) === normalizeDate(t.date) &&
 					p.amount === t.amount &&
 					((p.accountId === t.toAccountId && p.toAccountId === t.accountId) || // Symmetric
@@ -70,8 +198,7 @@ export const groupTransactions = (
 					t.accountId === partner.toAccountId;
 
 				if (isActuallySymmetric) {
-					const main =
-						t.transferDirection === "OUT" || !t.transferDirection ? t : partner;
+					const main = t.transferDirection === "OUT" ? t : partner;
 					const linked = main === t ? partner : t;
 
 					grouped.push({ ...main, linkedTransaction: linked });

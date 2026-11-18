@@ -14,42 +14,6 @@ const HistoryPage: React.FC = () => {
   const { showAddModal, setShowAddModal, setEditingTransaction } =
     useOutletContext<any>();
 
-  const expandedTransactions = React.useMemo(() => {
-    const results: any[] = [];
-    const seen = new Set<string>();
-    transactions.forEach((t) => {
-      if (seen.has(t.id)) return;
-      if (
-        t.type === "TRANSFER" &&
-        t.toAccountId &&
-        t.accountId !== t.toAccountId &&
-        !t.transferDirection &&
-        !t.linkedTransactionId
-      ) {
-        const outId = t.id;
-        const inId = t.id + "_in";
-        if (!seen.has(outId)) {
-          results.push({ ...t, transferDirection: "OUT" });
-          seen.add(outId);
-        }
-        if (!seen.has(inId)) {
-          results.push({
-            ...t,
-            id: inId,
-            accountId: t.toAccountId,
-            toAccountId: t.accountId,
-            transferDirection: "IN",
-          });
-          seen.add(inId);
-        }
-      } else {
-        results.push(t);
-        seen.add(t.id);
-      }
-    });
-    return results;
-  }, [transactions]);
-
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -60,7 +24,7 @@ const HistoryPage: React.FC = () => {
         Transaction History
       </h2>
       <History
-        transactions={expandedTransactions}
+        transactions={transactions}
         categories={categories}
         accounts={accounts}
         pockets={pockets}

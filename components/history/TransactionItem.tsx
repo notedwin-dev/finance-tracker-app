@@ -6,9 +6,15 @@ import {
   ChevronRightIcon,
   CheckIcon,
   SparklesIcon,
+  ArrowDownLeftIcon,
+  ArrowUpRightIcon,
 } from "@heroicons/react/24/solid";
 import { TransactionType, Account, SavingPocket, Category } from "../../types";
-import { GroupedTransaction } from "../../helpers/transactions.helper";
+import {
+  GroupedTransaction,
+  getViewedTransferDirection,
+  resolveTransferRoute,
+} from "../../helpers/transactions.helper";
 import { cn } from "./cn";
 
 interface Props {
@@ -20,6 +26,7 @@ interface Props {
   accounts: Account[];
   pockets: SavingPocket[];
   categories: Category[];
+  viewingAccountId?: string;
   maskAmount: (amount: number | string, currency?: string, isSensitive?: boolean) => React.ReactNode;
   maskText: (text: string, isSensitive?: boolean, permanentMask?: boolean) => React.ReactNode;
   onSwipeEdit: () => void;
@@ -32,6 +39,26 @@ interface Props {
   onChevronClick: (e: React.MouseEvent) => void;
 }
 
+const AccountChip: React.FC<{
+  account: Account;
+  maskText: Props["maskText"];
+}> = ({ account, maskText }) => (
+  <span className="flex items-center gap-1 min-w-0 shrink">
+    {account.iconType === "IMAGE" ? (
+      <img
+        src={account.iconValue}
+        alt=""
+        className="w-3.5 h-3.5 rounded-sm object-contain bg-white/90 shrink-0"
+      />
+    ) : (
+      <span className="text-[11px] leading-none shrink-0" aria-hidden="true">
+        {account.iconValue}
+      </span>
+    )}
+    <span className="truncate normal-case tracking-normal">{maskText(account.name)}</span>
+  </span>
+);
+
 const TransactionItem: React.FC<Props> = ({
   transaction: t,
   swipedId,
@@ -41,6 +68,7 @@ const TransactionItem: React.FC<Props> = ({
   accounts,
   pockets,
   categories,
+  viewingAccountId,
   maskAmount,
   maskText,
   onSwipeEdit,
@@ -54,11 +82,20 @@ const TransactionItem: React.FC<Props> = ({
 }) => {
   const isSwiped = swipedId === t.id;
   const isTransfer = t.linkedTransaction || t.type === TransactionType.TRANSFER;
+  const route = isTransfer
+    ? resolveTransferRoute(t, t.linkedTransaction, accounts)
+    : undefined;
+  const viewedTransferDirection = getViewedTransferDirection(
+    route ?? {},
+    viewingAccountId,
+  );
+  const transferDirection = viewedTransferDirection ?? t.transferDirection;
+  const transactionAccount = accounts.find((a) => a.id === t.accountId);
   const isExpense = t.type === TransactionType.EXPENSE;
   const isIncome =
     t.type === TransactionType.INCOME ||
     t.type === TransactionType.ACCOUNT_OPENING ||
-    (t.type === TransactionType.TRANSFER && t.transferDirection === "IN") ||
+    (t.type === TransactionType.TRANSFER && transferDirection === "IN") ||
     (t.type === TransactionType.ADJUSTMENT && t.amount >= 0);
 
   const getCategoryIcon = (catId?: string) => {
@@ -80,15 +117,10 @@ const TransactionItem: React.FC<Props> = ({
   const getDisplayName = () => {
     if (isTransfer) {
       if (t.shopName) return maskText(t.shopName);
-      const sourceAccount = accounts.find(
-        (a) => a.id === (t.transferDirection === "IN" ? t.toAccountId : t.accountId),
-      );
-      const destAccount = accounts.find(
-        (a) => a.id === (t.transferDirection === "IN" ? t.accountId : t.toAccountId),
-      );
       return (
         <>
-          {maskText(sourceAccount?.name || "???")} → {maskText(destAccount?.name || "???")}
+          {maskText(route?.source?.name || "???")} →{" "}
+          {maskText(route?.destination?.name || "???")}
         </>
       );
     }
@@ -97,6 +129,8 @@ const TransactionItem: React.FC<Props> = ({
 
   const getSubtitleLabel = () => {
     if (isTransfer) {
+      if (viewedTransferDirection === "IN") return "TRANSFER IN";
+      if (viewedTransferDirection === "OUT") return "TRANSFER OUT";
       if (t.linkedTransaction) return "TRANSFER";
       if (t.transferDirection === "IN") return "TRANSFER IN";
       if (t.transferDirection === "OUT") return "TRANSFER OUT";
@@ -191,11 +225,30 @@ const TransactionItem: React.FC<Props> = ({
                 : "bg-surface border border-white/5",
             )}
           >
-            {isTransfer
-              ? "↔️"
-              : t.type === TransactionType.INCOME
-                ? "💰"
-                : getCategoryIcon(t.categoryId)}
+            {isTransfer ? (
+              viewedTransferDirection ? (
+                <span
+                  role="img"
+                  aria-label={
+                    viewedTransferDirection === "IN"
+                      ? "Incoming transfer"
+                      : "Outgoing transfer"
+                  }
+                >
+                  {viewedTransferDirection === "IN" ? (
+                    <ArrowDownLeftIcon className="w-6 h-6" />
+                  ) : (
+                    <ArrowUpRightIcon className="w-6 h-6" />
+                  )}
+                </span>
+              ) : (
+                "↔️"
+              )
+            ) : t.type === TransactionType.INCOME ? (
+              "💰"
+            ) : (
+              getCategoryIcon(t.categoryId)
+            )}
           </div>
 
           <div className="min-w-0 flex-1">
@@ -208,7 +261,7 @@ const TransactionItem: React.FC<Props> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 sm:mt-1">
               {t.time && (
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                   {t.time}
@@ -269,12 +322,41 @@ const TransactionItem: React.FC<Props> = ({
 
               <p
                 className={cn(
-                  "text-[11px] sm:text-[11px] font-semibold sm:font-bold truncate uppercase tracking-[0.05em]",
+                  "text-[11px] sm:text-[11px] font-semibold sm:font-bold truncate min-w-0 uppercase tracking-[0.05em]",
                   isTransfer ? "text-indigo-400/70 tracking-wider" : "text-gray-500/70",
                 )}
               >
                 {getSubtitleLabel()}
               </p>
+
+              {isTransfer && route && (route.source || route.destination) && (
+                <>
+                  <span className="w-0.5 h-0.5 rounded-full bg-gray-700 shrink-0" />
+                  <span className="flex items-center gap-1 min-w-0 text-[10px] font-bold text-gray-500/70 uppercase tracking-[0.05em]">
+                    {route.source && (
+                      <AccountChip account={route.source} maskText={maskText} />
+                    )}
+                    {route.source && route.destination && (
+                      <span className="text-gray-600 shrink-0">→</span>
+                    )}
+                    {route.destination && (
+                      <AccountChip account={route.destination} maskText={maskText} />
+                    )}
+                  </span>
+                </>
+              )}
+
+              {!isTransfer && transactionAccount && (
+                <>
+                  <span className="w-0.5 h-0.5 rounded-full bg-gray-700 shrink-0" />
+                  <span className="flex items-center min-w-0 text-[10px] font-bold text-gray-500/70 uppercase tracking-[0.05em]">
+                    <AccountChip
+                      account={transactionAccount}
+                      maskText={maskText}
+                    />
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>

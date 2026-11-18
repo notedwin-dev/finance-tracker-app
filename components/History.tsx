@@ -35,6 +35,7 @@ interface Props {
 	pockets: SavingPocket[];
 	showAddModal?: boolean;
 	isAssetPage?: boolean;
+	viewingAccountId?: string;
 	onAddTransaction: () => void;
 	onEditTransaction: (t: Transaction) => void;
 	onDeleteTransaction: (id: string) => void;
@@ -47,6 +48,7 @@ const History: React.FC<Props> = ({
 	pockets,
 	showAddModal = false,
 	isAssetPage = false,
+	viewingAccountId,
 	onAddTransaction,
 	onEditTransaction,
 	onDeleteTransaction,
@@ -400,6 +402,7 @@ const History: React.FC<Props> = ({
 									accounts={accounts}
 									pockets={pockets}
 									categories={categories}
+									viewingAccountId={viewingAccountId}
 									maskAmount={maskAmount as any}
 									maskText={maskText as any}
 									onSwipeEdit={() => handleSwipeEdit(t)}

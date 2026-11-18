@@ -1,8 +1,85 @@
-import { Transaction, TransactionType } from "../types";
+import { Account, Transaction, TransactionType } from "../types";
 
 export interface GroupedTransaction extends Transaction {
 	linkedTransaction?: Transaction;
 }
+
+export interface TransferRoute {
+	sourceId?: string;
+	destinationId?: string;
+	source?: Account;
+	destination?: Account;
+}
+
+/**
+ * Transactions whose accountId is the given account, plus both legs of any
+ * transfer that touches it. Grouping then collapses each transfer to one row.
+ */
+export const getAccountTransactions = (
+	transactions: Transaction[],
+	accountId: string,
+): Transaction[] =>
+	transactions.filter(
+		(t) =>
+			t.accountId === accountId ||
+			(t.type === TransactionType.TRANSFER && t.toAccountId === accountId),
+	);
+
+/**
+ * Resolves where a transfer's money moved. The outgoing leg always identifies
+ * the source, so a grouped pair reads the same direction regardless of which
+ * leg the caller holds on to.
+ */
+export const resolveTransferRoute = (
+	t: Transaction,
+	linked: Transaction | undefined,
+	accounts: Account[],
+): TransferRoute => {
+	if (t.type !== TransactionType.TRANSFER) return {};
+
+	let sourceId: string | undefined;
+	let destinationId: string | undefined;
+
+	if (linked) {
+		const legs = [t, linked];
+		const outLeg =
+			legs.find((l) => l.transferDirection === "OUT") ??
+			legs.find((l) => !l.transferDirection) ??
+			t;
+		const inLeg = outLeg.id === t.id ? linked : t;
+
+		sourceId = outLeg.accountId ?? inLeg.toAccountId;
+		destinationId = outLeg.toAccountId ?? inLeg.accountId;
+	} else if (t.transferDirection === "IN") {
+		sourceId = t.toAccountId;
+		destinationId = t.accountId;
+	} else {
+		sourceId = t.accountId;
+		destinationId = t.toAccountId;
+	}
+
+	return {
+		sourceId,
+		destinationId,
+		source: accounts.find((a) => a.id === sourceId),
+		destination: accounts.find((a) => a.id === destinationId),
+	};
+};
+
+/** The transfer direction as seen from an account, if it is part of the route. */
+export const getViewedTransferDirection = (
+	route: TransferRoute,
+	viewingAccountId?: string,
+): "IN" | "OUT" | undefined => {
+	if (!viewingAccountId) return undefined;
+
+	const isSource = route.sourceId === viewingAccountId;
+	const isDestination = route.destinationId === viewingAccountId;
+
+	if (isDestination && !isSource) return "IN";
+	if (isSource) return "OUT";
+	return undefined;
+};
 
 export const groupTransactions = (
 	transactions: Transaction[],

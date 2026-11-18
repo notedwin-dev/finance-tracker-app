@@ -35,6 +35,9 @@ import { AccountDetails, TransactionType } from "../types";
 import {
 	normalizeDate,
 	formatDateReadable,
+	getAccountTransactions,
+	groupTransactions,
+	resolveTransferRoute,
 } from "../helpers/transactions.helper";
 
 // Register ChartJS components
@@ -134,47 +137,15 @@ const AccountPage: React.FC = () => {
 		[pots, id],
 	);
 
-	const filteredTransactions = useMemo(() => {
-		const results: any[] = [];
-		const seen = new Set<string>();
-		transactions.forEach((t) => {
-			const isLegacySingleRecordTransfer =
-				t.type === TransactionType.TRANSFER &&
-				t.toAccountId &&
-				!t.transferDirection &&
-				!t.linkedTransactionId;
+	const filteredTransactions = useMemo(
+		() => getAccountTransactions(transactions, id ?? ""),
+		[transactions, id],
+	);
 
-			if (isLegacySingleRecordTransfer) {
-				if (t.accountId === id) {
-					if (!seen.has(t.id)) {
-						results.push({ ...t, transferDirection: "OUT" });
-						seen.add(t.id);
-					}
-				} else if (t.toAccountId === id) {
-					const inId = t.id + "_in";
-					if (!seen.has(inId)) {
-						results.push({
-							...t,
-							id: inId,
-							accountId: t.toAccountId,
-							toAccountId: t.accountId,
-							transferDirection: "IN",
-						});
-						seen.add(inId);
-					}
-				}
-			} else if (
-				t.accountId === id ||
-				(t.type === TransactionType.TRANSFER && t.toAccountId === id)
-			) {
-				if (!seen.has(t.id)) {
-					results.push(t);
-					seen.add(t.id);
-				}
-			}
-		});
-		return results;
-	}, [transactions, id]);
+	const groupedAccountTransactions = useMemo(
+		() => groupTransactions(filteredTransactions),
+		[filteredTransactions],
+	);
 
 	const getCurrencySymbol = (currency: string) => {
 		switch (currency) {
@@ -237,7 +208,7 @@ const AccountPage: React.FC = () => {
 		// Calculate retrospective balance
 		let runningBalance = account.balance;
 		// Sort transactions descending (newest first)
-		const accountTrans = filteredTransactions.sort((a, b) =>
+		const accountTrans = [...groupedAccountTransactions].sort((a, b) =>
 			normalizeDate(b.date).localeCompare(normalizeDate(a.date)),
 		);
 
@@ -248,20 +219,23 @@ const AccountPage: React.FC = () => {
 			let amount = 0;
 			const absAmount = Math.abs(t.amount);
 
-			// Only process transactions where the current account is the primary account
-			// to avoid double-counting grouped transactions in history
-			if (t.accountId !== account.id) return;
-
-			if (t.type === TransactionType.EXPENSE) amount -= absAmount;
-			else if (t.type === TransactionType.TRANSFER) {
-				if (t.transferDirection === "IN") amount += absAmount;
-				else amount -= absAmount;
-			} else if (t.type === TransactionType.INCOME) amount += absAmount;
-			else if (
-				t.type === TransactionType.ACCOUNT_OPENING ||
-				t.type === TransactionType.ADJUSTMENT
-			) {
-				amount += t.amount;
+			if (t.type === TransactionType.TRANSFER) {
+				// Direction is relative to the account being viewed, not the leg
+				// record that happens to represent the grouped transfer.
+				const route = resolveTransferRoute(t, t.linkedTransaction, accounts);
+				if (route.sourceId === account.id) amount -= absAmount;
+				else if (route.destinationId === account.id) amount += absAmount;
+				else return;
+			} else {
+				if (t.accountId !== account.id) return;
+				if (t.type === TransactionType.EXPENSE) amount -= absAmount;
+				else if (t.type === TransactionType.INCOME) amount += absAmount;
+				else if (
+					t.type === TransactionType.ACCOUNT_OPENING ||
+					t.type === TransactionType.ADJUSTMENT
+				) {
+					amount += t.amount;
+				}
 			}
 
 			transByDay[d] = (transByDay[d] || 0) + amount;
@@ -298,7 +272,7 @@ const AccountPage: React.FC = () => {
 				},
 			],
 		};
-	}, [account, filteredTransactions]);
+	}, [account, groupedAccountTransactions, accounts]);
 
 	const chartOptions = {
 		responsive: true,
@@ -520,7 +494,7 @@ const AccountPage: React.FC = () => {
 								Transactions
 							</span>
 							<span className="text-white font-black text-xs sm:text-sm">
-								{filteredTransactions.length} Total
+								{groupedAccountTransactions.length} Total
 							</span>
 						</div>
 						<div className="flex justify-between items-center text-sm">
@@ -572,6 +546,7 @@ const AccountPage: React.FC = () => {
 							accounts={accounts}
 							pockets={pockets}
 							isAssetPage={true}
+							viewingAccountId={account.id}
 							onAddTransaction={() => setShowAddModal(true)}
 							onEditTransaction={(t) => {
 								setEditingTransaction(t);
